@@ -137,6 +137,28 @@ message TypeDescriptor {
      * be inspected individually to determine their type.
      */
     optional TypeDescriptor mapType = 3;
+
+    /**
+     * Flag to indicate a categorical type, only ST?RING and INTEGER types can be marked as categorical.
+     *
+     * The recommended pattern is that categorical variables should always have STRING type.
+     * Support for categorical INTEGER variables is provided for easy interoperation with external systems
+     * and data models that are already using them.
+     */
+    bool categorical = 4;
+
+    /**
+     * Flag to indicate a type that does not allow nulls.
+     *
+     * The recommended pattern is to use this flag as little as possible: avoid constraints in the data model
+     * use data quality metrics and preparation / cleansing pipelines to handle incoming nulls. Where it can
+     * be useful is to describe schema for data flowing from/to upstream and downstream systems, for example
+     * if a report must be published to a system with a static schema including tables with not-null columns.
+     * TRAC will also set this flag for any fields marked as a business key in a SchemaDefinition.
+     *
+     * @see SchemaDefinition
+     */
+    bool notNull = 5;
 }
 
 

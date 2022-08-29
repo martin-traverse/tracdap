@@ -41,12 +41,14 @@ message FieldSchema {
 
     string fieldName = 1;
     sint32 fieldOrder = 2;
-    BasicType fieldType = 3;
+    TypeDescriptor fieldType = 3;
 
     string label = 4;
 
     bool businessKey = 5;
-    bool categorical = 6;
+
+    // was "categorical" flag, now moved into TypeDescriptor
+    reserved 6;
 
     optional string formatCode = 7;
 }
