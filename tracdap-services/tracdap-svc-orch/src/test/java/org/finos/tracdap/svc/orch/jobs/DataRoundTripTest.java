@@ -326,7 +326,7 @@ public abstract class DataRoundTripTest {
                 javaData.put(field.getFieldName(), edgeCases);
             }
             else {
-                var javaValues = SampleData.generateJavaValues(field.getFieldType(), edgeCases.size());
+                var javaValues = SampleData.generateJavaValues(field.getFieldType().getBasicType(), edgeCases.size());
                 javaData.put(field.getFieldName(), javaValues);
             }
         }
