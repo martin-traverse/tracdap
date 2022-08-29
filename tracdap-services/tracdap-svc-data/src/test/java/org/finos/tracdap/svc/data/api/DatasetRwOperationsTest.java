@@ -23,6 +23,7 @@ import org.finos.tracdap.common.concurrent.Futures;
 import org.finos.tracdap.common.concurrent.IExecutionContext;
 import org.finos.tracdap.common.metadata.MetadataCodec;
 import org.finos.tracdap.common.metadata.PartKeys;
+import org.finos.tracdap.common.metadata.TypeSystem;
 import org.finos.tracdap.metadata.*;
 import org.finos.tracdap.test.data.SampleData;
 import com.google.protobuf.ByteString;
@@ -33,8 +34,10 @@ import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
 
+import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.time.Instant;
@@ -151,9 +154,7 @@ public class DatasetRwOperationsTest {
         var storageRoot = platform.storageRootDir();
         var copyDir = storageRoot.resolve(copy.getStoragePath());
 
-        var copyFiles = Files.walk(copyDir)
-                .filter(p -> !p.equals(copyDir))  // Do not include the copyDir in the file list
-                .collect(Collectors.toList());
+        var copyFiles = walkDir(copyDir);
 
         // Data should be stored in one piece (even if chunking is implemented, dataset is too small to chunk up)
 
@@ -262,9 +263,7 @@ public class DatasetRwOperationsTest {
         var storageRoot = platform.storageRootDir();
         var copyDir = storageRoot.resolve(copy.getStoragePath());
 
-        var copyFiles = Files.walk(copyDir)
-                .filter(p -> !p.equals(copyDir))  // Do not include the copyDir in the file list
-                .collect(Collectors.toList());
+        var copyFiles = walkDir(copyDir);
 
         // Data should be stored in one piece (even if chunking is implemented, dataset is too small to chunk up)
 
@@ -484,7 +483,7 @@ public class DatasetRwOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("duplicate_field_0")
                         .setFieldOrder(0)
-                        .setFieldType(BasicType.BOOLEAN)));
+                        .setFieldType(TypeSystem.descriptor(BasicType.BOOLEAN))));
 
         var request = BASIC_CREATE_DATASET_REQUEST.toBuilder().setSchema(invalidSchema).build();
         var response = DataApiTestHelpers.clientStreaming(dataClient::createDataset, request);
@@ -525,7 +524,7 @@ public class DatasetRwOperationsTest {
                     .addFields(FieldSchema.newBuilder()
                             .setFieldName(fieldName)
                             .setFieldOrder(0)
-                            .setFieldType(BasicType.STRING)))
+                            .setFieldType(TypeSystem.descriptor(BasicType.STRING))))
                     .build();
 
             var request = BASIC_CREATE_DATASET_REQUEST.toBuilder().setSchema(reservedSchema).build();
@@ -546,7 +545,7 @@ public class DatasetRwOperationsTest {
                 .setTable(BASIC_SCHEMA.getTable().toBuilder()
                 .removeFields(1)
                 .addFields(1, BASIC_SCHEMA.getTable().getFields(1).toBuilder()
-                .setFieldType(BasicType.DATETIME)))
+                .setFieldType(TypeSystem.descriptor(BasicType.DATETIME))))
                 .build();
 
         var request = BASIC_CREATE_DATASET_REQUEST.toBuilder()
@@ -595,7 +594,7 @@ public class DatasetRwOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                 .setFieldName("an_extra_field")
                 .setFieldOrder(BASIC_SCHEMA.getTable().getFieldsCount())
-                .setFieldType(BasicType.STRING)))
+                .setFieldType(TypeSystem.descriptor(BasicType.STRING))))
                 .build();
 
         var request = BASIC_CREATE_DATASET_REQUEST.toBuilder()
@@ -717,9 +716,7 @@ public class DatasetRwOperationsTest {
         var storageRoot = platform.storageRootDir();
         var copyDir = storageRoot.resolve(copy.getStoragePath());
 
-        var copyFiles = Files.walk(copyDir)
-                .filter(p -> !p.equals(copyDir))  // Do not include the copyDir in the file list
-                .collect(Collectors.toList());
+        var copyFiles = walkDir(copyDir);
 
         // Data should be stored in one piece (even if chunking is implemented, dataset is too small to chunk up)
 
@@ -871,9 +868,7 @@ public class DatasetRwOperationsTest {
         var storageRoot = platform.storageRootDir();
         var copyDir = storageRoot.resolve(copy.getStoragePath());
 
-        var copyFiles = Files.walk(copyDir)
-                .filter(p -> !p.equals(copyDir))  // Do not include the copyDir in the file list
-                .collect(Collectors.toList());
+        var copyFiles = walkDir(copyDir);
 
         // Data should be stored in one piece (even if chunking is implemented, dataset is too small to chunk up)
 
@@ -1337,7 +1332,7 @@ public class DatasetRwOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("string_field")
                         .setFieldOrder(8)
-                        .setFieldType(BasicType.STRING)))
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING))))
                 .build();
 
         var request = BASIC_UPDATE_DATASET_REQUEST.toBuilder()
@@ -1466,7 +1461,7 @@ public class DatasetRwOperationsTest {
                 .addFields(BASIC_SCHEMA.getTable()
                         .getFields(BASIC_SCHEMA.getTable().getFieldsCount() -1)
                         .toBuilder()
-                        .setFieldType(BasicType.STRING))))
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING)))))
                 .build();
 
         var updateDataset2 = DataApiTestHelpers.clientStreaming(dataClient::updateDataset, request2);
@@ -1571,7 +1566,7 @@ public class DatasetRwOperationsTest {
                 .setTable(BASIC_SCHEMA_V2.getTable().toBuilder()
                 .removeFields(7)
                 .addFields(7, BASIC_SCHEMA_V2.getTable().getFields(7).toBuilder()
-                .setFieldType(BasicType.INTEGER)))
+                .setFieldType(TypeSystem.descriptor(BasicType.INTEGER))))
                 .build();
 
         var v2Request = BASIC_UPDATE_DATASET_REQUEST.toBuilder()
@@ -1634,7 +1629,7 @@ public class DatasetRwOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("an_extra_field")
                         .setFieldOrder(BASIC_SCHEMA_V2.getTable().getFieldsCount())
-                        .setFieldType(BasicType.STRING)))
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING))))
                 .build();
 
         var v2Request = BASIC_UPDATE_DATASET_REQUEST.toBuilder()
@@ -2455,5 +2450,15 @@ public class DatasetRwOperationsTest {
                 .setTenant(TEST_TENANT)
                 .setSelector(selector)
                 .build();
+    }
+
+    private List<Path> walkDir(Path dir) throws IOException {
+
+        try (var dirStream = Files.walk(dir)) {
+
+            return dirStream
+                .filter(p -> !p.equals(dir))  // Do not include the copyDir in the file list
+                .collect(Collectors.toList());
+        }
     }
 }

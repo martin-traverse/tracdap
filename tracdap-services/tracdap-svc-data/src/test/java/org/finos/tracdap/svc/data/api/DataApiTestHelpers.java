@@ -23,6 +23,7 @@ import org.finos.tracdap.common.metadata.MetadataCodec;
 import org.finos.tracdap.common.metadata.MetadataUtil;
 import org.finos.tracdap.common.concurrent.Flows;
 import org.finos.tracdap.common.util.ByteSeekableChannel;
+import org.finos.tracdap.metadata.TypeDescriptor;
 import org.finos.tracdap.test.grpc.GrpcTestStreams;
 import org.finos.tracdap.metadata.BasicType;
 import org.finos.tracdap.metadata.SchemaDefinition;
@@ -345,6 +346,11 @@ class DataApiTestHelpers {
         catch (IOException e) {
             throw new RuntimeException(e);
         }
+    }
+
+    public static Object decodeJavaObject(TypeDescriptor fieldType, Object rawObject) {
+
+        return decodeJavaObject(fieldType.getBasicType(), rawObject);
     }
 
     public static Object decodeJavaObject(BasicType fieldType, Object rawObject) {
