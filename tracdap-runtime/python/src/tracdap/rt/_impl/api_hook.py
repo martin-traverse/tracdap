@@ -239,13 +239,14 @@ class RuntimeHookImpl(_RuntimeHook):
             self.define_field, field_name, field_type, label,
             business_key, categorical, format_code, field_order)
 
+        type_descr = _meta.TypeDescriptor(field_type, categorical=categorical, notNull=business_key)
+
         return _meta.FieldSchema(
             field_name,
             field_order,
-            field_type,
+            type_descr,
             label,
             businessKey=business_key,
-            categorical=categorical,
             formatCode=format_code)
 
     def define_schema(

@@ -205,7 +205,7 @@ class DataMapping:
             raise _ex.ETracInternal(f"Schema type [{trac_schema.schemaType}] cannot be converted for Apache Arrow")
 
         arrow_fields = [
-            (f.fieldName, cls.trac_to_arrow_basic_type(f.fieldType))
+            (f.fieldName, cls.trac_to_arrow_basic_type(f.fieldType.basicType))
             for f in trac_schema.table.fields]
 
         return pa.schema(arrow_fields, metadata={})

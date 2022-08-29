@@ -33,12 +33,24 @@ class SchemaLoader:
     __SCHEMA_OF_SCHEMA = _meta.SchemaDefinition(
         schemaType=_meta.SchemaType.TABLE,
         table=_meta.TableSchema([
-            _meta.FieldSchema("field_name", 0, _meta.BasicType.STRING, "Field name", businessKey=True),
-            _meta.FieldSchema("field_type", 1, _meta.BasicType.STRING, "Field type", categorical=True),
-            _meta.FieldSchema("label", 2, _meta.BasicType.STRING, "Label"),
-            _meta.FieldSchema("business_key", 3, _meta.BasicType.BOOLEAN, "Business key flag"),
-            _meta.FieldSchema("categorical", 4, _meta.BasicType.BOOLEAN, "Categorical flag"),
-            _meta.FieldSchema("format_code", 5, _meta.BasicType.STRING, "Format code"),
+            _meta.FieldSchema(
+                "field_name", 0, label="Field name",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.STRING, notNull=True), businessKey=True),
+            _meta.FieldSchema(
+                "field_type", 1, label="Field type",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.STRING, categorical=True)),
+            _meta.FieldSchema(
+                "label", 2, label="Label",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.STRING)),
+            _meta.FieldSchema(
+                "business_key", 3, label="Business key flag",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.BOOLEAN)),
+            _meta.FieldSchema(
+                "categorical", 4, label="Categorical flag",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.BOOLEAN)),
+            _meta.FieldSchema(
+                "format_code", 5, label="Format code",
+                fieldType=_meta.TypeDescriptor(_meta.BasicType.STRING))
         ])
     )
 
@@ -104,21 +116,23 @@ class SchemaLoader:
 
             try:
                 if type_name:
-                    field_type = _meta.BasicType[type_name.upper()]
+                    basic_type = _meta.BasicType[type_name.upper()]
                 else:
-                    field_type = _meta.BasicType.BASIC_TYPE_NOT_SET
+                    basic_type = _meta.BasicType.BASIC_TYPE_NOT_SET
             except KeyError:
-                field_type = _meta.BasicType.BASIC_TYPE_NOT_SET
+                basic_type = _meta.BasicType.BASIC_TYPE_NOT_SET
 
-            if field_type == _meta.BasicType.BASIC_TYPE_NOT_SET:
+            if basic_type == _meta.BasicType.BASIC_TYPE_NOT_SET:
                 display_type_name = type_name or str(None)
                 err = f"Unknown field type [{display_type_name}] for field [{field_name}] at index [{field_index}]"
                 cls._log.error(err)
                 raise _ex.EDataConformance(err)
 
+            field_type = _meta.TypeDescriptor(basic_type, categorical=categorical, notNull=business_key)
+
             field_schema = _meta.FieldSchema(
                 field_name, field_index, field_type, label,
-                business_key, categorical, format_code)
+                business_key, format_code)
 
             field_list.append(field_schema)
 

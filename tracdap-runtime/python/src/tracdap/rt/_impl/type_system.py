@@ -50,6 +50,11 @@ class TypeMapping:
     }
 
     @classmethod
+    def descriptor(cls, basic_type: _meta.BasicType, categorical: bool = False, not_null: bool = False):
+
+        return _meta.TypeDescriptor(basic_type, categorical=categorical, notNull=not_null)
+
+    @classmethod
     def trac_to_python(cls, trac_type: _meta.TypeDescriptor) -> type:
 
         return cls.trac_to_python_basic_type(trac_type.basicType)

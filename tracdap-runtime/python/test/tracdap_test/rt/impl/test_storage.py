@@ -59,13 +59,13 @@ class DataStorageTestSuite:
             _meta.SchemaType.TABLE,
             _meta.PartType.PART_ROOT,
             _meta.TableSchema(fields=[
-                _meta.FieldSchema("boolean_field", fieldType=_meta.BasicType.BOOLEAN),
-                _meta.FieldSchema("integer_field", fieldType=_meta.BasicType.INTEGER),
-                _meta.FieldSchema("float_field", fieldType=_meta.BasicType.FLOAT),
-                _meta.FieldSchema("decimal_field", fieldType=_meta.BasicType.DECIMAL),
-                _meta.FieldSchema("string_field", fieldType=_meta.BasicType.STRING),
-                _meta.FieldSchema("date_field", fieldType=_meta.BasicType.DATE),
-                _meta.FieldSchema("datetime_field", fieldType=_meta.BasicType.DATETIME),
+                _meta.FieldSchema("boolean_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.BOOLEAN)),
+                _meta.FieldSchema("integer_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.INTEGER)),
+                _meta.FieldSchema("float_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.FLOAT)),
+                _meta.FieldSchema("decimal_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.DECIMAL)),
+                _meta.FieldSchema("string_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.STRING)),
+                _meta.FieldSchema("date_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.DATE)),
+                _meta.FieldSchema("datetime_field", fieldType=_meta.TypeDescriptor(_meta.BasicType.DATETIME)),
             ]))
 
         return _data.DataMapping.trac_to_arrow_schema(trac_schema)
@@ -94,7 +94,7 @@ class DataStorageTestSuite:
             _meta.SchemaType.TABLE,
             _meta.PartType.PART_ROOT,
             _meta.TableSchema(fields=[
-                _meta.FieldSchema(field_name, fieldType=field_type)]))
+                _meta.FieldSchema(field_name, fieldType=_meta.TypeDescriptor(field_type))]))
 
         return _data.DataMapping.trac_to_arrow_schema(trac_schema)
 
