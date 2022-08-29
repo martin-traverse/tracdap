@@ -20,6 +20,7 @@ import org.apache.arrow.vector.types.pojo.Schema;
 import org.finos.tracdap.common.codec.arrow.ArrowSchema;
 import org.finos.tracdap.common.exception.ETracInternal;
 import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.metadata.TypeSystem;
 import org.finos.tracdap.metadata.*;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
@@ -49,31 +50,31 @@ public class SampleData {
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("boolean_field")
                     .setFieldOrder(0)
-                    .setFieldType(BasicType.BOOLEAN))
+                    .setFieldType(TypeSystem.descriptor(BasicType.BOOLEAN)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("integer_field")
                     .setFieldOrder(1)
-                    .setFieldType(BasicType.INTEGER))
+                    .setFieldType(TypeSystem.descriptor(BasicType.INTEGER)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("float_field")
                     .setFieldOrder(2)
-                    .setFieldType(BasicType.FLOAT))
+                    .setFieldType(TypeSystem.descriptor(BasicType.FLOAT)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("decimal_field")
                     .setFieldOrder(3)
-                    .setFieldType(BasicType.DECIMAL))
+                    .setFieldType(TypeSystem.descriptor(BasicType.DECIMAL)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("string_field")
                     .setFieldOrder(4)
-                    .setFieldType(BasicType.STRING))
+                    .setFieldType(TypeSystem.descriptor(BasicType.STRING)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("date_field")
                     .setFieldOrder(5)
-                    .setFieldType(BasicType.DATE))
+                    .setFieldType(TypeSystem.descriptor(BasicType.DATE)))
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("datetime_field")
                     .setFieldOrder(6)
-                    .setFieldType(BasicType.DATETIME)))
+                    .setFieldType(TypeSystem.descriptor(BasicType.DATETIME))))
             .build();
 
     public static final SchemaDefinition BASIC_TABLE_SCHEMA_V2
@@ -82,7 +83,7 @@ public class SampleData {
             .addFields(FieldSchema.newBuilder()
                     .setFieldName("extra_string_field")
                     .setFieldOrder(7)
-                    .setFieldType(BasicType.STRING)))
+                    .setFieldType(TypeSystem.descriptor(BasicType.STRING))))
             .build();
 
     public static VectorSchemaRoot generateBasicData(BufferAllocator arrowAllocator) {
@@ -91,7 +92,7 @@ public class SampleData {
 
         for (var field : BASIC_TABLE_SCHEMA.getTable().getFieldsList()) {
 
-            var javaValues = generateJavaValues(field.getFieldType(), 10);
+            var javaValues = generateJavaValues(field.getFieldType().getBasicType(), 10);
             javaData.put(field.getFieldName(), javaValues);
         }
 

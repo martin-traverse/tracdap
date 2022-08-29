@@ -140,22 +140,22 @@ public class TestData {
                 .setTable(TableSchema.newBuilder()
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("transaction_id")
-                        .setFieldType(BasicType.STRING)
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING))
                         .setFieldOrder(0)
                         .setBusinessKey(true))
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("customer_id")
-                        .setFieldType(BasicType.STRING)
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING))
                         .setFieldOrder(1)
                         .setBusinessKey(true))
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("order_date")
-                        .setFieldType(BasicType.DATE)
+                        .setFieldType(TypeSystem.descriptor(BasicType.DATE))
                         .setFieldOrder(2)
                         .setBusinessKey(true))
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("widgets_ordered")
-                        .setFieldType(BasicType.INTEGER)
+                        .setFieldType(TypeSystem.descriptor(BasicType.INTEGER))
                         .setFieldOrder(3)
                         .setBusinessKey(true))))
 
@@ -208,7 +208,7 @@ public class TestData {
                 .addFields(FieldSchema.newBuilder()
                 .setFieldName(fieldName)
                 .setFieldOrder(origSchema.getTable().getFieldsCount())
-                .setFieldType(BasicType.FLOAT)
+                .setFieldType(TypeSystem.descriptor(BasicType.FLOAT))
                 .setLabel("We got an extra field!")
                 .setFormatCode("PERCENT"));
 
@@ -281,15 +281,16 @@ public class TestData {
                         .setTable(TableSchema.newBuilder()
                         .addFields(FieldSchema.newBuilder()
                                 .setFieldName("field1")
-                                .setFieldType(BasicType.DATE)
+                                .setFieldType(TypeSystem.descriptor(BasicType.DATE))
                                 .setBusinessKey(true))
                         .addFields(FieldSchema.newBuilder()
                                 .setFieldName("field2")
-                                .setFieldType(BasicType.STRING)
-                                .setCategorical(true))
+                                .setFieldType(TypeSystem.descriptor(BasicType.STRING)
+                                        .toBuilder()
+                                        .setCategorical(true)))
                         .addFields(FieldSchema.newBuilder()
                                 .setFieldName("field3")
-                                .setFieldType(BasicType.DECIMAL)
+                                .setFieldType(TypeSystem.descriptor(BasicType.DECIMAL))
                                 .setLabel("A display name")
                                 .setFormatCode("GBP"))))
                         .build())
@@ -299,7 +300,7 @@ public class TestData {
                         .setTable(TableSchema.newBuilder()
                         .addFields(FieldSchema.newBuilder()
                                 .setFieldName("checksum_field")
-                                .setFieldType(BasicType.DECIMAL))))
+                                .setFieldType(TypeSystem.descriptor(BasicType.DECIMAL)))))
                         .build()))
                 .build();
     }
@@ -338,7 +339,7 @@ public class TestData {
 
     public static ObjectDefinition dummyJobDef() {
 
-        // Job will be invalid because the model ID it points to does not exist!
+        // Job will be invalid because the model ID it points at does not exist!
         // Ok for e.g. DAL testing, but will fail metadata validation
 
         var targetSelector = TagSelector.newBuilder()
