@@ -18,6 +18,7 @@ package org.finos.tracdap.svc.meta.api;
 
 import org.finos.tracdap.api.*;
 import org.finos.tracdap.common.metadata.MetadataConstants;
+import org.finos.tracdap.common.metadata.TypeSystem;
 import org.finos.tracdap.metadata.*;
 import org.finos.tracdap.common.metadata.MetadataCodec;
 import org.finos.tracdap.test.helpers.PlatformTest;
@@ -26,7 +27,6 @@ import org.finos.tracdap.test.meta.TestData;
 import io.grpc.Status;
 import io.grpc.StatusRuntimeException;
 
-import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -711,7 +711,7 @@ abstract class MetadataWriteApiTest {
                 .setTable(v1Schema.getTable().toBuilder()
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("some_new_field")
-                        .setFieldType(BasicType.STRING)
+                        .setFieldType(TypeSystem.descriptor(BasicType.STRING))
                         .setFieldOrder(-1)));
 
         var v2Obj = v1SavedTag.getDefinition().toBuilder()
@@ -1465,7 +1465,7 @@ abstract class MetadataWriteApiTest {
                 .setTable(validSchema.getSchema().getTable().toBuilder()
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("# invalid_identifier")
-                        .setFieldType(BasicType.ARRAY)
+                        .setFieldType(TypeDescriptor.newBuilder().setBasicType(BasicType.ARRAY))
                         .setFieldOrder(-1)
                         .setLabel("This is a totally invalid field")))
                 .build();
@@ -1587,7 +1587,7 @@ abstract class MetadataWriteApiTest {
                 .setTagVersion(1))
                 .build();
 
-        // Try reading with explicit version / tag, latest tag and latest version
+        // Try reading with explicit version / tag
 
         // noinspection ResultOfMethodCallIgnored
         var error = assertThrows(StatusRuntimeException.class, () -> readApi.readObject(readRequest));
