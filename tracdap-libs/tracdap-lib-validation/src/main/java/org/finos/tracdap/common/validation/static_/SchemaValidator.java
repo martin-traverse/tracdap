@@ -37,9 +37,6 @@ public class SchemaValidator {
     private static final List<BasicType> ALLOWED_BUSINESS_KEY_TYPES = List.of(
             BasicType.STRING, BasicType.INTEGER, BasicType.DATE);
 
-    private static final List<BasicType> ALLOWED_CATEGORICAL_TYPES = List.of(
-            BasicType.STRING, BasicType.INTEGER);
-
     private static final Descriptors.Descriptor SCHEMA_DEFINITION;
     private static final Descriptors.FieldDescriptor SD_SCHEMA_TYPE;
     private static final Descriptors.OneofDescriptor SD_SCHEMA_TYPE_DEFINITION;
@@ -171,24 +168,27 @@ public class SchemaValidator {
 
         ctx = ctx.push(FS_FIELD_TYPE)
                 .apply(CommonValidators::required)
-                .apply(CommonValidators::recognizedEnum, BasicType.class)
-                .apply(CommonValidators::primitiveType, BasicType.class)
+                .apply(TypeSystemValidator::typeDescriptor, TypeDescriptor.class)
+                .apply(CommonValidators::primitiveType, TypeDescriptor.class)
                 .pop();
 
-        if (field.getBusinessKey() && !ALLOWED_BUSINESS_KEY_TYPES.contains(field.getFieldType())) {
+        if (field.getBusinessKey()) {
 
-            var err = String.format("Schema field [%s] cannot be a business key because it has type [%s]",
-                    ctx.fieldName(), field.getFieldType());
+            if (!ALLOWED_BUSINESS_KEY_TYPES.contains(field.getFieldType().getBasicType())) {
 
-            ctx = ctx.error(err);
-        }
+                var err = String.format("Schema field [%s] cannot be a business key because it has type [%s]",
+                        ctx.fieldName(), field.getFieldType());
 
-        if (field.getCategorical() && !ALLOWED_CATEGORICAL_TYPES.contains(field.getFieldType())) {
+                ctx = ctx.error(err);
+            }
 
-            var err = String.format("Schema field [%s] cannot be categorical because it has type [%s]",
-                    ctx.fieldName(), field.getFieldType());
+            if (!field.getFieldType().getNotNull()) {
 
-            ctx = ctx.error(err);
+                var err = String.format("Schema field [%s] is a business key, it must be marked as not null",
+                        ctx.fieldName());
+
+                ctx = ctx.error(err);
+            }
         }
 
         // No validation applied to label or format code

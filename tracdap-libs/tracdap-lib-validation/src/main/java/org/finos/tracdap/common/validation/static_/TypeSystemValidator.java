@@ -25,12 +25,16 @@ import org.finos.tracdap.metadata.*;
 import com.google.protobuf.Descriptors;
 
 import java.time.OffsetDateTime;
+import java.util.List;
 
 import static org.finos.tracdap.common.validation.core.ValidatorUtils.field;
 
 
 @Validator(type = ValidationType.STATIC)
 public class TypeSystemValidator {
+
+    private static final List<BasicType> ALLOWED_CATEGORICAL_TYPES = List.of(
+            BasicType.STRING, BasicType.INTEGER);
 
     private static final Descriptors.Descriptor TYPE_DESCRIPTOR;
     private static final Descriptors.FieldDescriptor TD_BASIC_TYPE;
@@ -111,6 +115,12 @@ public class TypeSystemValidator {
                 .apply(CommonValidators.ifAndOnlyIf(isMap, isMapQualifier))
                 .apply(TypeSystemValidator::typeDescriptor, TypeDescriptor.class)
                 .pop();
+
+        if (typeDescriptor.getCategorical() && !ALLOWED_CATEGORICAL_TYPES.contains(typeDescriptor.getBasicType())) {
+
+            var err = String.format("Type [%s] cannot be categorical", typeDescriptor.getBasicType());
+            ctx = ctx.error(err);
+        }
 
         return ctx;
     }

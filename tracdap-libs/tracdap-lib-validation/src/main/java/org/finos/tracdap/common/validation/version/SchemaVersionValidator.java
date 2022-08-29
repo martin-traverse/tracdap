@@ -107,13 +107,17 @@ public class SchemaVersionValidator {
         // This is a fairly strict field comparison, which insists on exact match
         // for field name case and field order. It may be possible to relax these
         // restrictions, if TRAC can provide an easy way to handle data when these
-        // things change.
+        // things change. Type descriptors are also required to match exactly,
+        // including the categorical and not-null flags
 
         // Field label and format code are allowed to change freely between schema versions.
 
         // Fields are matched by name before comparing
         if (!current.getFieldName().equalsIgnoreCase(prior.getFieldName()))
             throw new EUnexpected();
+
+        // Check the type descriptor matches exactly
+        ctx = existingFieldType(current.getFieldType(), prior.getFieldType(), ctx);
 
         if (!current.getFieldName().equals(prior.getFieldName())) {
 
@@ -129,13 +133,6 @@ public class SchemaVersionValidator {
                     prior.getFieldName(), prior.getFieldOrder(), current.getFieldOrder()));
         }
 
-        if (current.getFieldType() != prior.getFieldType()) {
-
-            ctx = ctx.error(String.format(
-                    "Field type changed for [%s]: prior = [%s], new = [%s]",
-                    prior.getFieldName(), prior.getFieldType(), current.getFieldType()));
-        }
-
         if (current.getBusinessKey() != prior.getBusinessKey()) {
 
             ctx = ctx.error(String.format(
@@ -143,11 +140,34 @@ public class SchemaVersionValidator {
                     prior.getFieldName(), prior.getBusinessKey(), current.getBusinessKey()));
         }
 
+        return ctx;
+    }
+
+    private static ValidationContext existingFieldType(TypeDescriptor current, TypeDescriptor prior, ValidationContext ctx) {
+
+        if (current.getBasicType() != prior.getBasicType()) {
+
+            ctx = ctx.error(String.format(
+                    "Field type changed for [%s]: prior = [%s], new = [%s]",
+                    ctx.fieldName(), prior.getBasicType(), current.getBasicType()));
+        }
+
+        // Non-primitive types are not currently supported
+        if (current.hasArrayType() || current.hasMapType() || prior.hasArrayType() || prior.hasMapType())
+            throw new EUnexpected();
+
         if (current.getCategorical() != prior.getCategorical()) {
 
             ctx = ctx.error(String.format(
                     "Categorical flag changed for [%s]: prior = [%s], new = [%s]",
-                    prior.getFieldName(), prior.getCategorical(), current.getCategorical()));
+                    ctx.fieldName(), prior.getCategorical(), current.getCategorical()));
+        }
+
+        if (current.getNotNull() != prior.getNotNull()) {
+
+            ctx = ctx.error(String.format(
+                    "Not-null flag changed for [%s]: prior = [%s], new = [%s]",
+                    ctx.fieldName(), prior.getNotNull(), current.getNotNull()));
         }
 
         return ctx;

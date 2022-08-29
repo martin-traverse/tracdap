@@ -81,13 +81,15 @@ public class ArrowSchema {
         for (var tracField : tracTableSchema.getFieldsList()) {
 
             var fieldName = tracField.getFieldName();
-            var nullable = !tracField.getBusinessKey();  // only business keys are not nullable
+            var nullable = !tracField.getFieldType().getNotNull();
 
-            var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType());
+            var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType().getBasicType());
 
             // Unexpected error - All TRAC primitive types are mapped
             if (arrowType == null)
                 throw new EUnexpected();
+
+            // Dictionary encoding could be set up for categorical variables
 
             var arrowFieldType = new FieldType(nullable, arrowType, /* dictionary = */ null);
             var arrowField = new Field(fieldName, arrowFieldType, /* children = */ null);
@@ -108,21 +110,28 @@ public class ArrowSchema {
             var fieldIndex = tracTableSchema.getFieldsCount();
 
             var arrowTypeId = arrowField.getType().getTypeID();
-            var tracType = ARROW_TRAC_TYPE_MAPPING.get(arrowTypeId);
+            var basicType = ARROW_TRAC_TYPE_MAPPING.get(arrowTypeId);
 
-            if (tracType == null) {
+            if (basicType == null) {
                 var arrowTypeName = arrowField.getType().getTypeID().name();
                 var error = String.format("TRAC type mapping not available for arrow type [%s]", arrowTypeName);
                 throw new EDataTypeNotSupported(error);
             }
+
+            var tracType = TypeDescriptor.newBuilder()
+                    .setBasicType(basicType)
+                    .setNotNull(!arrowField.isNullable());
 
             tracTableSchema.addFields(FieldSchema.newBuilder()
                     .setFieldName(fieldName)
                     .setFieldOrder(fieldIndex)
                     .setFieldType(tracType));
 
-            // Not attempting to set business key, categorical flag, format code or label
+            // Not attempting to set business key, format code or label
+
             // Categorical *could* be inferred for Arrow dictionary vectors
+            // .setCategorical(arrowField.getDictionary() != null)
+
             // Other flags could be set in Arrow metadata
             // But since arrow -> trac normally implies an external source,
             // Thought would be needed on how to interpret any metadata that is present
