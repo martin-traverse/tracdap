@@ -145,19 +145,19 @@ jobs:
           cd tracdap-runtime/python
           pip install -r requirements.txt
 
-      - name: Protoc code generation
+      - name: Runtime - code generation
         run: python tracdap-runtime/python/build_runtime.py --target codegen
 
-      - name: Unit tests
+      - name: Runtime - unit tests
         run: python tracdap-runtime/python/build_runtime.py --target test
 
-      - name: Python example models
+      - name: Runtime - example models
         run: python tracdap-runtime/python/build_runtime.py --target examples
 
-      - name: ShelL - Protoc code generation
+      - name: Shell - code generation
         run: python tracdap-shell/python/build_shell.py --target codegen
 
-      - name: Shell - Unit tests
+      - name: Shell - unit tests
         run: python tracdap-shell/python/build_shell.py --target test
 
 
