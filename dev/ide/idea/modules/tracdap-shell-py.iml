@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<module type="PYTHON_MODULE" version="4">
+  <component name="CheckStyle-IDEA-Module">
+    <option name="configuration">
+      <map />
+    </option>
+  </component>
+  <component name="NewModuleRootManager" inherit-compiler-output="true">
+    <exclude-output />
+    <content url="file://$MODULE_DIR$/../../tracdap-shell/python">
+      <sourceFolder url="file://$MODULE_DIR$/../../tracdap-shell/python/src" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/../../tracdap-shell/python/generated" isTestSource="false" />
+      <sourceFolder url="file://$MODULE_DIR$/../../tracdap-shell/python/test" isTestSource="true" />
+    </content>
+    <orderEntry type="sourceFolder" forTests="false" />
+    <orderEntry type="module" module-name="tracdap-runtime-py" />
+  </component>
+  <component name="PyNamespacePackagesService">
+    <option name="namespacePackageFolders">
+      <list>
+        <option value="$MODULE_DIR$/../../tracdap-shell/python/src/tracdap" />
+      </list>
+    </option>
+  </component>
+</module>
