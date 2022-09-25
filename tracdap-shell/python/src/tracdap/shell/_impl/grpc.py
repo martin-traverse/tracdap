@@ -55,16 +55,15 @@ def generate_service_class(service_api: type):
             continue
 
         signature = _inspect.signature(method_stub)
-        annotations = _inspect.get_annotations(method_stub)
 
         if len(signature.parameters) != 2:
             continue
 
-        params = iter(signature.parameters)
+        params = iter(signature.parameters.items())
         next(params)  # skip self
 
-        request_param = next(params)
-        request_type = annotations.get(request_param)
+        param_name, param = next(params)
+        request_type = param.annotation
         response_type = signature.return_annotation
 
         method_impl = generate_service_api_call(request_type, response_type)
