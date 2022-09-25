@@ -40,6 +40,11 @@ PROTO_PATHS = [
     "tracdap-api/tracdap-config/src/main/proto"
 ]
 
+TEST_SRC_PATHS = [
+    str(SCRIPT_DIR.joinpath("generated")),
+    str(SCRIPT_DIR.joinpath("src")),
+    str(SCRIPT_DIR.joinpath("test"))]
+
 
 sys.path.append(str(ROOT_PATH.joinpath("dev")))
 import python_build_utils as build_utils  # noqa
@@ -65,10 +70,12 @@ def main():
         build_utils.generate_from_proto(ROOT_PATH, PROTO_PATHS, SCRIPT_DIR, "tracdap/rt_gen")
 
     if "test" in args.target:
-        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, "test/tracdap_test")
+
+        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, TEST_SRC_PATHS, "test/tracdap_test",)
 
     if "examples" in args.target:
-        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, "test/tracdap_examples")
+
+        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, TEST_SRC_PATHS, "test/tracdap_examples")
 
     if "dist" in args.target:
 

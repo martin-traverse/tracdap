@@ -169,7 +169,7 @@ def set_trac_version(root_dir: pathlib.Path, build_dir: pathlib.Path, version_fi
             print(line, end="")
 
 
-def run_tests(root_dir: pathlib.Path, project_dir: pathlib.Path, test_path):
+def run_tests(root_dir: pathlib.Path, project_dir: pathlib.Path, src_paths, test_path):
 
     cwd = os.getcwd()
     python_path = [*sys.path]
@@ -177,9 +177,9 @@ def run_tests(root_dir: pathlib.Path, project_dir: pathlib.Path, test_path):
     try:
 
         os.chdir(root_dir)
-        sys.path.append(str(project_dir.joinpath("generated")))
-        sys.path.append(str(project_dir.joinpath("src")))
-        sys.path.append(str(project_dir.joinpath("test")))
+
+        for src_path in src_paths:
+            sys.path.append(src_path)
 
         runner = unittest.TextTestRunner()
         loader = unittest.TestLoader()

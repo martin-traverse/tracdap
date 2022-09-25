@@ -25,6 +25,9 @@ ROOT_PATH = SCRIPT_DIR \
     .parent.parent \
     .resolve()
 
+RUNTIME_DIR = ROOT_PATH \
+    .joinpath("tracdap-runtime/python")
+
 BUILD_PATH = SCRIPT_DIR \
     .joinpath("build")
 
@@ -39,6 +42,13 @@ PROTO_PATHS = [
     "tracdap-api/tracdap-metadata/src/main/proto",
     "tracdap-api/tracdap-services/src/main/proto"
 ]
+
+TEST_SRC_PATHS = [
+    str(SCRIPT_DIR.joinpath("generated")),
+    str(SCRIPT_DIR.joinpath("src")),
+    str(SCRIPT_DIR.joinpath("test")),
+    str(RUNTIME_DIR.joinpath("generated")),
+    str(RUNTIME_DIR.joinpath("src"))]
 
 
 sys.path.append(str(ROOT_PATH.joinpath("dev")))
@@ -65,7 +75,8 @@ def main():
         build_utils.generate_from_proto(ROOT_PATH, PROTO_PATHS, SCRIPT_DIR, "tracdap/sh_gen")
 
     if "test" in args.target:
-        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, "test/tracdap_test")
+
+        build_utils.run_tests(ROOT_PATH, SCRIPT_DIR, TEST_SRC_PATHS, "test/tracdap_test")
 
     if "dist" in args.target:
 
