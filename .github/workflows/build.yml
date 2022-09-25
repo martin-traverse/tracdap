@@ -154,6 +154,13 @@ jobs:
       - name: Python example models
         run: python tracdap-runtime/python/build_runtime.py --target examples
 
+      - name: ShelL - Protoc code generation
+        run: python tracdap-shell/python/build_shell.py --target codegen
+
+      - name: Shell - Unit tests
+        run: python tracdap-shell/python/build_shell.py --target test
+
+
 
   web_api:
 
