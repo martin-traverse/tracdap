@@ -25,6 +25,7 @@ import "tracdap/metadata/object_id.proto";
 import "tracdap/metadata/data.proto";
 import "tracdap/metadata/file.proto";
 import "tracdap/metadata/tag_update.proto";
+import "tracdap/metadata/tag.proto";
 
 import "google/api/annotations.proto";
 
