@@ -22,8 +22,6 @@ option java_multiple_files = true;
 
 import "tracdap/metadata/type.proto";
 import "tracdap/metadata/object_id.proto";
-import "tracdap/metadata/object.proto";
-import "tracdap/metadata/tag.proto";
 import "tracdap/metadata/tag_update.proto";
 import "tracdap/metadata/job.proto";
 
