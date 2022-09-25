@@ -35,6 +35,8 @@
 /tracdap-runtime/python/dist/**
 /tracdap-runtime/python/*.egg-info
 
+/tracdap-shell/python/generated/**
+
 /examples/models/python/data/outputs/**
 /examples/apps/javascript/node_modules/**
 
