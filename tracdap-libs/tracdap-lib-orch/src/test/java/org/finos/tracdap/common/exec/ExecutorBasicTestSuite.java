@@ -19,6 +19,7 @@ package org.finos.tracdap.common.exec;
 import org.finos.tracdap.common.util.ResourceHelpers;
 
 import com.google.protobuf.Message;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
@@ -32,6 +33,13 @@ public abstract class ExecutorBasicTestSuite {
     public static final String LOREM_IPSUM_TEST_RESOURCE = "/lorem_ipsum.txt";
 
     protected IBatchExecutor<?> executor;
+
+    @AfterEach
+    void tearDown() {
+
+        if (executor != null)
+            executor.stop();
+    }
 
     @SuppressWarnings("unchecked")
     private <T extends Message> IBatchExecutor<T> stronglyTypedExecutor() {

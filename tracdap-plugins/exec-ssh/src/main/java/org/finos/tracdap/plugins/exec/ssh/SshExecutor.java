@@ -16,6 +16,8 @@
 
 package org.finos.tracdap.plugins.exec.ssh;
 
+import org.apache.sshd.client.channel.ClientChannelEvent;
+import org.apache.sshd.common.channel.PtyChannelConfiguration;
 import org.finos.tracdap.common.config.ConfigManager;
 import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.exec.*;
