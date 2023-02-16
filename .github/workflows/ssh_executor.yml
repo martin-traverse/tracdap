@@ -1,0 +1,78 @@
+name: Executor CI
+
+# Run the main build and test for all branch pushes and pull requests, do not repeat the build for tags
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+
+
+env:
+  JAVA_VERSION: 17
+  JAVA_DISTRIBUTION: zulu
+  PYTHON_VERSION: 3.11
+
+
+jobs:
+
+  int-executor:
+
+    runs-on: ubuntu-latest
+
+    container:
+      image: ubuntu:latest
+
+    strategy:
+
+      # Try to finish all jobs - it can be helpful to see if some succeed and others fail
+      fail-fast: false
+
+      matrix:
+
+        executor:
+
+          - { PROTOCOL: SSH,
+              BUILD_exec_ssh: true,
+              TRAC_CONFIG_FILE: '.github/config/int-storage-s3.yaml',
+              TRAC_SECRET_KEY: storage_s3_secrets,
+              SSH_HOST: localhost,
+              SSH_PORT: 22,
+              SSH_USER_NAME: ubuntu,
+              SSH_USER_PASSWORD: ubuntu,
+              SSH_USER_KEYFILE: ./ci_key }
+
+    env: ${{ matrix.executor }}
+
+    steps:
+
+      # fetch-depth = 0 is needed to get tags for version info
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+#      - name: Set up Java
+#        uses: actions/setup-java@v3
+#        with:
+#          distribution: ${{ env.JAVA_DISTRIBUTION }}
+#          java-version: ${{ env.JAVA_VERSION }}
+#          cache: gradle
+#
+#      - name: Build
+#        run: ./gradlew testClasses
+
+      - name: Prepare executor
+        run: .github/scripts/int-exec-ssh.setup.sh
+
+#      - name: Integration tests
+#        run: ./gradlew integration -DintegrationTags="int-exec"
+
+      # If the tests fail, make the output available for download
+      - name: Store failed test results
+        uses: actions/upload-artifact@v3
+        if: failure()
+        with:
+          name: junit-test-results
+          path: build/modules/*/reports/**
+          retention-days: 7
