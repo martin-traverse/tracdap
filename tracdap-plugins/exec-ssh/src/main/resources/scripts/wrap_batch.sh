@@ -15,21 +15,14 @@
 # limitations under the License.
 
 batch_admin_dir="${TRAC_BATCH_ADMIN_DIR}"
+log_out="${TRAC_BATCH_STDOUT}"
+log_err="${TRAC_BATCH_STDERR}"
 
-pid=`cat "${batch_admin_dir}/pid"`
-echo "pid: ${pid}"
+$@ >"${log_out}" 2>"${log_err}" </dev/null &
 
-ps -p $pid >/dev/null 2>&1
-running=$?
-echo "running: ${running}"
+pid=$!
+echo $pid > "${batch_admin_dir}/pid"
 
-if [ ${running} -ne 0 ]; then
-  if [ -e "${batch_admin_dir}/exit_code" ]; then
-    exit_code=`cat "${batch_admin_dir}/exit_code"`
-  else
-    exit_code=1
-  fi
-  echo "exit_code: ${exit_code}"
-fi
-
-echo "trac_poll_ok: ok"
+wait $pid
+exit_code=$?
+echo $exit_code > "${batch_admin_dir}/exit_code"

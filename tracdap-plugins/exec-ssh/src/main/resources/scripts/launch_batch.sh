@@ -15,10 +15,5 @@
 # limitations under the License.
 
 batch_admin_dir="${TRAC_BATCH_ADMIN_DIR}"
-log_out="${TRAC_BATCH_STDOUT}"
-log_err="${TRAC_BATCH_STDERR}"
 
-$@ >"${log_out}" 2>"${log_err}" </dev/null &
-
-pid=$!
-echo $pid > "${batch_admin_dir}/pid"
+"${batch_admin_dir}/wrap_batch.sh" $@ &

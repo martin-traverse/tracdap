@@ -67,8 +67,10 @@ public class SshExecutor implements IBatchExecutor<SshBatchState> {
     public static final String CONFIG_BATCH_PERSIST = "batchPersist";
 
     private static final String LAUNCH_SCRIPT_NAME = "launch_batch.sh";
+    private static final String WRAP_SCRIPT_NAME = "wrap_batch.sh";
     private static final String POLL_SCRIPT_NAME = "poll_batch.sh";
     private static final String LAUNCH_SCRIPT = ResourceHelpers.loadResourceAsString("/scripts/launch_batch.sh", SshExecutor.class);
+    private static final String WRAP_SCRIPT = ResourceHelpers.loadResourceAsString("/scripts/wrap_batch.sh", SshExecutor.class);
     private static final String POLL_SCRIPT = ResourceHelpers.loadResourceAsString("/scripts/poll_batch.sh", SshExecutor.class);
     // private static final String POLL_EXECUTOR_COMMAND = "ps -a | grep launch_batch.sh | grep -v \"grep launch_batch.sh\"";
 
@@ -392,10 +394,12 @@ public class SshExecutor implements IBatchExecutor<SshBatchState> {
             var batchAdminDir = buildVolumePath(batchState, "trac_admin");
             var stdOutLog = buildRemotePath(batchState, "log", "trac_rt_stdout.txt");
             var stdErrLog = buildRemotePath(batchState, "log", "trac_rt_stderr.txt");
-            var resultFileName = String.format("job_result_%s.json", batchKey);
-            var resultFilePath = buildRemotePath(batchState, "result", resultFileName);
 
             var launchScriptContent = LAUNCH_SCRIPT
+                    .replace("${TRAC_BATCH_ADMIN_DIR}", batchAdminDir)
+                    .getBytes(StandardCharsets.UTF_8);
+
+            var wrapScriptContent = WRAP_SCRIPT
                     .replace("${TRAC_BATCH_ADMIN_DIR}", batchAdminDir)
                     .replace("${TRAC_BATCH_STDOUT}", stdOutLog)
                     .replace("${TRAC_BATCH_STDERR}", stdErrLog)
@@ -403,11 +407,11 @@ public class SshExecutor implements IBatchExecutor<SshBatchState> {
 
             var pollScriptContent = POLL_SCRIPT
                     .replace("${TRAC_BATCH_ADMIN_DIR}", batchAdminDir)
-                    .replace("${TRAC_RESULT_FILE}", resultFilePath)
                     .getBytes(StandardCharsets.UTF_8);
 
             batchState = createVolume(batchKey, batchState, "trac_admin", ExecutorVolumeType.SCRATCH_DIR);
             writeFile(batchKey, batchState, "trac_admin", LAUNCH_SCRIPT_NAME, launchScriptContent, executePermissions);
+            writeFile(batchKey, batchState, "trac_admin", WRAP_SCRIPT_NAME, wrapScriptContent, executePermissions);
             writeFile(batchKey, batchState, "trac_admin", POLL_SCRIPT_NAME, pollScriptContent, executePermissions);
 
             var launchScript = buildRemotePath(batchState, "trac_admin", LAUNCH_SCRIPT_NAME);
