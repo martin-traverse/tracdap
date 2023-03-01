@@ -19,9 +19,6 @@ package org.finos.tracdap.common.auth.external;
 import io.netty.handler.codec.http.cookie.*;
 import org.finos.tracdap.common.auth.internal.AuthConstants;
 import org.finos.tracdap.common.auth.internal.SessionInfo;
-import org.finos.tracdap.common.auth.internal.UserInfo;
-import org.finos.tracdap.common.config.ConfigDefaults;
-import org.finos.tracdap.config.AuthenticationConfig;
 
 import io.netty.handler.codec.http.HttpHeaderNames;
 
@@ -127,53 +124,6 @@ public class AuthLogic {
             cookies.addAll(ServerCookieDecoder.LAX.decodeAll(header.toString()));
 
         return cookies;
-    }
-
-    public static SessionInfo newSession(UserInfo userInfo, AuthenticationConfig authConfig) {
-
-        var configExpiry = ConfigDefaults.readOrDefault(authConfig.getJwtExpiry(), ConfigDefaults.DEFAULT_JWT_EXPIRY);
-        var configLimit = ConfigDefaults.readOrDefault(authConfig.getJwtLimit(), ConfigDefaults.DEFAULT_JWT_LIMIT);
-
-        var issue = Instant.now();
-        var expiry = issue.plusSeconds(configExpiry);
-        var limit = issue.plusSeconds(configLimit);
-
-        var session = new SessionInfo();
-        session.setUserInfo(userInfo);
-        session.setIssueTime(issue);
-        session.setExpiryTime(expiry);
-        session.setExpiryLimit(limit);
-        session.setValid(true);
-
-        return session;
-    }
-
-    public static SessionInfo refreshSession(SessionInfo session, AuthenticationConfig authConfig) {
-
-        var latestIssue = session.getIssueTime();
-        var originalLimit = session.getExpiryLimit();
-
-        var configRefresh = ConfigDefaults.readOrDefault(authConfig.getJwtRefresh(), ConfigDefaults.DEFAULT_JWT_REFRESH);
-        var configExpiry = ConfigDefaults.readOrDefault(authConfig.getJwtExpiry(), ConfigDefaults.DEFAULT_JWT_EXPIRY);
-
-        // If the refresh time hasn't elapsed yet, return the original session without modification
-        if (latestIssue.plusSeconds(configRefresh).isAfter(Instant.now()))
-            return session;
-
-        var newIssue = Instant.now();
-        var newExpiry = newIssue.plusSeconds(configExpiry);
-        var limitedExpiry = newExpiry.isBefore(originalLimit) ? newExpiry : originalLimit;
-
-        var newSession = new SessionInfo();
-        newSession.setUserInfo(session.getUserInfo());
-        newSession.setIssueTime(newIssue);
-        newSession.setExpiryTime(limitedExpiry);
-        newSession.setExpiryLimit(originalLimit);
-
-        // Session remains valid until time ticks past the original limit time, i.e. issue < limit
-        newSession.setValid(newIssue.isBefore(originalLimit));
-
-        return newSession;
     }
 
     public static <THeaders extends IAuthHeaders>
