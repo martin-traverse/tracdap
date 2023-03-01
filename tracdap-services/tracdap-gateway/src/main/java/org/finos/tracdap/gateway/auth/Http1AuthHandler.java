@@ -23,7 +23,6 @@ import org.finos.tracdap.common.auth.external.*;
 import org.finos.tracdap.common.auth.internal.JwtProcessor;
 import org.finos.tracdap.common.auth.internal.SessionInfo;
 import org.finos.tracdap.common.exception.EUnexpected;
-import org.finos.tracdap.config.AuthenticationConfig;
 
 import io.netty.channel.ChannelDuplexHandler;
 import io.netty.channel.ChannelHandlerContext;
@@ -43,8 +42,6 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final AuthenticationConfig authConfig;
-
     private final int connId;
 
     private final JwtProcessor jwtProcessor;
@@ -59,13 +56,11 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
     private CompositeByteBuf pendingContent;
 
     public Http1AuthHandler(
-            AuthenticationConfig authConfig, int connId,
+            int connId,
             JwtProcessor jwtProcessor,
             IAuthProvider authProvider) {
 
-        this.authConfig = authConfig;
         this.connId = connId;
-
         this.jwtProcessor = jwtProcessor;
         this.authProvider = authProvider;
     }
@@ -203,7 +198,7 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         if (session != null && session.isValid()) {
 
             // Check to see if the token needs refreshing
-            var sessionUpdate = AuthLogic.refreshSession(session, authConfig);
+            var sessionUpdate = jwtProcessor.refreshSession(session);
 
             if (sessionUpdate != session) {
                 token = jwtProcessor.encodeToken(sessionUpdate);
@@ -228,7 +223,7 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         // If primary auth succeeded, set up the session token
         if (authResult.getCode() == AuthResultCode.AUTHORIZED) {
 
-            session = AuthLogic.newSession(authResult.getUserInfo(), authConfig);
+            session = jwtProcessor.newSession(authResult.getUserInfo());
             token = jwtProcessor.encodeToken(session);
         }
 

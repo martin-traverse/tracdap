@@ -61,7 +61,6 @@ public class ProtocolNegotiator extends ChannelInitializer<SocketChannel> {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final GatewayConfig config;
     private final int idleTimeout;
     private final IAuthProvider authProvider;
     private final JwtProcessor jwtProcessor;
@@ -76,8 +75,6 @@ public class ProtocolNegotiator extends ChannelInitializer<SocketChannel> {
             GatewayConfig config, IAuthProvider authProvider, JwtProcessor jwtProcessor,
             ProtocolSetup<?> http1Handler, ProtocolSetup<?> http2Handler,
             ProtocolSetup<WebSocketServerProtocolConfig> webSocketsHandler) {
-
-        this.config = config;
 
         this.idleTimeout = config.getIdleTimeout() > 0
                 ? config.getIdleTimeout()
@@ -275,9 +272,7 @@ public class ProtocolNegotiator extends ChannelInitializer<SocketChannel> {
             // E.g. this can redirect the user to federated auth services
             // Different approaches are needed for system-to-system auth
 
-            var authHandler = new Http1AuthHandler(
-                    config.getAuthentication(), conn,
-                    jwtProcessor, authProvider);
+            var authHandler = new Http1AuthHandler(conn, jwtProcessor, authProvider);
 
             pipeline.addAfter(CLIENT_TIMEOUT, HTTP_1_AUTH, authHandler);
 
@@ -364,9 +359,7 @@ public class ProtocolNegotiator extends ChannelInitializer<SocketChannel> {
             var idleHandler = new IdleStateHandler(MAX_TIMEOUT, MAX_TIMEOUT, idleTimeout, TimeUnit.SECONDS);
             pipeline.addAfter(HTTP_1_CODEC, CLIENT_TIMEOUT, idleHandler);
 
-            var authHandler = new Http1AuthHandler(
-                    config.getAuthentication(), conn,
-                    jwtProcessor, authProvider);
+            var authHandler = new Http1AuthHandler(conn, jwtProcessor, authProvider);
 
             pipeline.addAfter(CLIENT_TIMEOUT, HTTP_1_AUTH, authHandler);
 
