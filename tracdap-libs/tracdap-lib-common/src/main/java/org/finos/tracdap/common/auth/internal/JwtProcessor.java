@@ -21,6 +21,7 @@ import com.auth0.jwt.JWT;
 import com.auth0.jwt.algorithms.Algorithm;
 import org.finos.tracdap.config.AuthenticationConfig;
 
+import java.time.Instant;
 import java.util.Map;
 
 
@@ -32,6 +33,47 @@ public class JwtProcessor extends JwtValidator {
         super(authConfig, algorithm);
     }
 
+    public SessionInfo newSession(UserInfo userInfo) {
+
+        var sessionIssue = Instant.now();
+        var sessionExpiry = sessionIssue.plusSeconds(jwtExpiry);
+        var sessionLimit = sessionIssue.plusSeconds(jwtLimit);
+
+        var session = new SessionInfo();
+        session.setUserInfo(userInfo);
+        session.setIssueTime(sessionIssue);
+        session.setExpiryTime(sessionExpiry);
+        session.setExpiryLimit(sessionLimit);
+        session.setValid(true);
+
+        return session;
+    }
+
+    public SessionInfo refreshSession(SessionInfo session) {
+
+        var latestIssue = session.getIssueTime();
+        var originalLimit = session.getExpiryLimit();
+
+        // If the refresh time hasn't elapsed yet, return the original session without modification
+        if (latestIssue.plusSeconds(jwtRefresh).isAfter(Instant.now()))
+            return session;
+
+        var newIssue = Instant.now();
+        var newExpiry = newIssue.plusSeconds(jwtExpiry);
+        var limitedExpiry = newExpiry.isBefore(originalLimit) ? newExpiry : originalLimit;
+
+        var newSession = new SessionInfo();
+        newSession.setUserInfo(session.getUserInfo());
+        newSession.setIssueTime(newIssue);
+        newSession.setExpiryTime(limitedExpiry);
+        newSession.setExpiryLimit(originalLimit);
+
+        // Session remains valid until time ticks past the original limit time, i.e. issue < limit
+        newSession.setValid(newIssue.isBefore(originalLimit));
+
+        return newSession;
+    }
+
     public String encodeToken(SessionInfo session) {
 
         var header = Map.of(
@@ -41,7 +83,7 @@ public class JwtProcessor extends JwtValidator {
         var jwt = JWT.create()
                 .withHeader(header)
                 .withSubject(session.getUserInfo().getUserId())
-                .withIssuer(issuer)
+                .withIssuer(jwtIssuer)
                 .withIssuedAt(session.getIssueTime())
                 .withExpiresAt(session.getExpiryTime())
                 .withClaim(JWT_LIMIT_CLAIM, session.getExpiryLimit())

@@ -37,8 +37,10 @@ public class JwtValidator {
     protected static final String JWT_DELEGATE_NAME_CLAIM = "delegateName";
 
     protected final Algorithm algorithm;
-    protected final String issuer;
-    protected final int expiry;
+    protected final String jwtIssuer;
+    protected final int jwtExpiry;
+    protected final int jwtRefresh;
+    protected final int jwtLimit;
 
     private final JWTVerifier verifier;
 
@@ -48,12 +50,14 @@ public class JwtValidator {
 
         this.algorithm = algorithm;
 
-        this.issuer = authConfig.getJwtIssuer();
-        this.expiry = ConfigDefaults.readOrDefault(authConfig.getJwtExpiry(), ConfigDefaults.DEFAULT_JWT_EXPIRY);
+        this.jwtIssuer = authConfig.getJwtIssuer();
+        this.jwtExpiry = ConfigDefaults.readOrDefault(authConfig.getJwtExpiry(), ConfigDefaults.DEFAULT_JWT_EXPIRY);
+        this.jwtRefresh = ConfigDefaults.readOrDefault(authConfig.getJwtRefresh(), ConfigDefaults.DEFAULT_JWT_REFRESH);
+        this.jwtLimit = ConfigDefaults.readOrDefault(authConfig.getJwtLimit(), ConfigDefaults.DEFAULT_JWT_LIMIT);
 
         this.verifier = JWT
                 .require(algorithm)
-                .withIssuer(issuer)
+                .withIssuer(jwtIssuer)
                 .build();
     }
 
