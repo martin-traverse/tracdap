@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Accenture Global Solutions Limited
+ * Copyright 2023 Accenture Global Solutions Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.auth.external;
+package org.finos.tracdap.gateway.auth;
 
 import io.netty.handler.codec.http.cookie.*;
+import org.finos.tracdap.common.auth.external.IAuthHeaders;
 import org.finos.tracdap.common.auth.internal.AuthConstants;
 import org.finos.tracdap.common.auth.internal.SessionInfo;
 

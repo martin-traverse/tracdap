@@ -17,7 +17,7 @@
 package org.finos.tracdap.gateway.proxy.rest;
 
 import org.finos.tracdap.common.auth.internal.ClientAuthProvider;
-import org.finos.tracdap.common.auth.external.AuthLogic;
+import org.finos.tracdap.gateway.auth.AuthLogic;
 import org.finos.tracdap.common.auth.external.Http2AuthHeaders;
 import org.finos.tracdap.common.exception.EInputValidation;
 import org.finos.tracdap.common.exception.EUnexpected;
