@@ -16,7 +16,7 @@
 
 package org.finos.tracdap.gateway;
 
-import org.finos.tracdap.common.auth.external.Http1AuthHandler;
+import org.finos.tracdap.gateway.auth.Http1AuthHandler;
 import org.finos.tracdap.common.auth.external.IAuthProvider;
 import org.finos.tracdap.common.auth.internal.JwtProcessor;
 import org.finos.tracdap.config.GatewayConfig;
