@@ -22,11 +22,8 @@ import org.finos.tracdap.api.TracMetadataApiGrpc;
 import org.finos.tracdap.api.TracOrchestratorApiGrpc;
 import org.finos.tracdap.api.TrustedMetadataApiGrpc;
 import org.finos.tracdap.common.auth.internal.ClientAuthProvider;
-import org.finos.tracdap.common.auth.external.AuthLogic;
-import org.finos.tracdap.common.auth.internal.JwtProcessor;
 import org.finos.tracdap.common.auth.internal.JwtSetup;
 import org.finos.tracdap.common.auth.internal.UserInfo;
-import org.finos.tracdap.common.config.ConfigKeys;
 import org.finos.tracdap.common.config.ConfigManager;
 import org.finos.tracdap.common.plugin.PluginManager;
 import org.finos.tracdap.common.startup.StandardArgs;
@@ -53,7 +50,6 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.security.KeyPair;
 import java.util.*;
 import java.util.concurrent.TimeUnit;
 
@@ -338,15 +334,13 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         configMgr.prepareSecrets();
 
         var platformConfig = configMgr.loadRootConfigObject(PlatformConfig.class);
-        var authConfig = platformConfig.getAuthentication();
-
         var jwt = JwtSetup.createProcessor(platformConfig, configMgr);
 
         var userInfo = new UserInfo();
         userInfo.setUserId("platform_testing");
         userInfo.setDisplayName("Platform testing user");
 
-        var session = AuthLogic.newSession(userInfo, authConfig);
+        var session = jwt.newSession(userInfo);
 
         authToken = jwt.encodeToken(session);
     }

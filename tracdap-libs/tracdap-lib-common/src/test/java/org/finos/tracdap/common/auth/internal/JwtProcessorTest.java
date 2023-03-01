@@ -16,7 +16,6 @@
 
 package org.finos.tracdap.common.auth.internal;
 
-import org.finos.tracdap.common.auth.external.AuthLogic;
 import org.finos.tracdap.common.exception.EStartup;
 import org.finos.tracdap.config.AuthenticationConfig;
 
@@ -80,7 +79,7 @@ public class JwtProcessorTest {
         userInfo.setUserId("fb2876");
         userInfo.setDisplayName("Fred Blogs Jnr.");
 
-        var session = AuthLogic.newSession(userInfo, authConfig);
+        var session = jwt.newSession(userInfo);
         var token = jwt.encodeToken(session);
         var rtSession = jwt.decodeAndValidate(token);
         var rtUserInfo = rtSession.getUserInfo();
@@ -136,7 +135,7 @@ public class JwtProcessorTest {
         userInfo.setUserId("fb2876");
         userInfo.setDisplayName("Fred Blogs Jnr.");
 
-        var session = AuthLogic.newSession(userInfo, authConfig);
+        var session = jwt.newSession(userInfo);
         var token = jwt.encodeToken(session);
         var altToken = altJwt.encodeToken(session);
 
@@ -163,7 +162,7 @@ public class JwtProcessorTest {
         userInfo.setUserId("fb2876");
         userInfo.setDisplayName("Fred Blogs Jnr.");
 
-        var session = AuthLogic.newSession(userInfo, authConfig);
+        var session = jwt.newSession(userInfo);
         var token = jwt.encodeToken(session);
         var altToken = altJwt.encodeToken(session);
 
@@ -190,7 +189,7 @@ public class JwtProcessorTest {
         userInfo.setUserId("fb2876");
         userInfo.setDisplayName("Fred Blogs Jnr.");
 
-        var session = AuthLogic.newSession(userInfo, altAuthConfig);
+        var session = altJwt.newSession(userInfo);
         var token = altJwt.encodeToken(session);
 
         Thread.sleep(2000);
@@ -217,7 +216,7 @@ public class JwtProcessorTest {
         userInfo.setUserId("fb2876");
         userInfo.setDisplayName("Fred Blogs Jnr.");
 
-        var session = AuthLogic.newSession(userInfo, authConfig);
+        var session = jwt.newSession(userInfo);
         var token = altJwt.encodeToken(session);
         var rtSession = altJwt.decodeAndValidate(token);
         var rtUserInfo = rtSession.getUserInfo();
