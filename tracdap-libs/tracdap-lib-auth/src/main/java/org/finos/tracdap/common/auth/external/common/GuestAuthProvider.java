@@ -16,6 +16,8 @@
 
 package org.finos.tracdap.common.auth.external.common;
 
+import org.finos.tracdap.api.WebAuthRequest;
+import org.finos.tracdap.api.WebAuthResponse;
 import org.finos.tracdap.common.auth.external.*;
 import org.finos.tracdap.common.auth.internal.UserInfo;
 import org.finos.tracdap.common.exception.EStartup;
@@ -25,6 +27,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.Properties;
+import java.util.concurrent.CompletionStage;
 
 
 public class GuestAuthProvider implements IAuthProvider {
@@ -49,6 +52,12 @@ public class GuestAuthProvider implements IAuthProvider {
 
         guestId = properties.getProperty(USER_ID_CONFIG_KEY);
         guestName = properties.getProperty(USER_NAME_CONFIG_KEY);
+    }
+
+
+    @Override
+    public CompletionStage<WebAuthResponse> webLogin(WebAuthRequest request) {
+        return null;
     }
 
     @Override

@@ -16,10 +16,16 @@
 
 package org.finos.tracdap.common.auth.external;
 
-
+import org.finos.tracdap.api.WebAuthRequest;
+import org.finos.tracdap.api.WebAuthResponse;
 import org.finos.tracdap.common.auth.internal.UserInfo;
 
+import java.util.concurrent.CompletionStage;
+
+
 public interface IAuthProvider {
+
+    CompletionStage<WebAuthResponse> webLogin(WebAuthRequest request);
 
     AuthResult attemptAuth(AuthRequest authRequest);
 

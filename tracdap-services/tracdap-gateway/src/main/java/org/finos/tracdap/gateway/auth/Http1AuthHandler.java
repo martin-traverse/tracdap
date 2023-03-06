@@ -16,9 +16,11 @@
 
 package org.finos.tracdap.gateway.auth;
 
-import io.netty.buffer.ByteBufAllocator;
+import com.google.protobuf.ByteString;
 import io.netty.buffer.CompositeByteBuf;
 import io.netty.buffer.Unpooled;
+import org.finos.tracdap.api.WebAuthRequest;
+import org.finos.tracdap.api.WebAuthResponse;
 import org.finos.tracdap.common.auth.external.*;
 import org.finos.tracdap.common.auth.internal.JwtProcessor;
 import org.finos.tracdap.common.auth.internal.SessionInfo;
@@ -30,10 +32,13 @@ import io.netty.channel.ChannelPromise;
 import io.netty.handler.codec.http.*;
 import io.netty.util.ReferenceCountUtil;
 
+import org.finos.tracdap.gateway.config.helpers.ApiRoutes;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayDeque;
+import java.util.Deque;
 
 
 public class Http1AuthHandler extends ChannelDuplexHandler {
@@ -42,55 +47,68 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final int connId;
-
     private final JwtProcessor jwtProcessor;
     private final IAuthProvider authProvider;
+    private final int connId;
 
-    private AuthResult authResult = AuthResult.FAILED();
-    private SessionInfo session;
-    private String token;
-    private boolean wantCookies;
+    private final Deque<RequestState> requests;
 
-    private HttpRequest pendingRequest;
-    private CompositeByteBuf pendingContent;
+    private static class RequestState {
+
+        AuthResult authResult = AuthResult.FAILED();
+        SessionInfo session;
+        String token;
+        boolean wantCookies;
+        boolean authSucceeded;
+        boolean authUpdated;
+
+        HttpRequest pendingRequest;
+        CompositeByteBuf pendingContent;
+        Deque<Object> pendingResponse;
+    }
 
     public Http1AuthHandler(
-            int connId,
             JwtProcessor jwtProcessor,
-            IAuthProvider authProvider) {
+            IAuthProvider authProvider,
+            int connId) {
 
-        this.connId = connId;
         this.jwtProcessor = jwtProcessor;
         this.authProvider = authProvider;
+        this.connId = connId;
+
+        this.requests = new ArrayDeque<>();
     }
 
     @Override
     public void channelRead(@Nonnull ChannelHandlerContext ctx, @Nonnull Object msg) {
 
+        Object authMsg = null;
+
         try {
+
+            var state = msg instanceof HttpRequest ? newState() : requests.getLast();
 
             // Some auth mechanisms require content as well as headers
             // These mechanisms set the result NEED_CONTENT, to trigger aggregation
             // Aggregated messages are fed through the normal flow once they are ready
 
-            msg = handleAggregateContent(msg);
+            authMsg = handleAggregateContent(state, msg);
 
-            if (msg == null)
+            if (authMsg == null)
                 return;
 
             // HTTP/1 auth works purely on the request object
             // Each new request will re-run the auth processing
 
-            if ((msg instanceof HttpRequest)) {
-                var request = (HttpRequest) msg;
-                processAuthentication(ctx, request);
+            if ((authMsg instanceof HttpRequest)) {
+                var request = (HttpRequest) authMsg;
+                processAuthentication(ctx, request, state);
             }
 
             // If authorization failed a response has already been sent
             // Do not pass any further messages down the pipe
 
-            if (authResult.getCode() != AuthResultCode.AUTHORIZED)
+            if (state.authResult.getCode() != AuthResultCode.AUTHORIZED)
                 return;
 
             // Authentication succeeded, allow messages to flow on the connection
@@ -98,10 +116,7 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
             // Special handling for request objects, apply translation to the headers
             if (msg instanceof HttpRequest) {
                 var request = (HttpRequest) msg;
-                if (authProvider.postAuthMatch(request.method().name(), request.uri()))
-                    processPostAuthMatch(ctx, request);
-                else
-                    processRequest(ctx, request);
+                relayRequest(ctx, request);
             }
 
             // Everything else flows straight through
@@ -112,6 +127,8 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         }
         finally {
             ReferenceCountUtil.release(msg);
+            if (authMsg != msg)
+                ReferenceCountUtil.release(authMsg);
         }
     }
 
@@ -128,7 +145,7 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
             // Special handling for response objects, apply translation to the headers
             if (msg instanceof HttpResponse) {
                 var response = (HttpResponse) msg;
-                processResponse(ctx, response, promise);
+                relayResponse(ctx, response, promise);
             }
 
             // Everything else flows straight through
@@ -142,36 +159,62 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         }
     }
 
-    private Object handleAggregateContent(Object msg) {
+    private RequestState newState() {
 
-        if (authResult.getCode() != AuthResultCode.NEED_CONTENT)
-            return msg;
+        var state = new RequestState();
+        requests.push(state);
 
-        if (!(msg instanceof HttpContent) || pendingContent.readableBytes() > PENDING_CONTENT_LIMIT) {
-            pendingContent.release();
-            throw new EUnexpected();
-        }
-
-        var content = (HttpContent) msg;
-        pendingContent.addComponent(content.content());
-        pendingContent.writerIndex(pendingContent.writerIndex() + content.content().writerIndex());
-
-        if (content instanceof LastHttpContent)
-
-            return new DefaultFullHttpRequest(
-                    pendingRequest.protocolVersion(),
-                    pendingRequest.method(),
-                    pendingRequest.uri(),
-                    pendingContent,
-                    pendingRequest.headers(),
-                    ((LastHttpContent) content).trailingHeaders());
-
-        else
-
-            return null;
+        return state;
     }
 
-    private void processAuthentication(ChannelHandlerContext ctx, HttpRequest request) {
+    private Object handleAggregateContent(RequestState state, Object msg) {
+
+        if (msg instanceof HttpRequest) {
+
+            var request = (HttpRequest) msg;
+
+            if (ApiRoutes.isAuthApi(request.uri()) || ApiRoutes.isAuth(request.uri())) {
+                state.pendingRequest = request;
+                return null;
+            }
+            else
+                return msg;
+        }
+
+        if (!(msg instanceof HttpContent))
+            throw new EUnexpected();
+
+        if (state.pendingRequest == null)
+            return msg;
+
+        var content = ((HttpContent) msg).content();
+
+        if (state.pendingContent.readableBytes() + content.readableBytes() > PENDING_CONTENT_LIMIT)
+            throw new EUnexpected();  // todo: error
+
+        state.pendingContent.addComponent(content.retain());
+        state.pendingContent.writerIndex(state.pendingContent.writerIndex() + content.writerIndex());
+
+        if (msg instanceof LastHttpContent) {
+
+            var aggregateMsg = new DefaultFullHttpRequest(
+                    state.pendingRequest.protocolVersion(),
+                    state.pendingRequest.method(),
+                    state.pendingRequest.uri(),
+                    state.pendingContent,
+                    state.pendingRequest.headers(),
+                    ((LastHttpContent) msg).trailingHeaders());
+
+            state.pendingRequest = null;
+            state.pendingContent = null;
+
+            return aggregateMsg;
+        }
+
+        return null;
+    }
+
+    private void processAuthentication(ChannelHandlerContext ctx, HttpRequest request, RequestState state) {
 
         // Start the auth process by looking for the TRAC auth token
         // If there is already a valid session, this takes priority
@@ -182,97 +225,112 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         // Always send cookies for browser routes
         // For API routes the client can set a header to prefer cookies in the response
 
-        var isApi =
-                headers.contains(HttpHeaderNames.CONTENT_TYPE) &&
-                headers.get(HttpHeaderNames.CONTENT_TYPE).startsWith("application/") &&
-                !headers.get(HttpHeaderNames.CONTENT_TYPE).equals("application/x-www-form-urlencoded");
-
-        wantCookies = !isApi || headers.contains(AuthLogic.TRAC_AUTH_COOKIES_HEADER);
+        var isApi = ApiRoutes.isApi(request.uri());
+        state.wantCookies = !isApi || headers.contains(AuthLogic.TRAC_AUTH_COOKIES_HEADER);
 
         // Look for an existing session token in the request
         // If the token gives a valid session then authentication has succeeded
 
-        token = AuthLogic.findTracAuthToken(headers, AuthLogic.SERVER_COOKIE);
-        session = (token != null) ? jwtProcessor.decodeAndValidate(token) : null;
+        state.token = AuthLogic.findTracAuthToken(headers, AuthLogic.SERVER_COOKIE);
+        state.session = (state.token != null) ? jwtProcessor.decodeAndValidate(state.token) : null;
 
-        if (session != null && session.isValid()) {
+        if (state.session != null && state.session.isValid()) {
 
             // Check to see if the token needs refreshing
-            var sessionUpdate = jwtProcessor.refreshSession(session);
+            var sessionUpdate = jwtProcessor.refreshSession(state.session);
 
-            if (sessionUpdate != session) {
-                token = jwtProcessor.encodeToken(sessionUpdate);
-                session = sessionUpdate;
+            if (sessionUpdate != state.session) {
+                state.token = jwtProcessor.encodeToken(sessionUpdate);
+                state.session = sessionUpdate;
+                state.authUpdated = true;
             }
 
-            authResult = AuthResult.AUTHORIZED(session.getUserInfo());
+            state.authResult = AuthResult.AUTHORIZED(state.session.getUserInfo());
+            state.authSucceeded = true;
             return;
         }
 
-        // If the TRAC token is not available or not valid, fall back to the primary auth mechanism
+        // If auth is added as a service API, allow access here
 
-        if (authResult == null || authResult.getCode() != AuthResultCode.NEED_CONTENT) {
-            var reason = (session == null) ? "no session available" : session.getErrorMessage();
-            log.info("conn = {}, authentication required ({})", connId, reason);
+        if (isApi) {
+
+            state.authResult = AuthResult.FAILED("Session expired or not available");
+            return;
         }
 
-        // Only one auth provider available atm, for both browser and API routes
-        var authRequest = AuthRequest.forHttp1Request(request, headers);
-        authResult = authProvider.attemptAuth(authRequest);
+        if (ApiRoutes.isAuth(request.uri()) || canAcceptHtml(request)) {
 
-        // If primary auth succeeded, set up the session token
-        if (authResult.getCode() == AuthResultCode.AUTHORIZED) {
+            var authRequest = WebAuthRequest.newBuilder()
+                    .setMethod(request.method().name())
+                    .setUri(request.uri());
 
-            session = jwtProcessor.newSession(authResult.getUserInfo());
-            token = jwtProcessor.encodeToken(session);
+            for (var header : request.headers())
+                authRequest.putHeaders(header.getKey(), header.getValue());
+
+            if (request instanceof FullHttpRequest)
+                authRequest.setContent(ByteString.copyFrom(((FullHttpRequest) request).content().nioBuffer()));
+
+            authProvider.webLogin(authRequest.build())
+                    .thenAccept(response -> processAuthResponse(ctx, request, response))
+                    .exceptionally(error -> processAuthError(ctx, request, error));
+
+            return;
         }
 
-        // Send a basic error response for authentication failures for now
-        // If the result is REDIRECTED the auth provider already responded, so no need to respond again here
-
-        if (authResult.getCode() == AuthResultCode.FAILED) {
-
-            log.error("conn = {}, authentication failed ({})", connId, authResult.getMessage());
-
-            var response = buildFailedResponse(request, authResult);
-
-            ctx.write(response);
-            ctx.flush();
-            ctx.close();
-        }
-
-        if (authResult.getCode() == AuthResultCode.OTHER_RESPONSE) {
-
-            var response = buildAuthResponse(request, authResult.getOtherResponse());
-
-            ctx.write(response);
-            ctx.flush();
-        }
-
-        if (authResult.getCode() == AuthResultCode.NEED_CONTENT) {
-
-            pendingRequest = request;
-            pendingContent = ByteBufAllocator.DEFAULT.compositeBuffer();
-        }
+        state.authResult = AuthResult.FAILED("Session expired or not available");
     }
 
-    private void processPostAuthMatch(ChannelHandlerContext ctx, HttpRequest request) {
+    private boolean canAcceptHtml(HttpRequest request) {
 
-        var postAuthHeaders = new Http1AuthHeaders(request.headers());
-        var postAuthRequest = AuthRequest.forHttp1Request(request, postAuthHeaders);
-        var postAuthResponse = authProvider.postAuth(postAuthRequest, session.getUserInfo());
+        for (var acceptHeader : request.headers().getAll(HttpHeaderNames.ACCEPT))
+            if (acceptHeader.contains("text/html"))
+                return true;
 
-        if (postAuthResponse != null) {
-
-            authResult = AuthResult.OTHER_RESPONSE(postAuthResponse);
-            var response = buildAuthResponse(request, postAuthResponse);
-
-            processResponse(ctx, response, ctx.newPromise());
-            ctx.flush();
-        }
+        return false;
     }
 
-    private void processRequest(ChannelHandlerContext ctx, HttpRequest request) {
+    private void processAuthResponse(ChannelHandlerContext ctx, HttpRequest request, WebAuthResponse authResponse) {
+
+        var responseCode = authResponse.getStatusMessage().isBlank()
+                ? HttpResponseStatus.valueOf(authResponse.getStatusCode())
+                : HttpResponseStatus.valueOf(authResponse.getStatusCode(), authResponse.getStatusMessage());
+
+        var responseHeaders = new DefaultHttpHeaders();
+
+        for (var header : authResponse.getHeadersMap().entrySet())
+            responseHeaders.add(header.getKey(), header.getValue());
+
+        var responseContent = Unpooled.wrappedBuffer(authResponse.getContent().asReadOnlyByteBuffer());
+
+        var clientResponse = new DefaultFullHttpResponse(
+                request.protocolVersion(),
+                responseCode,
+                responseContent,
+                responseHeaders,
+                EmptyHttpHeaders.INSTANCE);
+
+        ctx.write(clientResponse);
+        ctx.flush();
+    }
+
+    private Void processAuthError(ChannelHandlerContext ctx, HttpRequest request, Throwable authError) {
+
+        var responseCode = HttpResponseStatus.valueOf(
+                HttpResponseStatus.BAD_GATEWAY.code(),
+                "There was a problem during authentication");
+
+        var clientResponse = new DefaultFullHttpResponse(
+                request.protocolVersion(),
+                responseCode);
+
+        ctx.write(clientResponse);
+        ctx.flush();
+        ctx.close();
+
+        return null;
+    }
+
+    private void relayRequest(ChannelHandlerContext ctx, HttpRequest request) {
 
         var headers = new Http1AuthHeaders(request.headers());
         var emptyHeaders = new Http1AuthHeaders();
@@ -305,7 +363,7 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
         }
     }
 
-    private void processResponse(ChannelHandlerContext ctx, HttpResponse response, ChannelPromise promise) {
+    private void relayResponse(ChannelHandlerContext ctx, HttpResponse response, ChannelPromise promise) {
 
         var headers = new Http1AuthHeaders(response.headers());
         var emptyHeaders = new Http1AuthHeaders();
@@ -334,6 +392,10 @@ public class Http1AuthHandler extends ChannelDuplexHandler {
 
             ctx.write(relayResponse, promise);
         }
+    }
+
+    private void sendResponse(Object msg) {
+
     }
 
     private FullHttpResponse buildAuthResponse(HttpRequest request, AuthResponse responseDetails) {

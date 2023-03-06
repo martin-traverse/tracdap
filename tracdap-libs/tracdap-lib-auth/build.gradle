@@ -26,6 +26,7 @@ description = "TRAC D.A.P. auth library, common auth framework and provider inte
 dependencies {
 
     api project(':tracdap-api-metadata')
+    api project(':tracdap-api-services')
     api project(':tracdap-api-config')
     api project(':tracdap-lib-common')
 

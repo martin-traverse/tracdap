@@ -35,6 +35,7 @@ public class CommonAuthPlugin extends TracPlugin {
     private static final String GUEST_AUTH_PROVIDER = "GUEST_AUTH_PROVIDER";
     private static final String BASIC_AUTH_PROVIDER = "BASIC_AUTH_PROVIDER";
     private static final String BUILT_IN_AUTH_PROVIDER = "BUILT_IN_AUTH_PROVIDER";
+    private static final String OPEN_ID_AUTH_PROVIDER = "OPEN_ID_AUTH_PROVIDER";
     private static final String JKS_USER_DATABASE = "JKS_USER_DATABASE";
     private static final String SQL_USER_DATABASE = "SQL_USER_DATABASE";
 
@@ -42,6 +43,7 @@ public class CommonAuthPlugin extends TracPlugin {
             new PluginServiceInfo(IAuthProvider.class, GUEST_AUTH_PROVIDER, List.of("guest")),
             new PluginServiceInfo(IAuthProvider.class, BASIC_AUTH_PROVIDER, List.of("basic")),
             new PluginServiceInfo(IAuthProvider.class, BUILT_IN_AUTH_PROVIDER, List.of("builtin")),
+            new PluginServiceInfo(IAuthProvider.class, OPEN_ID_AUTH_PROVIDER, List.of("openid")),
             new PluginServiceInfo(IUserDatabase.class, JKS_USER_DATABASE, List.of("JKS", "PKCS12")),
             new PluginServiceInfo(IUserDatabase.class, SQL_USER_DATABASE, List.of("H2")));
 
