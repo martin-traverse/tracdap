@@ -109,12 +109,24 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    interface RangeSubscription {
+
+        void request(long offset, long length);
+        void cancel();
+    }
+
+    interface RangeApi extends DataInterface<RangeApi> {
+
+        void onStart(RangeSubscription subscription);
+        void onChunk(ByteBuf chunk);
+        void onError(Throwable error);
+    }
+
     interface BufferApi extends DataInterface<BufferApi> {
 
         void onBuffer(ByteBuf buffer);
         void onError(Throwable error);
     }
-
 
     interface DataStage extends AutoCloseable {
 
