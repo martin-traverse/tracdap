@@ -182,10 +182,8 @@ class TracEngine(_actors.Actor):
 
     def _finalize_job(self, job_key: str):
 
-        job_actors = self._job_actors
-        job_actor_id = job_actors.pop(job_key)
+        job_actor_id = self._job_actors.pop(job_key)
         self.actors().stop(job_actor_id)
-        self._job_actors = job_actors
 
 
 class JobProcessor(_actors.Actor):
@@ -272,7 +270,6 @@ class GraphBuilder(_actors.Actor):
         super().__init__()
         self.job_config = job_config
         self.result_spec = result_spec
-        self.graph: tp.Optional[_EngineContext] = None
 
         self._resolver = _func.FunctionResolver(models, storage)
         self._log = _util.logger_for_object(self)
@@ -291,13 +288,7 @@ class GraphBuilder(_actors.Actor):
         for node_id, node in graph.nodes.items():
             node.function = self._resolver.resolve_node(node.node)
 
-        self.graph = graph
-        self.actors().send_parent("job_graph", self.graph, graph_data.root_id)
-
-    @_actors.Message
-    def get_execution_graph(self):
-
-        self.actors().send(self.actors().sender, "job_graph", self.graph)
+        self.actors().send_parent("job_graph", graph, graph_data.root_id)
 
 
 class GraphProcessor(_actors.Actor):
@@ -325,10 +316,11 @@ class GraphProcessor(_actors.Actor):
         self._log.info("Begin processing graph")
         self.actors().send(self.actors().id, "submit_viable_nodes")
 
+    def on_stop(self):
+        del self.graph
+
     @_actors.Message
     def submit_viable_nodes(self):
-
-        node_processors = dict()
 
         def process_graph(graph: _EngineContext) -> _EngineContext:
 
@@ -373,7 +365,7 @@ class GraphProcessor(_actors.Actor):
                     # New nodes can be launched with the updated graph
                     # Anything that was pruned is not needed by the new node
                     node_ref = self.actors().spawn(processor)
-                    node_processors[node_id] = node_ref
+                    self.processors[node_id] = node_ref
 
                     pending_nodes.discard(node_id)
                     active_nodes.add(node_id)
@@ -393,7 +385,6 @@ class GraphProcessor(_actors.Actor):
             new_graph = process_graph(current_graph)
 
         self.graph = new_graph
-        self.processors = {**self.processors, **node_processors}
 
         # Job may have completed due to error propagation
         self.check_job_status(do_submit=False)
@@ -571,8 +562,8 @@ class NodeProcessor(_actors.Actor):
         # It would be good to find out where the reference to the processor is being held and fix at source
         # We could also add some accounting to the _EngineNode class
 
-        self.node = None
-        self.graph = None
+        del self.node
+        del self.graph
 
     @_actors.Message
     def graph_event(self):
