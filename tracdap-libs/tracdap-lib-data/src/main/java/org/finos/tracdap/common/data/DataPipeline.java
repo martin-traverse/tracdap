@@ -101,6 +101,12 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    interface BufferApi extends DataInterface<BufferApi> {
+
+        void onBuffer(ByteBuf buffer);
+        void onError(Throwable error);
+    }
+
     interface StreamApi extends DataInterface<StreamApi> {
 
         void onStart();
@@ -109,9 +115,16 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
-    interface BufferApi extends DataInterface<BufferApi> {
+    interface RangeSubscription {
 
-        void onBuffer(ByteBuf buffer);
+        void request(long offset, long size);
+        void cancel();
+    }
+
+    interface RangeApi extends DataInterface<RangeApi> {
+
+        void onStart(RangeSubscription subscription);
+        void onChunk(ByteBuf chunk, long offset);
         void onError(Throwable error);
     }
 
