@@ -25,11 +25,6 @@ import org.apache.arrow.vector.ipc.ArrowWriter;
 
 public class ArrowFileEncoder extends ArrowEncoder {
 
-    public ArrowFileEncoder() {
-
-        super();
-    }
-
     @Override
     protected ArrowWriter createWriter(VectorSchemaRoot root) {
 

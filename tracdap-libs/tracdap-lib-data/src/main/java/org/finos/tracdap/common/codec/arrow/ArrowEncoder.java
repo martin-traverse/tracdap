@@ -17,7 +17,6 @@
 package org.finos.tracdap.common.codec.arrow;
 
 import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.exception.EUnexpected;
 
 import org.apache.arrow.vector.VectorSchemaRoot;
@@ -28,7 +27,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 
 
-public abstract class ArrowEncoder extends StreamingEncoder implements DataPipeline.ArrowApi {
+public abstract class ArrowEncoder extends StreamingEncoder {
 
     // Common base encoder for both files and streams
     // Both receive a data stream and output a byte stream
