@@ -16,70 +16,103 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
-import org.apache.arrow.vector.ipc.ArrowStreamReader;
-import org.finos.tracdap.common.exception.EDataCorruption;
-import org.finos.tracdap.common.data.util.ByteSeekableChannel;
+import org.finos.tracdap.common.codec.ICodec;
+import org.finos.tracdap.common.data.DataPipeline;
+import org.finos.tracdap.common.data.util.ByteInputChannel;
 
-import org.apache.arrow.vector.ipc.ArrowReader;
+import org.apache.arrow.flatbuf.MessageHeader;
 import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.ipc.ArrowStreamReader;
 
 import io.netty.buffer.ByteBuf;
-
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
-import java.nio.channels.SeekableByteChannel;
+import org.finos.tracdap.common.exception.EUnexpected;
 
 
-public class ArrowStreamDecoder extends ArrowDecoder {
+public class ArrowStreamDecoder
+        extends ArrowDecoder
+        implements
+        ICodec.Decoder<DataPipeline.StreamApi>,
+        DataPipeline.StreamApi {
 
-    // Safeguard max allowed size for first (schema) message - 16 MiB should be ample
-    private static final int CONTINUATION_MARKER = 0xffffffff;
-    private static final int MAX_FIRST_MESSAGE_SIZE = 16 * 1024 * 1024;
+    private final ArrowStreamMessageReader messageReader;
+    private final ArrowStreamReader arrowReader;
 
-    private final BufferAllocator arrowAllocator;
+    private boolean schemaDone;
+
 
     public ArrowStreamDecoder(BufferAllocator arrowAllocator) {
-        this.arrowAllocator = arrowAllocator;
+
+        var inputChannel = new ByteInputChannel();
+        this.messageReader = new ArrowStreamMessageReader(inputChannel, arrowAllocator);
+        this.arrowReader = new ArrowStreamReader(messageReader, arrowAllocator);
     }
 
     @Override
-    protected ArrowReader createReader(ByteBuf buffer) throws IOException {
-
-        var channel = new ByteSeekableChannel(buffer);
-        validateStartOfStream(channel);
-
-        return new ArrowStreamReader(channel, arrowAllocator);
+    public DataPipeline.StreamApi dataInterface() {
+        return this;
     }
 
-    private void validateStartOfStream(SeekableByteChannel channel) throws IOException {
-
-        // https://arrow.apache.org/docs/format/Columnar.html#encapsulated-message-format
-
-        // Arrow streams are a series of messages followed by optional body data
-        // Each message is preceded by a continuation marker and message size
-        // Just sanity checking these two values should catch some serious decode failures
-        // E.g. if a data stream contains a totally different format
-
-        // Record the stream position, so it can be restored after the validation
-        long pos = channel.position();
-
-        var headerBytes = new byte[8];
-        var headerBuf = ByteBuffer.wrap(headerBytes);
-        headerBuf.order(ByteOrder.LITTLE_ENDIAN);
-
-        channel.position(0);
-
-        var prefaceLength = channel.read(headerBuf);
-        var continuation = headerBuf.getInt(0);
-        var messageSize = headerBuf.getInt(4);
-
-        if (prefaceLength != 8 || continuation != CONTINUATION_MARKER ||
-            messageSize <=0 || messageSize > MAX_FIRST_MESSAGE_SIZE)
-
-            throw new EDataCorruption("Data is corrupt, or not an Arrow stream");
-
-        // Restore original stream position
-        channel.position(pos);
+    @Override
+    public boolean isReady() {
+        return consumerReady();
     }
+
+    @Override
+    public void onStart() {
+
+        onReader(arrowReader);
+    }
+
+    @Override
+    public void onNext(ByteBuf chunk) {
+
+        handleErrors(() -> {
+
+            messageReader.feedBytes(chunk);
+
+            if (!schemaDone) {
+                if (messageReader.messageAvailable(MessageHeader.Schema)) {
+                    schemaDone = true;
+                    onSchema();
+                } else {
+                    return null;
+                }
+            }
+
+            while (messageReader.messageAvailable(MessageHeader.RecordBatch)) {
+                onBatch();
+            }
+
+            return null;
+        });
+    }
+
+    @Override
+    public void onComplete() {
+
+        super.onComplete();
+    }
+
+    @Override
+    public void onError(Throwable error) {
+
+        super.onError(error);
+    }
+
+    @Override
+    public void close() {
+
+        try {
+
+            arrowReader.close();
+            messageReader.close();
+            super.close();
+        }
+        catch (Exception e) {
+
+            //log.error("Unexpected error while shutting down Arrow stream decoder", e);
+            throw new EUnexpected(e);
+        }
+    }
+
 }

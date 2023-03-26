@@ -16,8 +16,8 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
-import org.finos.tracdap.common.codec.BufferDecoder;
 import org.finos.tracdap.common.data.DataPipeline;
+import org.finos.tracdap.common.data.pipeline.BaseDataProducer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.common.exception.ETrac;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -26,7 +26,6 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.ipc.ArrowReader;
 import org.apache.arrow.vector.ipc.InvalidArrowFileException;
 
-import io.netty.buffer.ByteBuf;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -34,53 +33,56 @@ import java.io.IOException;
 import java.util.concurrent.Callable;
 
 
-public abstract class ArrowDecoder extends BufferDecoder implements DataPipeline.BufferApi {
+public abstract class ArrowDecoder extends BaseDataProducer<DataPipeline.ArrowApi> {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private ByteBuf buffer;
     private ArrowReader reader;
     private VectorSchemaRoot root;
 
     public ArrowDecoder() {
-
+        super(DataPipeline.ArrowApi.class);
     }
 
-    protected abstract ArrowReader createReader(ByteBuf buffer) throws IOException;
+    protected void onReader(ArrowReader reader) {
 
-    @Override
-    public void onBuffer(ByteBuf buffer) {
+        this.reader = reader;
+    }
 
-        if (log.isTraceEnabled())
-            log.trace("ARROW DECODER: onBuffer()");
-
-        if (buffer.readableBytes() == 0) {
-            var error = new EDataCorruption("Arrow data file is empty");
-            log.error(error.getMessage(), error);
-            throw error;
-        }
+    protected void onSchema() {
 
         handleErrors(() -> {
 
-            this.buffer = buffer;
-            this.reader = createReader(buffer);
             this.root = reader.getVectorSchemaRoot();
 
             consumer().onStart(root);
-
-            var isComplete = sendBatches();
-
-            if (isComplete) {
-                markAsDone();
-                consumer().onComplete();
-                close();
-            }
 
             return null;
         });
     }
 
-    @Override
+    protected void onBatch() {
+
+        handleErrors(() -> {
+
+            if (reader.loadNextBatch())
+                consumer().onBatch();
+
+            return null;
+        });
+    }
+
+    protected void onComplete() {
+
+        try {
+            markAsDone();
+            consumer().onComplete();
+        }
+        finally {
+            close();
+        }
+    }
+
     public void onError(Throwable error) {
 
         try  {
@@ -99,45 +101,10 @@ public abstract class ArrowDecoder extends BufferDecoder implements DataPipeline
     @Override
     public void pump() {
 
-        handleErrors(() -> {
-
-            // Don't try to pump if the stage isn't active yet
-            if (root == null)
-                return null;
-
-            var isComplete = sendBatches();
-
-            if (isComplete) {
-                markAsDone();
-                consumer().onComplete();
-                close();
-            }
-
-            return null;
-        });
+        // no-op, data is processed on arrival
     }
 
-    private boolean sendBatches() throws IOException {
-
-        // Data arrives in one big buffer, so don't send it all at once
-        // PUsh what the consumer requests, then wait for another call to pump()
-
-        while (consumerReady()) {
-
-            var batchAvailable = reader.loadNextBatch();
-
-            if (batchAvailable) {
-                consumer().onBatch();
-            }
-            else {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private void handleErrors(Callable<Void> lambda) {
+    protected void handleErrors(Callable<Void> lambda) {
 
         try {
 
@@ -193,19 +160,11 @@ public abstract class ArrowDecoder extends BufferDecoder implements DataPipeline
                 root = null;
             }
 
-            if (reader != null) {
-                reader.close();
-                reader = null;
-            }
-
-            if (buffer != null) {
-                buffer.release();
-                buffer = null;
-            }
+            reader.close();
         }
         catch (Exception e) {
 
-            log.error("Unexpected error while shutting down Arrow file decoder", e);
+            log.error("Unexpected error while shutting down Arrow decoder", e);
             throw new EUnexpected(e);
         }
     }
