@@ -111,9 +111,10 @@ public class ArrowFileAsyncReader extends ArrowReader {
 
         var footerOffset = Integer.BYTES + MAGIC_LENGTH;
         var footerLength = footerBytesRequired - footerOffset;
-        var footerSlice = buffer.slice(buffer.limit() - footerBytesRequired, footerLength);
 
-        var footerFB = Footer.getRootAsFooter(footerSlice);
+        buffer.position(buffer.limit() - footerBytesRequired);
+        var footerFB = Footer.getRootAsFooter(buffer);
+
         var footer = new ArrowFooter(footerFB);
 
         MetadataV4UnionChecker.checkRead(footer.getSchema(), footer.getMetadataVersion());
@@ -138,7 +139,8 @@ public class ArrowFileAsyncReader extends ArrowReader {
         }
 
         var array = new byte[footerOffset];
-        buffer.get(buffer.limit() - footerOffset, array);
+        buffer.position(buffer.limit() - footerOffset);
+        buffer.get(array);
 
         if (!ArrowMagic.validateMagic(Arrays.copyOfRange(array, 4, array.length))) {
             throw new InvalidArrowFileException("missing Magic number " + Arrays.toString(buffer.array()));
