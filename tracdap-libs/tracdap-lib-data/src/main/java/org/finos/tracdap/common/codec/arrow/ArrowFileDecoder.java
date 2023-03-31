@@ -16,6 +16,8 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
+import org.finos.tracdap.common.codec.ICodec;
+import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
 
 import org.apache.arrow.memory.BufferAllocator;
@@ -25,7 +27,11 @@ import org.apache.arrow.vector.ipc.ArrowReader;
 import io.netty.buffer.ByteBuf;
 
 
-public class ArrowFileDecoder extends ArrowDecoder {
+public class ArrowFileDecoder
+        extends ArrowDecoder
+        implements
+        ICodec.Decoder<DataPipeline.RangeApi>,
+        DataPipeline.RangeApi {
 
     private final BufferAllocator arrowAllocator;
 
@@ -33,9 +39,29 @@ public class ArrowFileDecoder extends ArrowDecoder {
         this.arrowAllocator = arrowAllocator;
     }
 
-    @Override
     protected ArrowReader createReader(ByteBuf buffer) {
         var channel = new ByteSeekableChannel(buffer);
         return new ArrowFileReader(channel, arrowAllocator);
+    }
+
+
+    @Override
+    public void onStart(DataPipeline.RangeSubscription subscription) {
+
+    }
+
+    @Override
+    public void onChunk(ByteBuf chunk, long offset) {
+
+    }
+
+    @Override
+    public boolean isReady() {
+        return false;
+    }
+
+    @Override
+    public DataPipeline.RangeApi dataInterface() {
+        return null;
     }
 }
