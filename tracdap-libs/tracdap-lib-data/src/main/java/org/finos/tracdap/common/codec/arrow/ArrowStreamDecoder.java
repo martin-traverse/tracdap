@@ -16,6 +16,7 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
+import org.apache.arrow.vector.ipc.message.MessageChannelAsyncReader;
 import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.util.ByteInputChannel;
@@ -34,7 +35,7 @@ public class ArrowStreamDecoder
         ICodec.Decoder<DataPipeline.StreamApi>,
         DataPipeline.StreamApi {
 
-    private final ArrowStreamMessageReader messageReader;
+    private final MessageChannelAsyncReader messageReader;
     private final ArrowStreamReader arrowReader;
 
     private boolean schemaDone;
@@ -43,7 +44,7 @@ public class ArrowStreamDecoder
     public ArrowStreamDecoder(BufferAllocator arrowAllocator) {
 
         var inputChannel = new ByteInputChannel();
-        this.messageReader = new ArrowStreamMessageReader(inputChannel, arrowAllocator);
+        this.messageReader = new MessageChannelAsyncReader(inputChannel, arrowAllocator);
         this.arrowReader = new ArrowStreamReader(messageReader, arrowAllocator);
     }
 

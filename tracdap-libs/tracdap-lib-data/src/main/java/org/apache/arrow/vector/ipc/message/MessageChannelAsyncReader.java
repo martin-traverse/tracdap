@@ -14,14 +14,13 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.codec.arrow;
+package org.apache.arrow.vector.ipc.message;
 
 import org.finos.tracdap.common.data.util.ByteInputChannel;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.ipc.ReadChannel;
-import org.apache.arrow.vector.ipc.message.*;
 
 import io.netty.buffer.ByteBuf;
 
@@ -32,10 +31,12 @@ import java.util.ArrayDeque;
 import java.util.Deque;
 
 
-public class ArrowStreamMessageReader extends MessageChannelReader {
+public class MessageChannelAsyncReader extends MessageChannelReader {
 
     private static final int HEADER_SIZE = 4;
     private static final int MAX_ARROW_MESSAGE_SIZE = 16 * 1024 * 1024;
+
+    private static final MessageResult EOS_MARKER = new MessageResult(null, null);
 
     int expectHeader;
     int expectMetadata;
@@ -46,7 +47,7 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
     private final Deque<MessageResult> messageQueue;
     private MessageMetadataResult currentMessage;
 
-    public ArrowStreamMessageReader(ByteInputChannel inputChannel, BufferAllocator allocator) {
+    public MessageChannelAsyncReader(ByteInputChannel inputChannel, BufferAllocator allocator) {
 
         super(new ReadChannel(inputChannel), allocator);
 
@@ -76,6 +77,8 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
                 headerBuf.order(ByteOrder.LITTLE_ENDIAN);
 
                 inputChannel.peek(headerBuf, 0, HEADER_SIZE);
+                headerBuf.flip();
+
                 var metadataSize = headerBuf.getInt();
 
                 if (metadataSize == MessageSerializer.IPC_CONTINUATION_TOKEN) {
@@ -85,6 +88,8 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
 
                     headerBuf.rewind();
                     inputChannel.peek(headerBuf, HEADER_SIZE, HEADER_SIZE);
+                    headerBuf.flip();
+
                     metadataSize = headerBuf.getInt();
                 }
 
@@ -97,7 +102,7 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
                 // metadata size == 0 indicates EOS
                 // MessageChannelReader will return a null message for EOS, so we do the same
                 if (expectMetadata == 0)
-                    messageQueue.add(null);
+                    messageQueue.add(EOS_MARKER);
             }
 
             if (expectMetadata > 0) {
@@ -133,7 +138,7 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
     public boolean messageAvailable(byte messageType) {
 
         for (var message : messageQueue)
-            if (message != null && message.getMessage().headerType() == messageType)
+            if (message != EOS_MARKER && message.getMessage().headerType() == messageType)
                 return true;
 
         return false;
@@ -145,7 +150,12 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
         if (messageQueue.isEmpty())
             throw new IOException("Message not available on input channel");
 
-        return messageQueue.pop();
+        var msg = messageQueue.pop();
+
+        if (msg == EOS_MARKER)
+            return null;
+        else
+            return msg;
     }
 
     @Override
@@ -153,7 +163,7 @@ public class ArrowStreamMessageReader extends MessageChannelReader {
 
         while (!messageQueue.isEmpty()) {
             var message = messageQueue.pop();
-            if (message != null) {
+            if (message != EOS_MARKER) {
                 message.getMessage().customMetadataVector().reset();
                 if (message.getBodyBuffer() != null)
                     message.getBodyBuffer().close();
