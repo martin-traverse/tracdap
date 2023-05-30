@@ -49,6 +49,6 @@ public class ArrowFileCodec implements ICodec {
     @Override
     public Decoder<DataPipeline.BufferApi>
     getDecoder(BufferAllocator arrowAllocator, Schema schema, Map<String, String> options) {
-        return new ArrowFileDecoder(arrowAllocator);
+        return new ArrowFileBufferingDecoder(arrowAllocator);
     }
 }

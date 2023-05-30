@@ -26,11 +26,11 @@ import org.apache.arrow.vector.ipc.ArrowReader;
 import java.util.List;
 
 
-public class ArrowFileDecoder extends ArrowDecoder {
+public class ArrowFileBufferingDecoder extends ArrowDecoder {
 
     private final BufferAllocator arrowAllocator;
 
-    public ArrowFileDecoder(BufferAllocator arrowAllocator) {
+    public ArrowFileBufferingDecoder(BufferAllocator arrowAllocator) {
         this.arrowAllocator = arrowAllocator;
     }
 
