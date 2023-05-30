@@ -54,45 +54,22 @@ import java.util.concurrent.Flow;
 public interface DataPipeline {
 
 
-
     // -----------------------------------------------------------------------------------------------------------------
-    // BUILD PIPELINES
-    // -----------------------------------------------------------------------------------------------------------------
-
-
-    static DataPipeline forSource(SourceStage source, IDataContext ctx) {
-        return DataPipelineImpl.forSource(source, ctx);
-    }
-
-    static DataPipeline forSource(Flow.Publisher<ArrowBuf> source, IDataContext ctx) {
-        return DataPipelineImpl.forSource(source, ctx);
-    }
-
-    DataPipeline addStage(DataStage stage);
-    DataPipeline addSink(SinkStage sink);
-    DataPipeline addSink(Flow.Subscriber<ArrowBuf> sink);
-
-
-
-    // -----------------------------------------------------------------------------------------------------------------
-    // RUN / MONITOR PIPELINES
+    // DATA INTERFACES
     // -----------------------------------------------------------------------------------------------------------------
 
-
-    CompletionStage<Void> execute();
-
-
-
-    // -----------------------------------------------------------------------------------------------------------------
-    // PIPELINE STAGE INTERFACES
-    // -----------------------------------------------------------------------------------------------------------------
-
+    // Data interfaces are the most basic APIs used to build data stages in the pipeline
+    // For example, to receive incoming data over a web connection you could use StreamApi
+    // Data in the intermediate (Arrow) format always uses ArrowApi
 
     interface DataInterface <API_T>  {
 
         API_T dataInterface();
     }
 
+    /**
+     * Interface for data held in the Arrow VSR container
+     */
     interface ArrowApi extends DataInterface<ArrowApi> {
 
         void onStart(VectorSchemaRoot root);
@@ -101,12 +78,18 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    /**
+     * Interface for raw bytes held in memory
+     */
     interface BufferApi extends DataInterface<BufferApi> {
 
         void onBuffer(List<ArrowBuf> buffer);
         void onError(Throwable error);
     }
 
+    /**
+     * Interface for raw bytes flowing as a data stream
+     */
     interface StreamApi extends DataInterface<StreamApi> {
 
         void onStart();
@@ -115,6 +98,9 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    /**
+     * Interface for raw bytes stored in a file - read only, random access
+     */
     interface FileApi extends DataInterface<FileApi> {
 
         void onStart(long fileSize, FileSubscription subscription);
@@ -122,12 +108,22 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    /**
+     * Subscription interface for FileApi
+     */
     interface FileSubscription {
 
         void request(long offset, long size);
         void close();
     }
 
+    // -----------------------------------------------------------------------------------------------------------------
+    // PIPELINE STAGES
+    // -----------------------------------------------------------------------------------------------------------------
+
+    // A data pipeline is created by chaining together a series of pipeline stages
+    // Most stages wil have two data interfaces, a consumer interface and a producer interface
+    // The exceptions are source stages which are only producers and sink stages which are only consumers
 
     interface DataStage extends AutoCloseable {
 
@@ -159,4 +155,32 @@ public interface DataPipeline {
         boolean consumerReady();
         API_T consumer();
     }
+
+
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // BUILD PIPELINES
+    // -----------------------------------------------------------------------------------------------------------------
+
+
+    static DataPipeline forSource(SourceStage source, IDataContext ctx) {
+        return DataPipelineImpl.forSource(source, ctx);
+    }
+
+    static DataPipeline forSource(Flow.Publisher<ArrowBuf> source, IDataContext ctx) {
+        return DataPipelineImpl.forSource(source, ctx);
+    }
+
+    DataPipeline addStage(DataStage stage);
+    DataPipeline addSink(SinkStage sink);
+    DataPipeline addSink(Flow.Subscriber<ArrowBuf> sink);
+
+
+
+    // -----------------------------------------------------------------------------------------------------------------
+    // RUN / MONITOR PIPELINES
+    // -----------------------------------------------------------------------------------------------------------------
+
+
+    CompletionStage<Void> execute();
 }
