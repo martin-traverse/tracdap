@@ -16,31 +16,70 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
+import org.apache.arrow.vector.VectorSchemaRoot;
 import org.finos.tracdap.common.codec.ICodec;
-import org.finos.tracdap.common.data.DataPipeline;
+import org.finos.tracdap.common.data.DataPipeline.*;
 import org.finos.tracdap.common.data.pipeline.BaseDataProducer;
 
 import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.ipc.ArrowFileAsyncReader;
 
 
 public class ArrowFileDecoder
-        extends BaseDataProducer<DataPipeline.ArrowApi>
-        implements
-        ICodec.Decoder<DataPipeline.FileApi>,
-        DataPipeline.FileApi {
+        extends BaseDataProducer<ArrowApi>
+        implements FileApi, ICodec.Decoder<FileApi> {
 
-    public ArrowFileDecoder() {
-        super(DataPipeline.ArrowApi.class);
+    private static final int PRELOAD_CHUNKS = 2;
+
+    private final BufferAllocator allocator;
+
+    private FileSubscription subscription;
+    private ArrowFileAsyncReader arrowReader;
+    private VectorSchemaRoot root;
+
+    private int pendingChunks;
+
+    public ArrowFileDecoder(BufferAllocator allocator) {
+        super(ArrowApi.class);
+        this.allocator = allocator;
     }
 
     @Override
-    public void onStart(long fileSize, DataPipeline.FileSubscription subscription) {
+    public FileApi dataInterface() {
+        return this;
+    }
 
+    @Override
+    public boolean isReady() {
+        return consumerReady();
+    }
+
+    @Override
+    public void onStart(long fileSize, FileSubscription subscription) {
+
+        this.subscription = subscription;
+        this.arrowReader = new ArrowFileAsyncReader(allocator);
+
+        var firstChunk = arrowReader.nextBytes();
+        subscription.request(firstChunk.getOffset(), firstChunk.getSize());
+
+        pendingChunks += 1;
     }
 
     @Override
     public void onChunk(long offset, ArrowBuf chunk) {
 
+        pendingChunks -= 1;
+
+        if (arrowReader == null) {
+            chunk.close();
+            return;
+        }
+
+        arrowReader.feedBytes(offset, chunk);
+
+        pump();
     }
 
     @Override
@@ -49,22 +88,48 @@ public class ArrowFileDecoder
     }
 
     @Override
-    public boolean isReady() {
-        return false;
-    }
-
-    @Override
     public void pump() {
 
+        processData();
+
+        if (arrowReader.bufferedChunks() < PRELOAD_CHUNKS)
+            requestMore();
     }
 
-    @Override
-    public DataPipeline.FileApi dataInterface() {
-        return this;
+    private void processData() {
+
+    }
+
+    private void requestMore() {
+
+        while (arrowReader.bufferedChunks() + pendingChunks < PRELOAD_CHUNKS) {
+
+            var nextChunk = arrowReader.nextBytes();
+
+            if (nextChunk == null)
+                return;
+
+            subscription.request(nextChunk.getOffset(), nextChunk.getSize());
+            pendingChunks += 1;
+        }
     }
 
     @Override
     public void close() throws Exception {
 
+        if (root != null) {
+            root.close();
+            root = null;
+        }
+
+        if (arrowReader != null) {
+            arrowReader.close();;
+            arrowReader = null;
+        }
+
+        if (subscription != null) {
+            subscription.close();
+            subscription = null;
+        }
     }
 }
