@@ -17,6 +17,7 @@
 package org.apache.arrow.vector.ipc;
 
 import org.apache.arrow.flatbuf.Footer;
+import org.apache.arrow.flatbuf.Message;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.VisibleForTesting;
@@ -32,6 +33,8 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
+
+import static org.apache.arrow.vector.ipc.message.MessageSerializer.IPC_CONTINUATION_TOKEN;
 
 
 public class ArrowFileAsyncReader extends ArrowReader {
@@ -331,11 +334,12 @@ public class ArrowFileAsyncReader extends ArrowReader {
     /** Returns true if a batch was read, false if no more batches. */
     @Override
     public boolean loadNextBatch() throws IOException {
+
         prepareLoadNextBatch();
 
         if (currentRecordBatch < footer.getRecordBatches().size()) {
             ArrowBlock block = footer.getRecordBatches().get(currentRecordBatch++);
-            ArrowRecordBatch batch = readRecordBatch(in, block, allocator);
+            ArrowRecordBatch batch = readRecordBatch(block);
             loadRecordBatch(batch);
             return true;
         } else {
@@ -402,34 +406,63 @@ public class ArrowFileAsyncReader extends ArrowReader {
 
 
 
+    private void readFooterLength() {
+
+    }
+
+    private void readFooter() {
+
+    }
 
 
 
+    private ArrowDictionaryBatch readDictionaryBatch(ArrowBlock block) throws IOException {
 
-    private ArrowDictionaryBatch readDictionaryBatch(SeekableReadChannel in,
-                                                     ArrowBlock block,
-                                                     BufferAllocator allocator) throws IOException {
         LOGGER.debug("DictionaryRecordBatch at {}, metadata: {}, body: {}",
                 block.getOffset(), block.getMetadataLength(), block.getBodyLength());
-        in.setPosition(block.getOffset());
-        ArrowDictionaryBatch batch = MessageSerializer.deserializeDictionaryBatch(in, block, allocator);
+
+        DataChunk chunk = chunks.peek();
+        ArrowBuf buffer = chunk.buffer;
+        ArrowBuffer bufferInfo = new ArrowBuffer(chunk.offset, buffer.readableBytes());
+        MessageResult result = MessageChunkReader.readMessage(buffer, bufferInfo, block);
+
+        ArrowDictionaryBatch batch = MessageSerializer.deserializeDictionaryBatch(result.getMessage(), result.getBodyBuffer());
+
         if (batch == null) {
             throw new IOException("Invalid file. No batch at offset: " + block.getOffset());
         }
+
         return batch;
     }
 
-    private ArrowRecordBatch readRecordBatch(SeekableReadChannel in,
-                                             ArrowBlock block,
-                                             BufferAllocator allocator) throws IOException {
+    private ArrowRecordBatch readRecordBatch(ArrowBlock block) throws IOException {
+
         LOGGER.debug("RecordBatch at {}, metadata: {}, body: {}",
-                block.getOffset(), block.getMetadataLength(),
-                block.getBodyLength());
-        in.setPosition(block.getOffset());
-        ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(in, block, allocator);
+                block.getOffset(), block.getMetadataLength(), block.getBodyLength());
+
+        DataChunk chunk = chunks.peek();
+        ArrowBuf buffer = chunk.buffer;
+        ArrowBuffer bufferInfo = new ArrowBuffer(chunk.offset, buffer.readableBytes());
+        MessageResult result = MessageChunkReader.readMessage(buffer, bufferInfo, block);
+
+        ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(result.getMessage(), result.getBodyBuffer());
+
         if (batch == null) {
             throw new IOException("Invalid file. No batch at offset: " + block.getOffset());
         }
+
         return batch;
     }
+
+    private boolean chunkContainsBlock(long chunkOffset, long chunkSize, long blockOffset, long blockSize) {
+
+        if (blockOffset < chunkOffset)
+            return false;
+
+        long chunkEnd = chunkOffset + chunkSize;
+        long blockEnd = blockOffset + blockSize;
+
+        return blockEnd <= chunkEnd;
+    }
+
 }
