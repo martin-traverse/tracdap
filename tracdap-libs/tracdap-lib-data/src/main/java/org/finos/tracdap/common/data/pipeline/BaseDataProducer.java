@@ -42,7 +42,7 @@ public abstract class BaseDataProducer
     }
 
     @Override
-    public Class<API_T> consumerType() {
+    public final Class<API_T> consumerType() {
         return consumerType;
     }
 

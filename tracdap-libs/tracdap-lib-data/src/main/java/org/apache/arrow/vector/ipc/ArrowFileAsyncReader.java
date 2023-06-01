@@ -17,7 +17,6 @@
 package org.apache.arrow.vector.ipc;
 
 import org.apache.arrow.flatbuf.Footer;
-import org.apache.arrow.flatbuf.Message;
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.util.VisibleForTesting;
@@ -34,8 +33,6 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.util.*;
 
-import static org.apache.arrow.vector.ipc.message.MessageSerializer.IPC_CONTINUATION_TOKEN;
-
 
 public class ArrowFileAsyncReader extends ArrowReader {
 
@@ -45,10 +42,10 @@ public class ArrowFileAsyncReader extends ArrowReader {
 
     private final long fileSize;
     private final Deque<DataChunk> chunks;
-    private final Deque<DataRequest> requests;
+    private final Deque<ArrowBuffer> requests;
 
     private boolean requestedFooterSize;
-    private int footerSize;
+    private int footerLength;
 
     private boolean requestedFooter;
     private ArrowFooter footer;
@@ -119,12 +116,12 @@ public class ArrowFileAsyncReader extends ArrowReader {
             return new DataRequest(offset, size);
         }
 
-        if (footerSize == 0)
+        if (footerLength == 0)
             return null;
 
         if (!requestedFooter) {
             requestedFooter = true;
-            long offset = fileSize - footerSize -
+            long offset = fileSize - footerLength -
         }
     }
 
@@ -228,7 +225,7 @@ public class ArrowFileAsyncReader extends ArrowReader {
 
 
     @Override
-    protected void closeReadSource() throws IOException {
+    protected void closeReadSource() {
 
         while (!chunks.isEmpty()) {
             DataChunk chunk = chunks.pop();
@@ -241,27 +238,8 @@ public class ArrowFileAsyncReader extends ArrowReader {
 
 
 
-    public static class DataRequest {
-
-        private final long offset;
-        private final long size;
-
-        public DataRequest(long offset, long size) {
-            this.offset = offset;
-            this.size = size;
-        }
-
-        public long getOffset() {
-            return offset;
-        }
-
-        public long getSize() {
-            return size;
-        }
-    }
-
     private static class DataChunk {
-        long offset;
+        ArrowBuffer request;
         ArrowBuf buffer;
     }
 
@@ -294,40 +272,16 @@ public class ArrowFileAsyncReader extends ArrowReader {
     @Override
     protected Schema readSchema() throws IOException {
 
-        if (footer != null)
-            return footer.getSchema();
-
-        if (!hasFooter())
-            throw new IllegalStateException("")
-
         if (footer == null) {
-            if (in.size() <= (ArrowMagic.MAGIC_LENGTH * 2 + 4)) {
-                throw new InvalidArrowFileException("file too small: " + in.size());
-            }
-            ByteBuffer buffer = ByteBuffer.allocate(4 + ArrowMagic.MAGIC_LENGTH);
-            long footerLengthOffset = in.size() - buffer.remaining();
-            in.setPosition(footerLengthOffset);
-            in.readFully(buffer);
-            buffer.flip();
-            byte[] array = buffer.array();
-            if (!ArrowMagic.validateMagic(Arrays.copyOfRange(array, 4, array.length))) {
-                throw new InvalidArrowFileException("missing Magic number " + Arrays.toString(buffer.array()));
-            }
-            int footerLength = MessageSerializer.bytesToInt(array);
-            if (footerLength <= 0 || footerLength + ArrowMagic.MAGIC_LENGTH * 2 + 4 > in.size() ||
-                    footerLength > footerLengthOffset) {
-                throw new InvalidArrowFileException("invalid footer length: " + footerLength);
-            }
-            long footerOffset = footerLengthOffset - footerLength;
-            LOGGER.debug("Footer starts at {}, length: {}", footerOffset, footerLength);
-            ByteBuffer footerBuffer = ByteBuffer.allocate(footerLength);
-            in.setPosition(footerOffset);
-            in.readFully(footerBuffer);
-            footerBuffer.flip();
-            Footer footerFB = Footer.getRootAsFooter(footerBuffer);
-            this.footer = new ArrowFooter(footerFB);
+
+            // todo: canReadFooter() ?
+
+            readFooterLength();
+            readFooter();
         }
+
         MetadataV4UnionChecker.checkRead(footer.getSchema(), footer.getMetadataVersion());
+
         return footer.getSchema();
     }
 
@@ -351,12 +305,17 @@ public class ArrowFileAsyncReader extends ArrowReader {
      * Loads record batch for the given block.
      */
     public boolean loadRecordBatch(ArrowBlock block) throws IOException {
+
         ensureInitialized();
+
         int blockIndex = footer.getRecordBatches().indexOf(block);
+
         if (blockIndex == -1) {
             throw new IllegalArgumentException("Arrow block does not exist in record batches: " + block);
         }
+
         currentRecordBatch = blockIndex;
+
         return loadNextBatch();
     }
 
@@ -396,43 +355,67 @@ public class ArrowFileAsyncReader extends ArrowReader {
      * @throws IOException on error
      */
     public ArrowDictionaryBatch readDictionary() throws IOException {
+
         if (currentDictionaryBatch >= footer.getDictionaries().size()) {
             throw new IOException("Requested more dictionaries than defined in footer: " + currentDictionaryBatch);
         }
+
         ArrowBlock block = footer.getDictionaries().get(currentDictionaryBatch++);
-        return readDictionaryBatch(in, block, allocator);
+
+        return readDictionaryBatch(block);
     }
 
+    private void readFooterLength() throws IOException {
 
+        if (fileSize <= (long) ArrowMagic.MAGIC_LENGTH * 2 + 4) {
+            throw new InvalidArrowFileException("file too small: " + fileSize);
+        }
 
+        int footerLengthSize = 4 + ArrowMagic.MAGIC_LENGTH;
+        long footerLengthOffset = fileSize - footerLengthSize;
 
-    private void readFooterLength() {
+        DataChunk chunk = getChunk(footerLengthOffset, footerLengthSize);
+        ByteBuffer buffer = MessageChunkReader.readBytes(chunk.buffer, chunk.request, footerLengthOffset, footerLengthSize);
+        byte[] array = buffer.array();
 
+        if (!ArrowMagic.validateMagic(Arrays.copyOfRange(array, 4, array.length))) {
+            throw new InvalidArrowFileException("missing Magic number " + Arrays.toString(buffer.array()));
+        }
+
+        footerLength = MessageSerializer.bytesToInt(array);
+
+        if (footerLength <= 0 || footerLength + (long) ArrowMagic.MAGIC_LENGTH * 2 + 4 > fileSize || footerLength > footerLengthOffset) {
+            throw new InvalidArrowFileException("invalid footer length: " + footerLength);
+        }
     }
 
-    private void readFooter() {
+    private void readFooter() throws IOException {
 
+        int footerLengthSize = 4 + ArrowMagic.MAGIC_LENGTH;
+        long footerLengthOffset = fileSize - footerLengthSize;
+        long footerOffset = footerLengthOffset - footerLength;
+
+        LOGGER.debug("Footer starts at {}, length: {}", footerOffset, footerLength);
+
+        DataChunk chunk = getChunk(footerOffset, footerLength);
+        ByteBuffer footerBuffer = MessageChunkReader.readBytes(chunk.buffer, chunk.request, footerOffset, footerLength);
+        Footer footerFB = Footer.getRootAsFooter(footerBuffer);
+        ArrowFooter footer = new ArrowFooter(footerFB);
+
+        MetadataV4UnionChecker.checkRead(footer.getSchema(), footer.getMetadataVersion());
+
+        this.footer = footer;
     }
-
-
 
     private ArrowDictionaryBatch readDictionaryBatch(ArrowBlock block) throws IOException {
 
         LOGGER.debug("DictionaryRecordBatch at {}, metadata: {}, body: {}",
                 block.getOffset(), block.getMetadataLength(), block.getBodyLength());
 
-        DataChunk chunk = chunks.peek();
-        ArrowBuf buffer = chunk.buffer;
-        ArrowBuffer bufferInfo = new ArrowBuffer(chunk.offset, buffer.readableBytes());
-        MessageResult result = MessageChunkReader.readMessage(buffer, bufferInfo, block);
+        DataChunk chunk = getChunk(block);
+        MessageResult result = MessageChunkReader.readMessage(chunk.buffer, chunk.request, block);
 
-        ArrowDictionaryBatch batch = MessageSerializer.deserializeDictionaryBatch(result.getMessage(), result.getBodyBuffer());
-
-        if (batch == null) {
-            throw new IOException("Invalid file. No batch at offset: " + block.getOffset());
-        }
-
-        return batch;
+        return MessageSerializer.deserializeDictionaryBatch(result.getMessage(), result.getBodyBuffer());
     }
 
     private ArrowRecordBatch readRecordBatch(ArrowBlock block) throws IOException {
@@ -440,29 +423,59 @@ public class ArrowFileAsyncReader extends ArrowReader {
         LOGGER.debug("RecordBatch at {}, metadata: {}, body: {}",
                 block.getOffset(), block.getMetadataLength(), block.getBodyLength());
 
-        DataChunk chunk = chunks.peek();
-        ArrowBuf buffer = chunk.buffer;
-        ArrowBuffer bufferInfo = new ArrowBuffer(chunk.offset, buffer.readableBytes());
-        MessageResult result = MessageChunkReader.readMessage(buffer, bufferInfo, block);
+        DataChunk chunk = getChunk(block);
+        MessageResult result = MessageChunkReader.readMessage(chunk.buffer, chunk.request, block);
 
-        ArrowRecordBatch batch = MessageSerializer.deserializeRecordBatch(result.getMessage(), result.getBodyBuffer());
-
-        if (batch == null) {
-            throw new IOException("Invalid file. No batch at offset: " + block.getOffset());
-        }
-
-        return batch;
+        return MessageSerializer.deserializeRecordBatch(result.getMessage(), result.getBodyBuffer());
     }
 
-    private boolean chunkContainsBlock(long chunkOffset, long chunkSize, long blockOffset, long blockSize) {
+    private DataChunk getChunk(ArrowBlock block) throws IOException {
 
-        if (blockOffset < chunkOffset)
-            return false;
+        while (!chunks.isEmpty()) {
 
+            DataChunk chunk = chunks.peek();
+
+            if (chunkContainsBlock(chunk, block))
+                return chunk;
+
+            chunk.buffer.close();
+            chunks.pop();
+        }
+
+        throw new IOException();  // todo
+    }
+
+    private DataChunk getChunk(long offset, long size) throws IOException {
+
+        while (!chunks.isEmpty()) {
+
+            DataChunk chunk = chunks.peek();
+
+            if (chunkContainsRange(chunk, offset, size))
+                return chunk;
+
+            chunk.buffer.close();
+            chunks.pop();
+        }
+
+        throw new IOException();  // todo
+    }
+
+    private boolean chunkContainsBlock(DataChunk chunk, ArrowBlock block) {
+
+        long blockSize = block.getMetadataLength() + block.getBodyLength();
+
+        return chunkContainsRange(chunk, block.getOffset(), blockSize);
+    }
+
+    private boolean chunkContainsRange(DataChunk chunk, long rangeOffset, long rangeSize) {
+
+        long chunkOffset = chunk.request.getOffset();
+        long chunkSize = chunk.request.getSize();
         long chunkEnd = chunkOffset + chunkSize;
-        long blockEnd = blockOffset + blockSize;
+        long rangeEnd = rangeOffset + rangeSize;
 
-        return blockEnd <= chunkEnd;
+        return chunkOffset <= rangeOffset && rangeEnd <= chunkEnd;
     }
 
 }
