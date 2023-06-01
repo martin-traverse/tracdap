@@ -16,19 +16,17 @@
 
 package org.finos.tracdap.common.storage;
 
-import org.apache.arrow.memory.ArrowBuf;
+import java.io.IOException;
+import java.nio.channels.AsynchronousByteChannel;
 
-import java.util.concurrent.CompletionStage;
 
+public interface IFileChannel extends AsynchronousByteChannel {
 
-public interface FileIO {
+    boolean isReadable();
+    boolean isWritable();
+    boolean isSeekable();
 
-    long position();
-    void position(long pos);
-    long size();
-
-    CompletionStage<ArrowBuf> read(long n);
-    CompletionStage<Long> write(ArrowBuf buf);
-
-    CompletionStage<Void> close();
+    long position() throws IOException;
+    void position(long pos) throws IOException;
+    long size() throws IOException;
 }

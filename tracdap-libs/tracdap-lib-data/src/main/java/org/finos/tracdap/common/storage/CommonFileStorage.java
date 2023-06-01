@@ -93,6 +93,10 @@ public abstract class CommonFileStorage implements IFileStorage {
     protected abstract Flow.Publisher<ArrowBuf> fsOpenInputStream(String objectKey, IDataContext ctx);
     protected abstract Flow.Subscriber<ArrowBuf> fsOpenOutputStream(String objectKey, CompletableFuture<Long> signal, IDataContext ctx);
 
+
+    protected abstract IFileChannel fsOpenInputStream2(String objectKey, IDataContext ctx);
+    protected abstract IFileChannel fsOpenOutputStream2(String objectKey, IDataContext ctx);
+
     // Expose final member variables to avoid duplication in child classes
 
     protected final Logger log = LoggerFactory.getLogger(getClass());
@@ -422,6 +426,15 @@ public abstract class CommonFileStorage implements IFileStorage {
         return Flows.waitForSignal(outputStream, toContext(ctx, prepare));
     }
 
+    @Override
+    public IFileChannel openReadChannel(String storagePath, boolean seekable) {
+        return null;
+    }
+
+    @Override
+    public IFileChannel openWriteChannel(String storagePath) {
+        return null;
+    }
 
     // -----------------------------------------------------------------------------------------------------------------
     // COMMON HELPERS

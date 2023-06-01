@@ -16,23 +16,26 @@
 
 package org.finos.tracdap.common.data.pipeline;
 
+import io.netty.channel.ChannelException;
 import org.apache.arrow.memory.ArrowBuf;
-import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.DataPipeline.*;
-import org.finos.tracdap.common.storage.FileIO;
+import org.finos.tracdap.common.storage.IFileChannel;
 
+import java.io.IOException;
+import java.nio.channels.CompletionHandler;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Flow;
 
 
 public class FileStages {
 
 
-    DataProducer<BufferApi> readAll(FileIO stream) {
+    DataProducer<BufferApi> readAll(IFileChannel stream) {
 
         return readChunk(stream, 0, stream.size());
     }
 
-    DataProducer<BufferApi> readChunk(FileIO stream, long offset, long size) {
+    DataProducer<BufferApi> readChunk(IFileChannel stream, long offset, long size) {
 
         stream.position(offset);
 
@@ -41,21 +44,21 @@ public class FileStages {
 
     }
 
-    DataProducer<StreamApi> readStream(DataPipelineImpl pipeline, FileIO stream) {
+    DataProducer<StreamApi> readStream(DataPipelineImpl pipeline, IFileChannel stream) {
 
         var publisher = new FileReadStream(stream);
 
         return new ReactiveByteSource(pipeline, publisher);
     }
 
-    DataProducer<FileApi> readFile(DataPipelineImpl pipeline, FileIO stream) {
+    DataProducer<FileApi> readFile(DataPipelineImpl pipeline, IFileChannel stream) {
 
         var publisher = new FileReadStream(stream);
 
         return new ReactiveByteSource(null, publisher);
     }
 
-    DataConsumer<StreamApi> writeStream(DataPipelineImpl pipeline, FileIO stream) {
+    DataConsumer<StreamApi> writeStream(DataPipelineImpl pipeline, IFileChannel stream) {
 
         var subscriber = new FileWriteStream(stream);
 
@@ -65,12 +68,12 @@ public class FileStages {
 
     static class FileReader extends BaseDataProducer<FileApi>  {
 
-        private final FileIO fileIO;
+        private final IFileChannel IFileChannel;
         private boolean started;
 
-        public FileReader(FileIO fileIO) {
+        public FileReader(IFileChannel IFileChannel) {
             super(FileApi.class);
-            this.fileIO = fileIO;
+            this.IFileChannel = IFileChannel;
         }
 
         @Override
@@ -83,28 +86,28 @@ public class FileStages {
 
             if (!started && consumerReady()) {
                 started = true;
-                consumer().onStart(fileIO.size(), new Subscription());
+                consumer().onStart(IFileChannel.size(), new Subscription());
             }
         }
 
         @Override
         public void close() throws Exception {
             markAsDone();
-            fileIO.close();
+            IFileChannel.close();
         }
 
         private class Subscription implements FileSubscription {
 
             @Override
             public void request(long offset, long size) {
-                fileIO.position(offset);
-                fileIO.read(size).whenComplete((chunk, error) -> readCallback(offset, chunk, error));
+                IFileChannel.position(offset);
+                IFileChannel.read(size).whenComplete((chunk, error) -> readCallback(offset, chunk, error));
             }
 
             @Override
             public void close() {
                 markAsDone();
-                fileIO.close();
+                IFileChannel.close();
             }
         }
 
@@ -119,45 +122,117 @@ public class FileStages {
 
     static class FileReadStream implements Flow.Publisher<ArrowBuf> {
 
-        private final FileIO fileIO;
+        private final IFileChannel channel;
+        private boolean readPending;
+        private boolean closePending;
 
-        public FileReadStream(FileIO fileIO) {
-            this.fileIO = fileIO;
+        public FileReadStream(IFileChannel channel) {
+            this.channel = channel;
         }
 
         @Override
         public void subscribe(Flow.Subscriber<? super ArrowBuf> subscriber) {
 
         }
+
+        private class Subscription extends Flow.Subscription {
+
+            @Override
+            public void request(long n) {
+
+            }
+
+            @Override
+            public void cancel() {
+
+            }
+        }
     }
 
     static class FileWriteStream implements Flow.Subscriber<ArrowBuf> {
 
-        private final FileIO fileIO;
+        private final CompletableFuture<Long> signal;
+        private final IFileChannel channel;
+        private final Callback callback;
 
-        public FileWriteStream(FileIO fileIO) {
-            this.fileIO = fileIO;
+        private Flow.Subscription subscription;
+        private boolean writePending;
+        private boolean closePending;
+
+        public FileWriteStream(IFileChannel channel, CompletableFuture<Long> signal) {
+            this.signal = signal;
+            this.channel = channel;
+            this.callback = new Callback();
         }
 
         @Override
         public void onSubscribe(Flow.Subscription subscription) {
-
+            this.subscription = subscription;
+            subscription.request(1);
         }
 
         @Override
         public void onNext(ArrowBuf chunk) {
-            fileIO.write(chunk);
+
+            try {
+                writePending = true;
+                var buffer = chunk.nioBuffer().asReadOnlyBuffer();
+                channel.write(buffer, chunk, callback);
+            }
+            catch (ChannelException e) {
+
+            }
         }
 
         @Override
         public void onError(Throwable throwable) {
 
+            try {
+                channel.close();
+            }
+            catch (IOException e) {
+
+            }
         }
 
         @Override
         public void onComplete() {
-            fileIO.flush().thenCompose
 
+            try {
+                if (writePending)
+                    closePending = true;
+                else
+                    channel.close();
+            }
+            catch (IOException e) {
+
+            }
+        }
+
+        private class Callback implements CompletionHandler<Integer, ArrowBuf> {
+
+            @Override
+            public void completed(Integer nBytes, ArrowBuf chunk) {
+                writePending = false;
+                if (closePending)
+                    channel.close();
+                else
+                    subscription.request(1);
+
+            }
+
+            @Override
+            public void failed(Throwable error, ArrowBuf chunk) {
+
+                try (chunk) {
+                    writePending = false;
+                    signal.completeExceptionally(error);
+                }
+                finally {
+                    channel.close();
+                    chunk.close();
+                }
+            }
         }
     }
 }

@@ -51,6 +51,10 @@ public interface IFileStorage extends AutoCloseable {
 
     CompletionStage<Void> rmdir(String storagePath, IExecutionContext execContext);
 
+    CompletionStage<IFileChannel> openReadChannel(String storagePath, boolean seekable);
+
+    CompletionStage<IFileChannel> openWriteChannel(String storagePath);
+
     CompletionStage<ArrowBuf> readChunk(
             String storagePath,
             long offset, int size,
