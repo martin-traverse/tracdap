@@ -27,6 +27,6 @@ gsutil ls gs://${TRAC_GCP_BUCKET} | head
 
 # So, set up access token auth by configuring the ENV vars read by TRAC integration tests
 
-echo "TRAC_GCP_CREDENTIALS=access_token" >> ${GITHUB_ENV}
+echo "TRAC_GCP_CREDENTIALS=accessToken" >> ${GITHUB_ENV}
 echo "TRAC_GCP_ACCESS_TOKEN=`gcloud auth print-access-token`" >> ${GITHUB_ENV}
 echo "TRAC_GCP_ACCESS_TOKEN_EXPIRY=900" >> ${GITHUB_ENV}

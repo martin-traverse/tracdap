@@ -48,7 +48,7 @@ class GcpStorageProvider(IStorageProvider):
 
     CREDENTIALS_PROPERTY = "credentials"
     CREDENTIALS_ADC = "adc"
-    CREDENTIALS_ACCESS_TOKEN = "access_token"
+    CREDENTIALS_ACCESS_TOKEN = "accessToken"
 
     ACCESS_TOKEN = "accessToken"
     ACCESS_TOKEN_EXPIRY = "accessTokenExpiry"
