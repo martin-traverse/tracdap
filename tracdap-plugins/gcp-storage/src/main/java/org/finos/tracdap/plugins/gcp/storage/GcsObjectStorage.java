@@ -26,9 +26,14 @@ import org.finos.tracdap.common.storage.CommonFileStorage;
 import org.finos.tracdap.common.storage.FileStat;
 import org.finos.tracdap.common.storage.FileType;
 
+import com.google.api.gax.core.FixedCredentialsProvider;
 import com.google.api.gax.grpc.GrpcCallContext;
 import com.google.api.gax.grpc.InstantiatingGrpcChannelProvider;
 import com.google.api.gax.rpc.*;
+import com.google.auth.Credentials;
+import com.google.auth.oauth2.AccessToken;
+import com.google.auth.oauth2.GoogleCredentials;
+import com.google.auth.oauth2.OAuth2Credentials;
 import com.google.storage.v2.*;
 import com.google.storage.v2.Object;
 
@@ -45,11 +50,9 @@ import io.netty.channel.socket.nio.NioSocketChannel;
 
 import org.apache.arrow.memory.ArrowBuf;
 
+import java.io.IOException;
 import java.time.Instant;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.util.*;
 import java.util.concurrent.*;
 
 import static org.finos.tracdap.common.storage.StorageErrors.ExplicitError.OBJECT_SIZE_TOO_SMALL;
@@ -63,11 +66,19 @@ public class GcsObjectStorage extends CommonFileStorage {
     public static final String BUCKET_PROPERTY = "bucket";
     public static final String PREFIX_PROPERTY = "prefix";
 
+    public static final String CREDENTIALS_PROPERTY = "credentials";
+    public static final String CREDENTIALS_ADC = "adc";
+    public static final String CREDENTIALS_ACCESS_TOKEN = "accessToken";
+    public static final String ACCESS_TOKEN_PROPERTY = "accessToken";
+    public static final String ACCESS_TOKEN_EXPIRY_PROPERTY = "accessTokenExpiry";
+    public static final int ACCESS_TOKEN_EXPIRY_DEFAULT = 3600;
+
     private static final int DELETE_PAGE_SIZE = 1000;
 
     private final String project;
     private final String bucket;
     private final String prefix;
+    private final Credentials credentials;
 
     private StorageClient storageClient;
     private Storage legacyClient;
@@ -85,6 +96,8 @@ public class GcsObjectStorage extends CommonFileStorage {
         this.project = project;
         this.bucket = bucket;
         this.prefix = normalizePrefix(prefix);
+
+        this.credentials = configureCredentials(properties);
     }
 
     @Override
@@ -103,11 +116,15 @@ public class GcsObjectStorage extends CommonFileStorage {
 
             var settings = StorageSettings.newBuilder()
                     .setTransportChannelProvider(transportProvider)
+                    .setCredentialsProvider(FixedCredentialsProvider.create(credentials))
                     .build();
 
             storageClient = StorageClient.create(settings);
 
-            legacyClient = StorageOptions.http().build().getService();
+            legacyClient = StorageOptions.http()
+                    .setCredentials(credentials)
+                    .build()
+                    .getService();
 
             // Make a basic request so any connectivity errors are detected during startup
 
@@ -156,6 +173,53 @@ public class GcsObjectStorage extends CommonFileStorage {
         else {
             return channelBuilder;
         }
+    }
+
+    private Credentials configureCredentials(Properties properties) {
+
+        try {
+
+            var mechanism = properties.getProperty(CREDENTIALS_PROPERTY);
+
+            if (mechanism == null || mechanism.isBlank()) {
+                log.info("Using [{}] credentials mechanism", CREDENTIALS_ADC);
+                return GoogleCredentials.getApplicationDefault();
+            }
+
+            if (mechanism.equalsIgnoreCase(CREDENTIALS_ADC)) {
+                log.info("Using [{}] credentials mechanism", CREDENTIALS_ADC);
+                return GoogleCredentials.getApplicationDefault();
+            }
+
+            if (mechanism.equalsIgnoreCase(CREDENTIALS_ACCESS_TOKEN)) {
+
+                log.info("Using [{}] credentials mechanism", CREDENTIALS_ACCESS_TOKEN);
+
+                var accessToken = properties.getProperty(ACCESS_TOKEN_PROPERTY);
+                var accessTokenExpiry = properties.getProperty(ACCESS_TOKEN_EXPIRY_PROPERTY);
+
+                if (accessToken == null || accessToken.isBlank()) {
+                    var message = String.format("Missing required config property [%s] for GCP storage", ACCESS_TOKEN_PROPERTY);
+                    log.error(message);
+                    throw new EStartup(message);
+                }
+
+                var expirySeconds = accessTokenExpiry != null ? Long.parseLong(accessTokenExpiry) : ACCESS_TOKEN_EXPIRY_DEFAULT;
+                var expiryTime = Date.from(Instant.now().plusSeconds(expirySeconds));
+                var token = new AccessToken(accessTokenExpiry, expiryTime);
+
+                return OAuth2Credentials.newBuilder().setAccessToken(token).build();
+            }
+
+            var message = String.format("Unrecognised credentials mechanism: [%s]", mechanism);
+            log.error(message);
+            throw new EStartup(message);
+        }
+        catch (IOException error) {
+            log.error(error.getMessage(), error);
+            throw new EStartup(error.getMessage(), error);
+        }
+
     }
 
     @Override
