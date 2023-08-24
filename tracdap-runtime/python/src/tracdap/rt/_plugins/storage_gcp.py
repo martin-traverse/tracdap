@@ -147,9 +147,6 @@ class GcpStorageProvider(IStorageProvider):
 
     def setup_credentials(self):
 
-        # Only default (Google ADC) mechanism is supported
-        # Arrow GCP FS does also support access tokens, but ADC is probably all we ever need
-
         mechanism = _helpers.get_plugin_property(self._properties, self.CREDENTIALS_PROPERTY)
 
         if mechanism is None or len(mechanism) == 0 or mechanism.lower() == self.CREDENTIALS_ADC:
