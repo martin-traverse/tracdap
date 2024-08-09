@@ -1,5 +1,5 @@
 /*
- * Copyright 2022 Accenture Global Solutions Limited
+ * Copyright 2024 Accenture Global Solutions Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,21 +14,30 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.exception;
+package org.finos.tracdap.common.validation.graph;
+
+import java.util.Map;
 
 
-/**
- * An illegal request has been made to the executor
- */
-public class EExecutorValidation extends EExecutor {
+public class Graph<TPayload> {
 
-    // TODO: Rename / reconsider this exception
+    private final Map<NodeId, Node<TPayload>> nodes;
+    private final NodeId root;
 
-    public EExecutorValidation(String message, Throwable cause) {
-        super(message, cause);
+    public Graph(Map<NodeId, Node<TPayload>> nodes, NodeId root) {
+        this.nodes = nodes;
+        this.root = root;
     }
 
-    public EExecutorValidation(String message) {
-        super(message);
+    public Map<NodeId, Node<TPayload>> nodes() {
+        return nodes;
+    }
+
+    public NodeId root() {
+        return root;
+    }
+
+    public static class Processor {
+
     }
 }

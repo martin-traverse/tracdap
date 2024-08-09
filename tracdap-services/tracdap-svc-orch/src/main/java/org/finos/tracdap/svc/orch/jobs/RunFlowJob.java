@@ -17,6 +17,7 @@
 package org.finos.tracdap.svc.orch.jobs;
 
 import org.finos.tracdap.api.MetadataWriteRequest;
+import org.finos.tracdap.common.exception.ETracInternal;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.metadata.MetadataBundle;
 import org.finos.tracdap.common.metadata.MetadataUtil;
@@ -33,6 +34,18 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
 
     @Override
     public JobDefinition applyTransform(JobDefinition job, MetadataBundle metadata, PlatformConfig platformConfig) {
+
+        var flowObj = metadata.getResource(job.getRunFlow().getFlow());
+        var flow = flowObj != null ? flowObj.getFlow() : null;
+
+        if (flow == null)
+            throw new ETracInternal("");  // TODO
+
+        var flowGraph = GraphBuilder.buildGraph(flow, job.getRunFlow(), metadata);
+        var fullGraph = GraphProcessor.transform(...);
+
+        var fullFlow = GraphProcessor.process(new FlowExporter());
+
 
         // No transformations currently required
         return job;

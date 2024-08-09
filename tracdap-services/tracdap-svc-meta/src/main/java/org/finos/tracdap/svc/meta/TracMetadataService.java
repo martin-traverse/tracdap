@@ -190,7 +190,7 @@ public class TracMetadataService extends CommonServiceBase {
             var overflowSize = readConfigInt(properties, POOL_OVERFLOW_KEY, DEFAULT_OVERFLOW_SIZE);
 
             var threadFactory = new ThreadFactoryBuilder()
-                    .setNameFormat("worker-%d")
+                    .setNameFormat("meta-svc-%d")
                     .setPriority(Thread.NORM_PRIORITY)
                     .build();
 
