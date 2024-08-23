@@ -68,6 +68,8 @@ ext {
 
     apache_sshd_version = "2.12.1"
 
+    kubernetes_version = "21.0.1"
+
 
     // Test dependencies
 
