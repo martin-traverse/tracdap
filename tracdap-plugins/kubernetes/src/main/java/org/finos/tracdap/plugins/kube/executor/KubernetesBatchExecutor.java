@@ -16,8 +16,21 @@
 
 package org.finos.tracdap.plugins.kube.executor;
 
+import io.kubernetes.client.openapi.apis.VersionApi;
+import org.finos.tracdap.common.exception.EStartup;
+import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.exec.*;
 
+import io.kubernetes.client.openapi.ApiException;
+import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.openapi.apis.BatchV1Api;
+import io.kubernetes.client.openapi.models.*;
+import io.kubernetes.client.util.Config;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 import java.util.Properties;
@@ -25,12 +38,65 @@ import java.util.Properties;
 
 public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchState> {
 
+    private static final int TRUNCATE_STARTUP_NS = 10;
+
+    private final Logger log = LoggerFactory.getLogger(getClass());
+
+    private final CoreV1Api coreClient;
+    private final BatchV1Api batchClient;
+
     public KubernetesBatchExecutor(Properties properties) {
+
+        coreClient = new CoreV1Api();
+        batchClient = new BatchV1Api();
     }
 
     @Override
     public void start() {
 
+        try {
+
+            log.info("Kubernetes executor starting, checking cluster connection...");
+
+            // Set up the API client using the default config resolution mechanism
+            var apiClient = Config.defaultClient();
+            coreClient.setApiClient(apiClient);
+            batchClient.setApiClient(apiClient);
+
+            log.info("Cluster address: [{}]", apiClient.getBasePath());
+
+            // Get cluster version info to test connection
+            var versionClient = new VersionApi(apiClient);
+            var versionRequest = versionClient.getCode();
+            var versionResponse = versionRequest.execute();
+
+            log.info("Cluster version: [{}]", versionResponse.getGitVersion());
+
+            // List available cluster namespaces
+            var ping = coreClient.listNamespace();
+            var pong = ping.execute();
+
+            log.info("Found {} namespaces:", pong.getItems().size());
+
+            var nsCount = 0;
+
+            for (var ns : pong.getItems()) {
+                if (nsCount >= TRUNCATE_STARTUP_NS) {
+                    log.info("... (truncated)");
+                    break;
+                }
+                if (ns.getMetadata() != null) {
+                    log.info(">>> {}", ns.getMetadata().getName());
+                    nsCount++;
+                }
+            }
+        }
+        catch (ApiException e) {
+            throw new EStartup("Failed to start Kubernetes executor", e);
+        }
+        catch (IOException e) {
+            throw new EStartup("Failed to start Kubernetes executor", e);
+        }
     }
 
     @Override
@@ -45,7 +111,16 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public KubernetesBatchState createBatch(String batchKey) {
-        return null;
+
+        var container = new V1Container();
+
+        var podSpec = new V1PodSpec();
+        podSpec.addContainersItem(container);
+
+        var batchState = new KubernetesBatchState();
+        batchState.podSpec = podSpec;
+
+        return batchState;
     }
 
     @Override
@@ -55,12 +130,55 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public KubernetesBatchState createVolume(String batchKey, KubernetesBatchState batchState, String volumeName, ExecutorVolumeType volumeType) {
-        return null;
+
+        var volume = new V1Volume();
+
+        switch (volumeType) {
+
+            case CONFIG_DIR:
+
+                var configMap = new V1ConfigMap();
+                batchState.configVolumes.put(volumeName, configMap);
+
+                var configMapSource = new V1ConfigMapVolumeSource();
+                volume.setConfigMap(configMapSource);
+
+                break;
+
+            case SCRATCH_DIR:
+
+                var emptyDirSource = new V1EmptyDirVolumeSource();
+                volume.setEmptyDir(emptyDirSource);
+
+                break;
+
+            case RESULT_DIR:
+
+                var persistentClaim = new V1PersistentVolumeClaim();
+
+                var persistentSource = new V1PersistentVolumeClaimVolumeSource();
+                volume.setPersistentVolumeClaim(persistentSource);
+
+                break;
+
+        }
+
+        batchState.podSpec.addVolumesItem(volume);
+
+        return batchState;
     }
 
     @Override
     public KubernetesBatchState writeFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName, byte[] fileContent) {
-        return null;
+
+        var configMap = batchState.configVolumes.get(volumeName);
+
+        if (configMap == null)
+            throw new EUnexpected();  // TODO
+
+        configMap.putBinaryDataItem(fileName, fileContent);
+
+        return batchState;
     }
 
     @Override
@@ -70,7 +188,20 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public KubernetesBatchState startBatch(String batchKey, KubernetesBatchState batchState, LaunchCmd launchCmd, List<LaunchArg> launchArgs) {
-        return null;
+
+        var templateSpec = new V1PodTemplateSpec();
+        templateSpec.setSpec(batchState.podSpec);
+
+        var jobSpec = new V1JobSpec();
+        jobSpec.setTemplate(templateSpec);
+
+        var job = new V1Job();
+        job.setSpec(jobSpec);
+
+        var jobRequest = batchClient.createNamespacedJob(batchState.namespace, job);
+        // var jobResult = jobRequest.execute();
+
+        return batchState;
     }
 
     @Override

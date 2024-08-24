@@ -16,10 +16,25 @@
 
 package org.finos.tracdap.plugins.kube.executor;
 
+import io.kubernetes.client.openapi.models.V1ConfigMap;
+import io.kubernetes.client.openapi.models.V1PodSpec;
+import io.kubernetes.client.openapi.models.V1Volume;
+
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
 
 
 public class KubernetesBatchState implements Serializable {
 
     private static final long serialVersionUID = 1L;
+
+    String namespace;
+
+    List<V1Volume> volumes;
+
+    V1PodSpec podSpec;
+
+    Map<String, V1ConfigMap> configVolumes = new HashMap<>();
 }
