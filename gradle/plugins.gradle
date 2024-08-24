@@ -60,6 +60,7 @@ ext {
     BUILD_gcp_storage = false
 
     BUILD_ssh_executor = false
+    BUILD_kubernetes_executor = false
 
     // These DEPEND_ flags say what gets pulled in for each plugin
     // Note the SQL driver dependencies are listed in tracdap-lib-db
@@ -73,4 +74,5 @@ ext {
     DEPEND_gcp_storage = project(":gcp-storage")
 
     DEPEND_ssh_executor = project(":ssh-executor")
+    DEPEND_kubernetes_executor = project(":kubernetes")
 }
