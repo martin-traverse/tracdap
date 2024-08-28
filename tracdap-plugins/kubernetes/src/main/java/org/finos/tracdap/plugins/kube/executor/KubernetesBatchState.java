@@ -16,25 +16,37 @@
 
 package org.finos.tracdap.plugins.kube.executor;
 
-import io.kubernetes.client.openapi.models.V1ConfigMap;
-import io.kubernetes.client.openapi.models.V1PodSpec;
-import io.kubernetes.client.openapi.models.V1Volume;
+import io.kubernetes.client.openapi.models.*;
 
+import java.io.IOException;
+import java.io.ObjectInputStream;
+import java.io.ObjectOutputStream;
 import java.io.Serializable;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 
 
 public class KubernetesBatchState implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
-    String namespace;
+    String jobNamespace;
+    String jobName;
 
-    List<V1Volume> volumes;
+    transient V1PodSpec podSpec;
+    transient V1Job job;
 
-    V1PodSpec podSpec;
+    private void writeObject(ObjectOutputStream oos) throws IOException {
 
-    Map<String, V1ConfigMap> configVolumes = new HashMap<>();
+        oos.defaultWriteObject();
+
+        oos.writeUTF(podSpec.toJson());
+        oos.writeUTF(job.toJson());
+    }
+
+    private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+
+        ois.defaultReadObject();
+
+        podSpec = V1PodSpec.fromJson(ois.readUTF());
+        job = V1Job.fromJson(ois.readUTF());
+    }
 }
