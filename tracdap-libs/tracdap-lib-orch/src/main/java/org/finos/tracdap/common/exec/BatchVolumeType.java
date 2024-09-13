@@ -1,5 +1,5 @@
 /*
- * Copyright 2023 Accenture Global Solutions Limited
+ * Copyright 2022 Accenture Global Solutions Limited
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -16,13 +16,9 @@
 
 package org.finos.tracdap.common.exec;
 
-public enum ExecutorJobStatus {
+public enum BatchVolumeType {
 
-    STATUS_UNKNOWN,
-    QUEUED,
-    RUNNING,
-    COMPLETE,
-    SUCCEEDED,
-    FAILED,
-    CANCELLED
+    CONFIG_VOLUME,
+    SCRATCH_VOLUME,
+    RESULT_VOLUME,
 }

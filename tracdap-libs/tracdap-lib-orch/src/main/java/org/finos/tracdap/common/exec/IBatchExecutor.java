@@ -25,26 +25,37 @@ public interface IBatchExecutor<TState extends Serializable> {
 
     // Interface for running batch jobs, i.e. a job that runs using one-shot using a one-shot process
 
+    enum Feature {
+        OUTPUT_VOLUMES,
+        REMOTE_API,
+        CANCELLATION,
+        LOG_OUTPUT
+    }
+
     void start();
 
     void stop();
 
     Class<TState> stateClass();
 
+    boolean hasFeature(Feature feature);
+
     TState createBatch(String batchKey);
+    TState addVolume(String batchKey, TState batchState, String volumeName, BatchVolumeType volumeType);
+    TState addFile(String batchKey, TState batchState, String volumeName, String fileName, byte[] fileContent);
 
-    void destroyBatch(String batchKey, TState batchState);
+    TState submitBatch(String batchKey, TState batchState, BatchConfig batchConfig);
+    TState cancelBatch(String batchKey, TState batchState);
+    void deleteBatch(String batchKey, TState batchState);
 
-    TState createVolume(String batchKey, TState batchState, String volumeName, ExecutorVolumeType volumeType);
+    BatchStatus getBatchStatus(String batchKey, TState batchState);
 
-    TState writeFile(String batchKey, TState batchState, String volumeName, String fileName, byte[] fileContent);
+    boolean hasOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
+    byte[] getOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
 
-    byte[] readFile(String batchKey, TState batchState, String volumeName, String fileName);
+    // This isn't used and the only available implementations call getBatchStatus for each batch
+    // Is there a reliable way of getting all job statuses in one go, at least for some executor types?
 
-    TState startBatch(String batchKey, TState batchState, LaunchCmd launchCmd, List<LaunchArg> launchArgs);
-
-    ExecutorJobInfo pollBatch(String batchKey, TState batchState);
-
-    List<ExecutorJobInfo> pollBatches(List<Map.Entry<String, TState>> batches);
-
+    @Deprecated
+    List<BatchStatus> pollBatches(List<Map.Entry<String, TState>> batches);
 }
