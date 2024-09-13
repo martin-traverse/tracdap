@@ -21,6 +21,7 @@ import org.finos.tracdap.common.config.ConfigFormat;
 import org.finos.tracdap.common.config.ConfigParser;
 import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.grpc.CompressionClientInterceptor;
+import org.finos.tracdap.common.grpc.GrpcChannelFactory;
 import org.finos.tracdap.common.grpc.LoggingClientInterceptor;
 import org.finos.tracdap.common.metadata.MetadataUtil;
 import org.finos.tracdap.config.JobConfig;
@@ -33,12 +34,10 @@ import org.finos.tracdap.metadata.TagHeader;
 import io.grpc.Channel;
 import io.grpc.ManagedChannel;
 import io.grpc.StatusRuntimeException;
-import io.grpc.netty.NettyChannelBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.Serializable;
-import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.concurrent.Flow;
@@ -52,12 +51,15 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
     private final Logger log = LoggerFactory.getLogger(getClass());
     private final IBatchExecutor<TBatchState> batchExecutor;
 
+    private GrpcChannelFactory channelFactory;
+
     public BatchJobExecutor(IBatchExecutor<TBatchState> batchExecutor) {
         this.batchExecutor = batchExecutor;
     }
 
     @Override
-    public void start() {
+    public void start(GrpcChannelFactory channelFactory) {
+        this.channelFactory = channelFactory;
         batchExecutor.start();
     }
 
@@ -209,7 +211,7 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
         try {
 
-            runtimeChannel = getRuntimeChannel(jobState.runtimeApiAddress);
+            runtimeChannel = channelFactory.createChannel(jobState.runtimeApiAddress);
             var runtimeApi = getRuntimeApi(runtimeChannel);
 
             return runtimeApi.getJobStatus(runtimeRequest);
@@ -274,7 +276,7 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
         try {
 
-            runtimeChannel = getRuntimeChannel(jobState.runtimeApiAddress);
+            runtimeChannel = channelFactory.createChannel(jobState.runtimeApiAddress);
             var runtimeApi = getRuntimeApi(runtimeChannel);
 
             var runtimeRequest = RuntimeJobInfoRequest.newBuilder()
@@ -338,20 +340,6 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
             // TODO: Internal validation class
             throw new EExecutorValidation("Invalid job result: " + shortMessage, e);
         }
-    }
-
-    private ManagedChannel getRuntimeChannel(InetSocketAddress socketAddress) {
-
-        // TODO: Channel properties, or use a channel factory
-
-        var clientChannelBuilder = NettyChannelBuilder
-                .forAddress(socketAddress.getHostString(), socketAddress.getPort())
-//                .channelType(channelType)
-//                .eventLoopGroup(nettyGroup)
-//                .executor(serviceGroup)
-                .usePlaintext();
-
-        return clientChannelBuilder.build();
     }
 
     private TracRuntimeApiGrpc.TracRuntimeApiBlockingStub getRuntimeApi(Channel clientChannel) {

@@ -74,13 +74,13 @@ public class JobProcessor {
             PlatformConfig platformConfig,
             TrustedMetadataApiBlockingStub metaClient,
             InternalAuthProvider internalAuth,
-            IBatchExecutor<?> batchExecutor) {
+            IJobExecutor<?> jobExecutor) {
 
         this.platformConfig = platformConfig;
         this.metaClient = metaClient;
         this.internalAuth = internalAuth;
+        this.executor = jobExecutor;
 
-        this.executor = new BatchJobExecutor<>(batchExecutor);
         this.lifecycle = new JobProcessorHelpers(platformConfig, metaClient);
     }
 

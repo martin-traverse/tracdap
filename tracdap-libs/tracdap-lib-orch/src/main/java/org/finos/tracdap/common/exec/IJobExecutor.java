@@ -18,6 +18,7 @@ package org.finos.tracdap.common.exec;
 
 import org.finos.tracdap.api.internal.RuntimeJobResult;
 import org.finos.tracdap.api.internal.RuntimeJobStatus;
+import org.finos.tracdap.common.grpc.GrpcChannelFactory;
 import org.finos.tracdap.config.JobConfig;
 import org.finos.tracdap.config.RuntimeConfig;
 import org.finos.tracdap.metadata.TagHeader;
@@ -29,7 +30,7 @@ import java.util.concurrent.Flow;
 
 public interface IJobExecutor<TState extends Serializable> {
 
-    void start();
+    void start(GrpcChannelFactory channelFactory);
     void stop();
 
     Class<TState> stateClass();
