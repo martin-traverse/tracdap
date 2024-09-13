@@ -40,42 +40,57 @@ public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
     }
 
     @Override
+    public boolean hasFeature(Feature feature) {
+        return false;
+    }
+
+    @Override
     public UnitTestExecutorState createBatch(String batchKey) {
         return null;
     }
 
     @Override
-    public void destroyBatch(String batchKey, UnitTestExecutorState batchState) {
-
-    }
-
-    @Override
-    public UnitTestExecutorState createVolume(String batchKey, UnitTestExecutorState batchState, String volumeName, ExecutorVolumeType volumeType) {
+    public UnitTestExecutorState addVolume(String batchKey, UnitTestExecutorState batchState, String volumeName, BatchVolumeType volumeType) {
         return null;
     }
 
     @Override
-    public UnitTestExecutorState writeFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName, byte[] fileContent) {
+    public UnitTestExecutorState addFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName, byte[] fileContent) {
         return null;
     }
 
     @Override
-    public byte[] readFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName) {
-        return new byte[0];
-    }
-
-    @Override
-    public UnitTestExecutorState startBatch(String batchKey, UnitTestExecutorState batchState, LaunchCmd launchCmd, List<LaunchArg> launchArgs) {
+    public UnitTestExecutorState submitBatch(String batchKey, UnitTestExecutorState batchState, BatchConfig batchConfig) {
         return null;
     }
 
     @Override
-    public ExecutorJobInfo pollBatch(String batchKey, UnitTestExecutorState batchState) {
+    public UnitTestExecutorState cancelBatch(String batchKey, UnitTestExecutorState batchState) {
         return null;
     }
 
     @Override
-    public List<ExecutorJobInfo> pollBatches(List<Map.Entry<String, UnitTestExecutorState>> batches) {
+    public void deleteBatch(String batchKey, UnitTestExecutorState batchState) {
+
+    }
+
+    @Override
+    public BatchStatus getBatchStatus(String batchKey, UnitTestExecutorState batchState) {
+        return null;
+    }
+
+    @Override
+    public List<BatchStatus> pollBatches(List<Map.Entry<String, UnitTestExecutorState>> batches) {
         return List.of();
+    }
+
+    @Override
+    public boolean hasOutputFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName) {
+        return false;
+    }
+
+    @Override
+    public byte[] getOutputFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName) {
+        return new byte[0];
     }
 }
