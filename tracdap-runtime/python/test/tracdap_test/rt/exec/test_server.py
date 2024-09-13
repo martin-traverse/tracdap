@@ -62,10 +62,10 @@ class RuntimeApiServerTest(unittest.TestCase):
             with grpc.insecure_channel(self.UNIT_TEST_ADDRESS) as channel:
 
                 client = runtime_grpc.TracRuntimeApiStub(channel)
-                request = runtime_pb2.ListJobsRequest()
-                response: runtime_pb2.ListJobsResponse = client.listJobs(request)
+                request = runtime_pb2.RuntimeListJobsRequest()
+                response: runtime_pb2.RuntimeListJobsResponse = client.listJobs(request)
 
-                self.assertIsInstance(response, runtime_pb2.ListJobsResponse)
+                self.assertIsInstance(response, runtime_pb2.RuntimeListJobsResponse)
                 self.assertEqual(0, len(response.jobs))
 
     def test_get_job_status(self):
@@ -94,8 +94,8 @@ class RuntimeApiServerTest(unittest.TestCase):
                 rt.wait_for_job(job_id)
 
                 client = runtime_grpc.TracRuntimeApiStub(channel)
-                request = runtime_pb2.JobInfoRequest(jobKey=util.object_key(job_id))
-                response: runtime_pb2.JobStatus = client.getJobStatus(request)
+                request = runtime_pb2.RuntimeJobInfoRequest(jobKey=util.object_key(job_id))
+                response: runtime_pb2.RuntimeJobStatus = client.getJobStatus(request)
 
                 self.assertEqual(job_id.objectId, response.jobId.objectId)
                 self.assertEqual(meta.JobStatusCode.SUCCEEDED.value, response.statusCode)
@@ -108,7 +108,7 @@ class RuntimeApiServerTest(unittest.TestCase):
             with grpc.insecure_channel(self.UNIT_TEST_ADDRESS) as channel:
 
                 client = runtime_grpc.TracRuntimeApiStub(channel)
-                request = runtime_pb2.JobInfoRequest(jobKey=util.object_key(job_id))
+                request = runtime_pb2.RuntimeJobInfoRequest(jobKey=util.object_key(job_id))
 
                 with self.assertRaises(grpc.RpcError) as error_ctx:
                     client.getJobStatus(request)

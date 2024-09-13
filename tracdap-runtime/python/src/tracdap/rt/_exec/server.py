@@ -124,21 +124,21 @@ class RuntimeApiServer(runtime_grpc.TracRuntimeApiServicer):
 
         self.__log.info("Runtime API server has gone down cleanly")
 
-    async def listJobs(self, request: runtime_pb2.ListJobsRequest, context: grpc.aio.ServicerContext):
+    async def listJobs(self, request: runtime_pb2.RuntimeListJobsRequest, context: grpc.aio.ServicerContext):
 
         request_task = ListJobsRequest(self.__engine_id, request, context)
         self.__agent.threadsafe().spawn(request_task)
 
         return await request_task.complete(self.__request_timeout)
 
-    async def getJobStatus(self, request: runtime_pb2.JobInfoRequest, context: grpc.ServicerContext):
+    async def getJobStatus(self, request: runtime_pb2.RuntimeJobInfoRequest, context: grpc.ServicerContext):
 
         request_task = GetJobStatusRequest(self.__engine_id, request, context)
         self.__agent.threadsafe().spawn(request_task)
 
         return await request_task.complete(self.__request_timeout)
 
-    async def getJobDetails(self, request: runtime_pb2.JobInfoRequest, context: grpc.ServicerContext):
+    async def getJobDetails(self, request: runtime_pb2.RuntimeJobInfoRequest, context: grpc.ServicerContext):
 
         request_task = GetJobStatusRequest(self.__engine_id, request, context)
         self.__agent.threadsafe().spawn(request_task)
@@ -248,7 +248,7 @@ class ApiRequest(actors.ThreadsafeActor, tp.Generic[_T_REQUEST, _T_RESPONSE]):
 ApiRequest._log = util.logger_for_class(ApiRequest)
 
 
-class ListJobsRequest(ApiRequest[runtime_pb2.ListJobsRequest, runtime_pb2.ListJobsResponse]):
+class ListJobsRequest(ApiRequest[runtime_pb2.RuntimeListJobsRequest, runtime_pb2.RuntimeListJobsResponse]):
 
     def __init__(self, engine_id, request, context):
         super().__init__(engine_id, "get_job_list", request, context)
@@ -259,13 +259,13 @@ class ListJobsRequest(ApiRequest[runtime_pb2.ListJobsRequest, runtime_pb2.ListJo
     @actors.Message
     def job_list(self, job_list):
 
-        self._response = runtime_pb2.ListJobsResponse(
+        self._response = runtime_pb2.RuntimeListJobsResponse(
             jobs=codec.encode(job_list))
 
         self._mark_complete()
 
 
-class GetJobStatusRequest(ApiRequest[runtime_pb2.JobInfoRequest, runtime_pb2.JobStatus]):
+class GetJobStatusRequest(ApiRequest[runtime_pb2.RuntimeJobInfoRequest, runtime_pb2.RuntimeJobStatus]):
 
     def __init__(self, engine_id, request, context):
 
@@ -289,7 +289,7 @@ class GetJobStatusRequest(ApiRequest[runtime_pb2.JobInfoRequest, runtime_pb2.Job
             self._grpc_message = f"Job not found: [{self._job_key}]"
 
         else:
-            self._response = runtime_pb2.JobStatus(
+            self._response = runtime_pb2.RuntimeJobStatus(
                 jobId=codec.encode(job_details.jobId),
                 statusCode=codec.encode(job_details.statusCode),
                 statusMessage=codec.encode(job_details.statusMessage))
