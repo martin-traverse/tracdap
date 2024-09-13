@@ -17,12 +17,12 @@
 package org.finos.tracdap.svc.orch.service;
 
 import org.finos.tracdap.api.JobRequest;
+import org.finos.tracdap.api.internal.RuntimeJobResult;
+import org.finos.tracdap.api.internal.RuntimeJobStatus;
 import org.finos.tracdap.common.auth.internal.InternalCallCredentials;
 import org.finos.tracdap.common.auth.internal.UserInfo;
 import org.finos.tracdap.common.exception.EUnexpected;
-import org.finos.tracdap.common.exec.ExecutorJobStatus;
 import org.finos.tracdap.config.JobConfig;
-import org.finos.tracdap.config.JobResult;
 import org.finos.tracdap.config.RuntimeConfig;
 import org.finos.tracdap.metadata.JobDefinition;
 import org.finos.tracdap.metadata.JobType;
@@ -68,12 +68,13 @@ public class JobState implements Serializable, Cloneable {
     Map<String, TagHeader> resultMapping = new HashMap<>();
 
     // Input / output config files for communicating with the runtime
-    RuntimeConfig sysConfig;
     JobConfig jobConfig;
-    JobResult jobResult;
+    RuntimeConfig sysConfig;
+
+    RuntimeJobStatus executorStatus;
+    RuntimeJobResult executorResult;
 
     // Executor state data
-    ExecutorJobStatus executorStatus;
     Serializable executorState;
 
     @Override

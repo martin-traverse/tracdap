@@ -16,17 +16,18 @@
 
 package org.finos.tracdap.svc.orch.service;
 
-import io.grpc.Status;
-import io.grpc.StatusException;
-import io.grpc.StatusRuntimeException;
+import org.finos.tracdap.api.internal.RuntimeJobStatus;
 import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.cache.CacheEntry;
 import org.finos.tracdap.common.cache.IJobCache;
-import org.finos.tracdap.common.exec.ExecutorJobInfo;
 import org.finos.tracdap.common.metadata.MetadataUtil;
 import org.finos.tracdap.config.PlatformConfig;
 import org.finos.tracdap.config.PluginConfig;
 import org.finos.tracdap.metadata.JobStatusCode;
+
+import io.grpc.Status;
+import io.grpc.StatusException;
+import io.grpc.StatusRuntimeException;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -309,8 +310,9 @@ public class JobManager {
 
                 var job = runningJobs.get(i);
                 var pollResult = pollResults.get(i);
+                var priorStatus = job.value().executorStatus;
 
-                if (pollResult.getStatus() != job.value().executorStatus) {
+                if (priorStatus == null || pollResult.getStatusCode() != priorStatus.getStatusCode()) {
 
                     var operation = getNextOperation(job, pollResult);
                     javaExecutor.submit(() -> processJobOperation(operation));
@@ -458,7 +460,7 @@ public class JobManager {
         return operation;
     }
 
-    private JobOperation getNextOperation(CacheEntry<JobState> cacheEntry, ExecutorJobInfo pollResult) {
+    private JobOperation getNextOperation(CacheEntry<JobState> cacheEntry, RuntimeJobStatus pollResult) {
 
         var operation = new JobOperation();
         operation.jobKey = cacheEntry.key();
