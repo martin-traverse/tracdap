@@ -476,15 +476,6 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 }
             }
 
-            if (batchState.service != null && batchState.service.getMetadata() != null) {
-
-                log.info("Deleting API service for [{}]", batchState.service.getMetadata().getName());
-
-                coreClient.deleteNamespacedService(
-                        batchState.service.getMetadata().getName(),
-                        batchState.jobNamespace);
-            }
-
             if (batchState.job != null && batchState.job.getMetadata() != null) {
 
                 log.info("Deleting job [{}]", batchState.job.getMetadata().getName());
@@ -500,6 +491,15 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
                 coreClient.deleteNamespacedPod(
                         batchState.pod.getMetadata().getName(),
+                        batchState.jobNamespace);
+            }
+
+            if (batchState.service != null && batchState.service.getMetadata() != null) {
+
+                log.info("Deleting API service for [{}]", batchState.service.getMetadata().getName());
+
+                coreClient.deleteNamespacedService(
+                        batchState.service.getMetadata().getName(),
                         batchState.jobNamespace);
             }
         }

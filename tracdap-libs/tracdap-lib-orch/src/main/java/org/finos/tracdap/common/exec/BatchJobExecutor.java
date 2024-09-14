@@ -82,62 +82,86 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
     @Override
     public BatchJobState<TBatchState> submitOneshotJob(TagHeader jobId, JobConfig jobConfig, RuntimeConfig sysConfig) {
 
-        var runtimeApiEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.EXPOSE_PORT);
-        var resultVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
-        var logVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
-
-        var runtimeApiConfig = ServiceConfig.newBuilder()
-                .setEnabled(runtimeApiEnabled)
-                .setPort(9000)  // TODO
-                .clearAlias()
-                .build();
-
-        sysConfig = sysConfig.toBuilder()
-                .setRuntimeApi(runtimeApiConfig)
-                .build();
-
-        var jobConfigJson = ConfigParser.quoteConfig(jobConfig, ConfigFormat.JSON);
-        var sysConfigJson = ConfigParser.quoteConfig(sysConfig, ConfigFormat.JSON);
+        // If an error occurs before the batch state is created, then there is nothing to clean up
 
         var batchKey = MetadataUtil.objectKey(jobId);
         var batchState = batchExecutor.createBatch(batchKey);
 
-        batchState = batchExecutor.addVolume(batchKey, batchState, "config", BatchVolumeType.CONFIG_VOLUME);
-        batchState = batchExecutor.addFile(batchKey, batchState, "config", "job_config.json", jobConfigJson);
-        batchState = batchExecutor.addFile(batchKey, batchState, "config", "sys_config.json", sysConfigJson);
+        try {
 
-        batchState = batchExecutor.addVolume(batchKey, batchState, "scratch", BatchVolumeType.SCRATCH_VOLUME);
+            var runtimeApiEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.EXPOSE_PORT);
+            var resultVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
+            var logVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
 
-        var batchConfig = BatchConfig.forCommand(
-                LaunchCmd.trac(), List.of(
-                LaunchArg.string("--sys-config"), LaunchArg.path("config", "sys_config.json"),
-                LaunchArg.string("--job-config"), LaunchArg.path("config", "job_config.json"),
-                LaunchArg.string("--scratch-dir"), LaunchArg.path("scratch", ".")));
+            var runtimeApiConfig = ServiceConfig.newBuilder()
+                    .setEnabled(runtimeApiEnabled)
+                    .setPort(9000)  // TODO
+                    .clearAlias()
+                    .build();
 
-        if (resultVolumesEnabled) {
-            batchState = batchExecutor.addVolume(batchKey, batchState, "result", BatchVolumeType.RESULT_VOLUME);
-            batchConfig.addExtraArgs(List.of(
-                    LaunchArg.string("--job-result-dir"), LaunchArg.path("result", "."),
-                    LaunchArg.string("--job-result-format"), LaunchArg.string("json")));
+            sysConfig = sysConfig.toBuilder()
+                    .setRuntimeApi(runtimeApiConfig)
+                    .build();
+
+            var jobConfigJson = ConfigParser.quoteConfig(jobConfig, ConfigFormat.JSON);
+            var sysConfigJson = ConfigParser.quoteConfig(sysConfig, ConfigFormat.JSON);
+
+            batchState = batchExecutor.addVolume(batchKey, batchState, "config", BatchVolumeType.CONFIG_VOLUME);
+            batchState = batchExecutor.addFile(batchKey, batchState, "config", "job_config.json", jobConfigJson);
+            batchState = batchExecutor.addFile(batchKey, batchState, "config", "sys_config.json", sysConfigJson);
+
+            batchState = batchExecutor.addVolume(batchKey, batchState, "scratch", BatchVolumeType.SCRATCH_VOLUME);
+
+            var batchConfig = BatchConfig.forCommand(
+                    LaunchCmd.trac(), List.of(
+                            LaunchArg.string("--sys-config"), LaunchArg.path("config", "sys_config.json"),
+                            LaunchArg.string("--job-config"), LaunchArg.path("config", "job_config.json"),
+                            LaunchArg.string("--scratch-dir"), LaunchArg.path("scratch", ".")));
+
+            if (resultVolumesEnabled) {
+                batchState = batchExecutor.addVolume(batchKey, batchState, "result", BatchVolumeType.RESULT_VOLUME);
+                batchConfig.addExtraArgs(List.of(
+                        LaunchArg.string("--job-result-dir"), LaunchArg.path("result", "."),
+                        LaunchArg.string("--job-result-format"), LaunchArg.string("json")));
+            }
+
+            if (logVolumesEnabled) {
+                batchState = batchExecutor.addVolume(batchKey, batchState, "log", BatchVolumeType.RESULT_VOLUME);
+                batchConfig.addLoggingRedirect(
+                        LaunchArg.path("log", "trac_rt_stdout.log"),
+                        LaunchArg.path("log", "trac_rt_stderr.log"));
+            }
+
+            batchState = batchExecutor.submitBatch(batchKey, batchState, batchConfig);
+
+            var jobState = new BatchJobState<TBatchState>();
+            jobState.batchKey = batchKey;
+            jobState.batchState = batchState;
+            jobState.runtimeApiEnabled = runtimeApiEnabled;
+            jobState.resultVolumeEnabled = resultVolumesEnabled;
+            jobState.logVolumeEnabled = logVolumesEnabled;
+
+            return jobState;
         }
+        catch (Exception submitError) {
 
-        if (logVolumesEnabled) {
-            batchState = batchExecutor.addVolume(batchKey, batchState, "log", BatchVolumeType.RESULT_VOLUME);
-            batchConfig.addLoggingRedirect(
-                    LaunchArg.path("log", "trac_rt_stdout.log"),
-                    LaunchArg.path("log", "trac_rt_stderr.log"));
+            // If submit fails, an error is thrown and the orchestrator never gets the batch state
+            // So, clean up an resources that were created on the way out
+            // The batch executor should handle cleaning up partially created batches
+
+            log.error("There was an error submitting the batch, attempting to clean up resources...");
+
+            try {
+                batchExecutor.deleteBatch(batchKey, batchState);
+                log.info("Clean up was successful");
+            }
+            catch (Exception deleteError) {
+                log.error("There was an error cleaning up the batch, some resources may not have been removed");
+                log.error(deleteError.getMessage(), deleteError);
+            }
+
+            throw submitError;
         }
-
-        batchState = batchExecutor.submitBatch(batchKey, batchState, batchConfig);
-
-        var jobState = new BatchJobState<TBatchState>();
-        jobState.batchKey = batchKey;
-        jobState.batchState = batchState;
-        jobState.runtimeApiEnabled = runtimeApiEnabled;
-        jobState.resultVolumeEnabled = resultVolumesEnabled;
-        jobState.logVolumeEnabled = logVolumesEnabled;
-
-        return jobState;
     }
 
     @Override
