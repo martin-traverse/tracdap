@@ -22,6 +22,8 @@ import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.Serializable;
+import java.util.HashMap;
+import java.util.Map;
 
 
 public class KubernetesBatchState implements Serializable {
@@ -30,23 +32,62 @@ public class KubernetesBatchState implements Serializable {
 
     String jobNamespace;
     String jobName;
+    String podName;
 
-    transient V1PodSpec podSpec;
     transient V1Job job;
+    transient V1Pod pod;
+    transient V1Service service;
+
+    transient Map<String, V1ConfigMap> configMaps = new HashMap<>();
+    transient Map<String, V1PersistentVolumeClaim> volumeClaims = new HashMap<>();
 
     private void writeObject(ObjectOutputStream oos) throws IOException {
 
         oos.defaultWriteObject();
 
-        oos.writeUTF(podSpec.toJson());
-        oos.writeUTF(job.toJson());
+        oos.writeUTF(job != null ? job.toJson() : "");
+        oos.writeUTF(pod != null ? pod.toJson() : "");
+        oos.writeUTF(service != null ? service.toJson() : "");
+
+        oos.writeInt(configMaps.size());
+
+        for (var configEntry : configMaps.entrySet()) {
+            oos.writeUTF(configEntry.getKey());
+            oos.writeUTF(configEntry.getValue().toJson());
+        }
+
+        oos.writeInt(volumeClaims.size());
+
+        for (var volumeEntry : volumeClaims.entrySet()) {
+            oos.writeUTF(volumeEntry.getKey());
+            oos.writeUTF(volumeEntry.getValue().toJson());
+        }
     }
 
     private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
 
         ois.defaultReadObject();
 
-        podSpec = V1PodSpec.fromJson(ois.readUTF());
         job = V1Job.fromJson(ois.readUTF());
+        pod = V1Pod.fromJson(ois.readUTF());
+        service = V1Service.fromJson(ois.readUTF());
+
+        var configSize = ois.readInt();
+        configMaps = new HashMap<>(configSize);
+
+        for (int i = 0; i < configSize; i++) {
+            var key = ois.readUTF();
+            var configMap = V1ConfigMap.fromJson(ois.readUTF());
+            configMaps.put(key, configMap);
+        }
+
+        var volumeClaimsSize = ois.readInt();
+        volumeClaims = new HashMap<>(volumeClaimsSize);
+
+        for (int i = 0; i < volumeClaimsSize; i++) {
+            var key = ois.readUTF();
+            var volumeClaim = V1PersistentVolumeClaim.fromJson(ois.readUTF());
+            volumeClaims.put(key, volumeClaim);
+        }
     }
 }

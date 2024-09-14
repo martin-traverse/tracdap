@@ -17,35 +17,38 @@
 package org.finos.tracdap.plugins.kube.executor;
 
 import org.finos.tracdap.common.config.ConfigHelpers;
-import org.finos.tracdap.common.exception.EExecutorFailure;
-import org.finos.tracdap.common.exception.EStartup;
-import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.config.ConfigManager;
+import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.exec.*;
 
 import io.kubernetes.client.openapi.ApiException;
-import io.kubernetes.client.openapi.apis.CoreV1Api;
-import io.kubernetes.client.openapi.apis.BatchV1Api;
-import io.kubernetes.client.openapi.apis.VersionApi;
+import io.kubernetes.client.openapi.apis.*;
 import io.kubernetes.client.openapi.models.*;
 import io.kubernetes.client.util.Config;
+import io.kubernetes.client.util.Yaml;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Properties;
+import java.net.InetSocketAddress;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 
 public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchState> {
 
+    public static final String JOB_YAML_CONFIG_KEY = "job.yaml";
+    public static final String POD_YAML_CONFIG_KEY = "pod.yaml";
+    public static final String SERVICE_YAML_CONFIG_KEY = "service.yaml";
+
     public static final String CONTAINER_NAME_CONFIG_KEY = "container.name";
     public static final String CONTAINER_TAG_CONFIG_KEY = "container.tag";
     public static final String JOB_NAMESPACE_CONFIG_KEY = "job.namespace";
+    public static final String SERVICE_ADDRESS_CONFIG_KEY = "service.address";
 
-    private static final String KUBERNETES_RESTART_POLICY_NEVER = "Never";
+    private static final List<Feature> EXECUTOR_FEATURES = List.of(Feature.EXPOSE_PORT);
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -55,16 +58,36 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     private final String containerName;
     private final String containerTag;
     private final String jobNamespace;
+    private final String serviceAddress;
 
-    public KubernetesBatchExecutor(Properties properties) {
+    private final V1Job jobTemplate;
+    private final V1Pod podTemplate;
+    private final V1Service serviceTemplate;
+
+    public KubernetesBatchExecutor(Properties properties, ConfigManager configManager) {
 
         coreClient = new CoreV1Api();
         batchClient = new BatchV1Api();
 
         containerName = ConfigHelpers.readString("executor", properties, CONTAINER_NAME_CONFIG_KEY);
         containerTag = ConfigHelpers.readString("executor", properties, CONTAINER_TAG_CONFIG_KEY);
-
         jobNamespace = ConfigHelpers.readString("executor", properties, JOB_NAMESPACE_CONFIG_KEY);
+        serviceAddress = ConfigHelpers.readString("executor", properties, SERVICE_ADDRESS_CONFIG_KEY, false);
+
+        jobTemplate = loadYaml(properties, configManager, JOB_YAML_CONFIG_KEY, V1Job.class);
+        podTemplate = loadYaml(properties, configManager, POD_YAML_CONFIG_KEY, V1Pod.class);
+        serviceTemplate = loadYaml(properties, configManager, SERVICE_YAML_CONFIG_KEY, V1Service.class);
+    }
+
+    private <T> T loadYaml(Properties properties, ConfigManager configManager, String configKey, Class<T> configClass) {
+
+        if (properties.containsKey(configKey)) {
+            var jobYamlFile = ConfigHelpers.readString("executor", properties, configKey);
+            var jobYaml = configManager.loadTextConfig(jobYamlFile);
+            return Yaml.loadAs(jobYaml, configClass);
+        }
+        else
+            return null;
     }
 
     @Override
@@ -122,7 +145,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public void stop() {
-
+        // TODO
     }
 
     @Override
@@ -131,125 +154,186 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     }
 
     @Override
+    public boolean hasFeature(Feature feature) {
+        return EXECUTOR_FEATURES.contains(feature);
+    }
+
+    @Override
     public KubernetesBatchState createBatch(String batchKey) {
-
-        var name = containerName.replaceFirst("^(.*/)*", "");
-        var image = String.format("%s:%s", containerName, containerTag);
-
-        var container = new V1Container();
-        container.setName(name);
-        container.setImage(image);
-
-        var podSpec = new V1PodSpec();
-        podSpec.addContainersItem(container);
-        podSpec.setRestartPolicy(KUBERNETES_RESTART_POLICY_NEVER);
 
         var batchState = new KubernetesBatchState();
         batchState.jobNamespace = jobNamespace;
-        batchState.podSpec = podSpec;
+        batchState.jobName = batchKey.toLowerCase();
+
+        try {
+            if (jobTemplate != null) {
+
+                batchState.job = V1Job.fromJson(jobTemplate.toJson());
+                if (batchState.job.getMetadata() == null)
+                    batchState.job.setMetadata(new V1ObjectMeta());
+                batchState.job.getMetadata().setName(batchState.jobName);
+            }
+
+            if (podTemplate != null) {
+
+                batchState.pod = V1Pod.fromJson(podTemplate.toJson());
+                if (batchState.pod.getMetadata() == null)
+                    batchState.pod.setMetadata(new V1ObjectMeta());
+                batchState.pod.getMetadata().setName(batchState.jobName);  // TODO suffix?
+                batchState.pod.getMetadata().putLabelsItem("job-name", batchState.jobName);
+
+                // Save the pod name
+                batchState.podName = batchState.pod.getMetadata().getName();
+
+                // This is a bug in the current (v21) Java Kubernetes library
+                // Overhead is set to the empty map instead of null, which means something different
+                // https://github.com/kubernetes-client/java/issues/3076
+                getPodSpec(batchState).setOverhead(null);
+            }
+
+            if (serviceTemplate != null) {
+
+                batchState.service = V1Service.fromJson(serviceTemplate.toJson());
+                if (batchState.service.getMetadata() == null)
+                    batchState.service.setMetadata(new V1ObjectMeta());
+                batchState.service.getMetadata().setName(batchState.jobName);  // TODO suffix?
+                batchState.service.getMetadata().putLabelsItem("job-name", batchState.jobName);
+                if (batchState.service.getSpec() == null)
+                    batchState.service.setSpec(new V1ServiceSpec());
+                if (batchState.service.getSpec().getSelector() == null)
+                    batchState.service.getSpec().setSelector(new HashMap<>());
+                batchState.service.getSpec().getSelector().put("job-name", batchState.jobName);
+            }
+
+        }
+        catch (IOException e) {
+            // Should never happen, JSON source is already valid
+            throw new EUnexpected(e);
+        }
+
+        var podSpec = getPodSpec(batchState);
+        var container = podSpec.getContainers().get(0);
+
+        if (containerName != null && containerTag != null) {
+            var image = String.format("%s:%s", containerName, containerTag);
+            container.setImage(image);
+        }
+
+        if (container.getPorts() != null && !container.getPorts().isEmpty()) {
+            var containerPort = container.getPorts().get(0);
+            var port = containerPort.getContainerPort();
+        }
 
         return batchState;
     }
 
     @Override
-    public void destroyBatch(String batchKey, KubernetesBatchState batchState) {
+    public KubernetesBatchState addVolume(String batchKey, KubernetesBatchState batchState, String volumeName, BatchVolumeType volumeType) {
 
-    }
-
-    @Override
-    public KubernetesBatchState createVolume(String batchKey, KubernetesBatchState batchState, String volumeName, ExecutorVolumeType volumeType) {
+        var mountPath = "/mnt/trac/" + volumeName;
+        var mount = new V1VolumeMount();
+        mount.setName(volumeName);
+        mount.setMountPath(mountPath);
 
         var volume = new V1Volume();
+        volume.setName(volumeName);
 
         switch (volumeType) {
 
-            case CONFIG_DIR:
+            case CONFIG_VOLUME:
 
-                // var configMap = new V1ConfigMap();
-                // batchState.configVolumes.put(volumeName, configMap);
+                var configMapName = (batchKey + "-" + volumeName).toLowerCase();
+
+                var configMap = new V1ConfigMap();
+                configMap.setMetadata(new V1ObjectMeta().name(configMapName));
+
+                batchState.configMaps.put(volumeName, configMap);
 
                 var configMapSource = new V1ConfigMapVolumeSource();
+                configMapSource.setName(configMapName);
                 volume.setConfigMap(configMapSource);
 
                 break;
 
-            case SCRATCH_DIR:
+            case SCRATCH_VOLUME:
 
                 var emptyDirSource = new V1EmptyDirVolumeSource();
                 volume.setEmptyDir(emptyDirSource);
 
                 break;
 
-            case RESULT_DIR:
+            case RESULT_VOLUME:
 
-                // var persistentClaim = new V1PersistentVolumeClaim();
+                // Should never be called, the executor does not advertise output volumes in its features
+                throw new ETracInternal("Kubernetes executor does not support output volumes");
 
-                var persistentSource = new V1PersistentVolumeClaimVolumeSource();
-                volume.setPersistentVolumeClaim(persistentSource);
-
-                break;
-
+            default:
+                throw new EUnexpected();
         }
 
-        // batchState.podSpec.addVolumesItem(volume);
+        var podSpec = getPodSpec(batchState);
+        var container = podSpec.getContainers().get(0);
+
+        container.addVolumeMountsItem(mount);
+        podSpec.addVolumesItem(volume);
 
         return batchState;
     }
 
     @Override
-    public KubernetesBatchState writeFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName, byte[] fileContent) {
+    public KubernetesBatchState addFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName, byte[] fileContent) {
 
-//        var configMap = batchState.configVolumes.get(volumeName);
-//
-//        if (configMap == null)
-//            throw new EUnexpected();  // TODO
-//
-//        configMap.putBinaryDataItem(fileName, fileContent);
+        var configMap = batchState.configMaps.get(volumeName);
+
+        if (configMap == null)
+            throw new EUnexpected();  // TODO
+
+        configMap.putBinaryDataItem(fileName, fileContent);
 
         return batchState;
     }
 
     @Override
-    public byte[] readFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName) {
-        return new byte[0];
-    }
+    public KubernetesBatchState submitBatch(String batchKey, KubernetesBatchState batchState, BatchConfig batchConfig) {
 
-    @Override
-    public KubernetesBatchState startBatch(String batchKey, KubernetesBatchState batchState, LaunchCmd launchCmd, List<LaunchArg> launchArgs) {
+        var launchCmd = batchConfig.getLaunchCmd();
+        var launchArgs = batchConfig.getLaunchArgs();
 
-        var templateSpec = new V1PodTemplateSpec();
-        templateSpec.setSpec(batchState.podSpec);
+        var commandArgs = Stream.concat(launchCmd.commandArgs().stream(), launchArgs.stream())
+                .map(arg -> translateLaunchArg(batchState, arg));
 
-        var jobSpec = new V1JobSpec();
-        jobSpec.setTemplate(templateSpec);
-        jobSpec.setBackoffLimit(0);  // Do not retry on failure (TODO)
+        var command = Stream.concat(Stream.of(launchCmd.command()), commandArgs)
+                .collect(Collectors.toList());
 
-        var jobMetadata = new V1ObjectMeta();
-        jobMetadata.setName(batchKey.toLowerCase());
-
-        var job = new V1Job();
-        job.setMetadata(jobMetadata);
-        job.setSpec(jobSpec);
+        var podSpec = getPodSpec(batchState);
+        var container = podSpec.getContainers().get(0);
+        container.setCommand(command);
 
         try {
 
-            var request = batchClient.createNamespacedJob(batchState.jobNamespace, job);
-            var response = request.execute();
-            var responseMetadata = response.getMetadata();
-
-            if (responseMetadata == null) {
-                throw new EUnexpected();  // TODO
+            for (var configMap : batchState.configMaps.values()) {
+                if (configMap.getMetadata() != null) {
+                    log.info("Creating config map [{}]", configMap.getMetadata().getName());
+                    var configRequest = coreClient.createNamespacedConfigMap(batchState.jobNamespace, configMap);
+                    configRequest.execute();
+                }
             }
 
-            log.info("Submitted job [{}], namespace = [{}], UID = [{}]",
-                    responseMetadata.getName(),
-                    responseMetadata.getNamespace(),
-                    responseMetadata.getUid());
+            for (var volumeClaim : batchState.volumeClaims.values()) {
+                if (volumeClaim.getMetadata() != null) {
+                    log.info("Creating volume claim [{}]", volumeClaim.getMetadata().getName());
+                    var claimRequest = coreClient.createNamespacedPersistentVolumeClaim(batchState.jobNamespace, volumeClaim);
+                    claimRequest.execute();
+                }
+            }
 
-            log.debug(response.toString());
+            if (batchState.job != null)
+                batchState.job = submitBatchAsJob(batchState);
+            else
+                batchState.pod = submitBatchAsPod(batchState);
 
-            batchState.jobName = responseMetadata.getName();
-            batchState.job = response;  // The response is a V1Job object
+            if (batchState.service != null)
+                batchState.service = createBatchService(batchState);
 
             return batchState;
         }
@@ -263,16 +347,182 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         }
     }
 
+    private V1Job submitBatchAsJob(KubernetesBatchState batchState) throws ApiException {
+
+        var metadata = batchState.job.getMetadata();
+
+        if (metadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("Creating job [{}]", metadata.getName());
+
+        var request = batchClient.createNamespacedJob(batchState.jobNamespace, batchState.job);
+        var response = request.execute();
+        var responseMetadata = response.getMetadata();
+
+        if (responseMetadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("Job created for [{}], namespace = [{}], UID = [{}]",
+                responseMetadata.getName(),
+                responseMetadata.getNamespace(),
+                responseMetadata.getUid());
+
+        log.debug(response.toString());
+
+        return response;
+    }
+
+    private V1Pod submitBatchAsPod(KubernetesBatchState batchState) throws ApiException {
+
+        var metadata = batchState.pod.getMetadata();
+
+        if (metadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("Creating pod [{}]", metadata.getName());
+
+        var request = coreClient.createNamespacedPod(batchState.jobNamespace, batchState.pod);
+        var response = request.execute();
+        var responseMetadata = response.getMetadata();
+
+        if (responseMetadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("Pod created for [{}], namespace = [{}], UID = [{}]",
+                responseMetadata.getName(),
+                responseMetadata.getNamespace(),
+                responseMetadata.getUid());
+
+        log.debug(response.toString());
+
+        return response;
+    }
+
+    private V1Service createBatchService(KubernetesBatchState batchState) throws ApiException {
+
+        var metadata = batchState.service.getMetadata();
+
+        if (metadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("Creating API service for [{}]", metadata.getName());
+
+        var request = coreClient.createNamespacedService(batchState.jobNamespace, batchState.service);
+        var response = request.execute();
+        var responseMetadata = response.getMetadata();
+
+        if (responseMetadata == null) {
+            throw new EUnexpected();  // TODO
+        }
+
+        log.info("API service created for [{}], namespace = [{}], UID = [{}]",
+                responseMetadata.getName(),
+                responseMetadata.getNamespace(),
+                responseMetadata.getUid());
+
+        log.debug(response.toString());
+
+        return response;
+    }
+
     @Override
-    public ExecutorJobInfo pollBatch(String batchKey, KubernetesBatchState batchState) {
+    public KubernetesBatchState cancelBatch(String batchKey, KubernetesBatchState batchState) {
+
+        // This should never be called, the executor does not advertise cancellation in its features
+        throw new ETracInternal("Kubernetes executor does not support batch cancellation");
+    }
+
+    @Override
+    public void deleteBatch(String batchKey, KubernetesBatchState batchState) {
 
         try {
 
-            var jobStatusRequest = batchClient.readNamespacedJobStatus(batchState.jobName, batchState.jobNamespace);
-            var jobResponse = jobStatusRequest.execute();
-            var jobStatus = jobResponse.getStatus();
+            for (var configMap : batchState.configMaps.values()) {
 
-            if (jobStatus == null) {
+                var configMetadata = configMap.getMetadata();
+
+                if (configMetadata != null) {
+
+                    log.info("Deleting config map [{}]", configMetadata.getName());
+
+                    var configRequest = coreClient.deleteNamespacedConfigMap(
+                            configMetadata.getName(),
+                            batchState.jobNamespace);
+
+                    configRequest.execute();
+
+                }
+            }
+
+            for (var volumeClaim : batchState.volumeClaims.values()) {
+
+                var claimMetadata = volumeClaim.getMetadata();
+
+                if (claimMetadata != null) {
+
+                    log.info("Deleting volume claim [{}]", claimMetadata.getName());
+
+                    var claimRequest = coreClient.deleteNamespacedPersistentVolumeClaim(
+                            claimMetadata.getName(),
+                            batchState.jobNamespace);
+
+                    claimRequest.execute();
+                }
+            }
+
+            if (batchState.service != null && batchState.service.getMetadata() != null) {
+
+                log.info("Deleting API service for [{}]", batchState.service.getMetadata().getName());
+
+                coreClient.deleteNamespacedService(
+                        batchState.service.getMetadata().getName(),
+                        batchState.jobNamespace);
+            }
+
+            if (batchState.job != null && batchState.job.getMetadata() != null) {
+
+                log.info("Deleting job [{}]", batchState.job.getMetadata().getName());
+
+                batchClient.deleteNamespacedJob(
+                        batchState.job.getMetadata().getName(),
+                        batchState.jobNamespace);
+            }
+
+            if (batchState.pod != null && batchState.pod.getMetadata() != null) {
+
+                log.info("Deleting pod [{}]", batchState.pod.getMetadata().getName());
+
+                coreClient.deleteNamespacedPod(
+                        batchState.pod.getMetadata().getName(),
+                        batchState.jobNamespace);
+            }
+        }
+        catch (ApiException apiError) {
+
+            var detailMessage = getErrorMessage(apiError);
+            var message = String.format("Failed to clean up Kubernetes batch for [%s]: %s", batchState.jobName, detailMessage);
+            log.error(message);
+
+            throw new EExecutorFailure(message, apiError);
+        }
+    }
+
+    @Override
+    public BatchStatus getBatchStatus(String batchKey, KubernetesBatchState batchState) {
+
+        try {
+
+            var batchStatus = batchState.job != null
+                    ? getBatchStatusFromJob(batchKey, batchState)
+                    : getBatchStatusFromPod(batchKey, batchState);
+
+            if (batchStatus == null) {
 
                 var message = String.format("Failed to poll Kubernetes batch for [%s]: Status unknown", batchKey);
                 log.error(message);
@@ -280,7 +530,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 throw new EExecutorFailure(message);
             }
 
-            return getJobInfo(jobStatus);
+            return batchStatus;
         }
         catch (ApiException apiError) {
 
@@ -292,36 +542,169 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         }
     }
 
-    @Override
-    public List<ExecutorJobInfo> pollBatches(List<Map.Entry<String, KubernetesBatchState>> batches) {
+    private BatchStatus getBatchStatusFromJob(String batchKey, KubernetesBatchState batchState) throws ApiException {
 
-        var results = new ArrayList<ExecutorJobInfo>();
+        var jobStatusRequest = batchClient.readNamespacedJobStatus(batchState.jobName, batchState.jobNamespace);
+        var jobResponse = jobStatusRequest.execute();
+        var jobStatus = jobResponse.getStatus();
 
-        for (var batch : batches) {
-
-            try {
-
-                var priorState = batch.getValue();
-                var pollResult = pollBatch(batch.getKey(), priorState);
-
-                results.add(pollResult);
-            }
-            catch (Exception e) {
-
-                log.warn("Failed to poll job: [{}] {}", batch.getKey(), e.getMessage(), e);
-                results.add(new ExecutorJobInfo(ExecutorJobStatus.STATUS_UNKNOWN));
-            }
-        }
-
-        return results;
+        return jobStatus != null ? translateJobStatus(jobStatus) : null;
     }
 
-    private ExecutorJobInfo getJobInfo(V1JobStatus kubeStatus) {
+    private BatchStatus getBatchStatusFromPod(String batchKey, KubernetesBatchState batchState) throws ApiException {
+
+        var podStatusRequest = coreClient.readNamespacedPodStatus(batchState.podName, batchState.jobNamespace);
+        var podStatusResponse = podStatusRequest.execute();
+        var podStatus = podStatusResponse.getStatus();
+
+        return podStatus != null ? translatePodStatus(podStatus) : null;
+    }
+
+    @Override
+    public boolean hasOutputFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName) {
+
+        // Should never be called, the executor does not advertise output volumes in its features
+        throw new ETracInternal("Kubernetes executor does not support output volumes");
+    }
+
+    @Override
+    public byte[] getOutputFile(String batchKey, KubernetesBatchState batchState, String volumeName, String fileName) {
+
+        // Should never be called, the executor does not advertise output volumes in its features
+        throw new ETracInternal("Kubernetes executor does not support output volumes");
+    }
+
+    @Override
+    public InetSocketAddress getBatchAddress(String batchKey, KubernetesBatchState batchState) {
+
+        if (batchState.service != null && batchState.service.getSpec() != null) {
+
+            var serviceSpec = batchState.service.getSpec();
+            var serviceType = serviceSpec.getType();
+
+            var ports = serviceSpec.getPorts();
+
+            if (ports == null || ports.isEmpty())
+                throw new ETracInternal("Batch address not available");
+
+            String ip = null;
+            int port = 0;
+
+            if ("NodePort".equals(serviceType)) {
+                var ips = serviceSpec.getExternalIPs();
+                if (ips != null && !ips.isEmpty())
+                    ip = ips.get(0);
+                var portBoxed = serviceSpec.getPorts().get(0).getNodePort();
+                if (portBoxed != null)
+                    port = portBoxed;
+            }
+            else if ("Port".equals(serviceType)) {
+                ip = serviceSpec.getClusterIP();
+                port = ports.get(0).getPort();
+            }
+            else
+                throw new ETracInternal("Batch address not available");
+
+            if (ip == null && serviceAddress != null)
+                ip = serviceAddress;;
+
+            if (ip == null || port == 0)
+                throw new ETracInternal("Batch address not available");
+
+            return InetSocketAddress.createUnresolved(ip, port);
+        }
+
+        throw new ETracInternal("Batch address not available");
+
+//        try {
+
+//            return new InetSocketAddress("localhost", 30000);
+
+//            var podStatusRequest = coreClient.readNamespacedPodStatus(batchState.podName, batchState.jobNamespace);
+//            var podStatusResponse = podStatusRequest.execute();
+//            var podStatus = podStatusResponse.getStatus();
+//
+//            if (podStatus == null || podStatus.getPodIP() == null)
+//                throw new EUnexpected();
+//
+//            var inetAddress = InetAddress.getByName(podStatus.getPodIP());
+//            return new InetSocketAddress(inetAddress, 9000);
+//        }
+//        catch (ApiException | UnknownHostException e) {
+//            throw new EUnexpected(e);
+//        }
+    }
+
+    private String translateLaunchArg(KubernetesBatchState batchState, LaunchArg launchArg) {
+
+        switch (launchArg.getArgType()) {
+
+            case STRING:
+                return launchArg.getStringArg();
+
+            case PATH:
+
+                var podSpec = getPodSpec(batchState);
+                var container = podSpec.getContainers().get(0);
+
+                var volumeMount = container.getVolumeMounts().stream()
+                        .filter(mount -> mount.getName().equals(launchArg.getPathVolume()))
+                        .findFirst();
+
+                if (volumeMount.isEmpty())
+                    throw new EUnexpected();  // TODO
+
+                var mountPoint = volumeMount.get().getMountPath();
+                var childPath = launchArg.getPathArg();
+
+                return mountPoint + "/" + childPath;
+
+            default:
+
+                var msg = String.format(
+                        "Command argument type [%s] is not supported by the Kubernetes executor",
+                        launchArg.getArgType());
+
+                log.error(msg);
+
+                throw new ETracInternal(msg);
+        }
+
+    }
+
+    private BatchStatus translatePodStatus(V1PodStatus podStatus) {
+
+        if (podStatus == null || podStatus.getConditions() == null) {
+            return null;
+        }
+
+        var phase = podStatus.getPhase();
+        var statusMessage = podStatus.getMessage();
+
+        BatchStatusCode statusCode;
+
+        if ("Pending".equals(phase))
+            statusCode = BatchStatusCode.QUEUED;
+        else if ("Running".equals(phase))
+            statusCode = BatchStatusCode.RUNNING;
+        else if ("Succeeded".equals(phase))
+            statusCode = BatchStatusCode.SUCCEEDED;
+        else if ("Failed".equals(phase))
+            statusCode = BatchStatusCode.FAILED;
+        else
+            statusCode = BatchStatusCode.STATUS_UNKNOWN;
+
+        // podStatus.getContainerStatuses().get(0).getLastState().getTerminated().getMessage();
+
+        return new BatchStatus(statusCode, statusMessage);
+    }
+
+    private BatchStatus translateJobStatus(V1JobStatus kubeStatus) {
 
         var status = getJobStatus(kubeStatus);
 
-        if (status != ExecutorJobStatus.FAILED)
-            return new ExecutorJobInfo(status);
+        if (status != BatchStatusCode.FAILED)
+            return new BatchStatus(status);
 
         if (kubeStatus.getConditions() != null) {
             for (var i = kubeStatus.getConditions().size() - 1; i >= 0; i--) {
@@ -330,19 +713,17 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
                 if ("failed".equalsIgnoreCase(condition.getType())) {
                     var message = condition.getMessage();
-                    var detail = condition.getReason();  // TODO: Detail should be job outputs
-                    return new ExecutorJobInfo(status, message, detail);
+                    return new BatchStatus(status, message);
                 }
             }
         }
 
         var message = "No further information available";
-        var detail = "";
 
-        return new ExecutorJobInfo(status, message, detail);
+        return new BatchStatus(status, message);
     }
 
-    private ExecutorJobStatus getJobStatus(V1JobStatus kubeStatus) {
+    private BatchStatusCode getJobStatus(V1JobStatus kubeStatus) {
 
         var ready = kubeStatus.getReady();
         var active = kubeStatus.getActive();
@@ -350,18 +731,20 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var failed = kubeStatus.getFailed();
 
         if (failed != null && failed > 0)  // TODO: Retries
-            return ExecutorJobStatus.FAILED;
+            return BatchStatusCode.FAILED;
 
         if (succeeded != null && succeeded > 0)
-            return ExecutorJobStatus.SUCCEEDED;
+            return BatchStatusCode.SUCCEEDED;
 
         if (active != null && active > 0)
-            return ExecutorJobStatus.RUNNING;
+            return BatchStatusCode.RUNNING;
 
         if (ready != null && ready > 0)
-            return ExecutorJobStatus.QUEUED;
+            return BatchStatusCode.QUEUED;
 
-        return ExecutorJobStatus.STATUS_UNKNOWN;
+        log.info(kubeStatus.toJson());
+
+        return BatchStatusCode.STATUS_UNKNOWN;
     }
 
     private String getErrorMessage(ApiException apiError) {
@@ -370,7 +753,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         if (errorStatus != null)
             return errorStatus.getMessage();
-        else if (apiError.getCode() != 0)
+        else if (apiError.getCode() != 200)
             return String.format("Cluster returned HTTP %d", apiError.getCode());
         else if (apiError.getCause() != null)
             return apiError.getCause().getMessage();
@@ -395,5 +778,28 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
             return null;
         }
+    }
+
+    private V1PodSpec getPodSpec(KubernetesBatchState batchState) {
+
+        V1PodSpec podSpec = null;
+
+        if (batchState.job != null) {
+
+            var jobSpec = batchState.job.getSpec();
+            var podTemplate = jobSpec != null ? jobSpec.getTemplate() : null;
+
+            podSpec = podTemplate != null ? podTemplate.getSpec() : null;
+        }
+
+        if (batchState.pod != null) {
+
+            podSpec =  batchState.pod.getSpec();
+        }
+
+        if (podSpec == null || podSpec.getContainers().isEmpty())
+            throw new EUnexpected();
+
+        return podSpec;
     }
 }

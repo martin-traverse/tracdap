@@ -49,7 +49,7 @@ public class KubernetesPlugin extends TracPlugin {
     protected <T> T createService(String service, Properties properties, ConfigManager configManager) {
 
         if (service.equals(KUBERNETES_EXECUTOR)) {
-            return (T) new KubernetesBatchExecutor(properties);
+            return (T) new KubernetesBatchExecutor(properties, configManager);
         }
 
         var message = String.format("Plugin [%s] does not support the service [%s]", pluginName(), service);
