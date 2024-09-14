@@ -315,7 +315,8 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 if (configMap.getMetadata() != null) {
                     log.info("Creating config map [{}]", configMap.getMetadata().getName());
                     var configRequest = coreClient.createNamespacedConfigMap(batchState.jobNamespace, configMap);
-                    configRequest.execute();
+                    var configResponse = configRequest.execute();
+                    configMap.setMetadata(configResponse.getMetadata());
                 }
             }
 
@@ -323,7 +324,8 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 if (volumeClaim.getMetadata() != null) {
                     log.info("Creating volume claim [{}]", volumeClaim.getMetadata().getName());
                     var claimRequest = coreClient.createNamespacedPersistentVolumeClaim(batchState.jobNamespace, volumeClaim);
-                    claimRequest.execute();
+                    var claimResponse = claimRequest.execute();
+                    volumeClaim.setMetadata(claimResponse.getMetadata());
                 }
             }
 
@@ -443,11 +445,13 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         try {
 
+            // For all resources, assume creationTimestamp means the resource is created in the cluster
+
             for (var configMap : batchState.configMaps.values()) {
 
                 var configMetadata = configMap.getMetadata();
 
-                if (configMetadata != null) {
+                if (configMetadata != null && configMetadata.getCreationTimestamp() != null) {
 
                     log.info("Deleting config map [{}]", configMetadata.getName());
 
@@ -464,7 +468,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
                 var claimMetadata = volumeClaim.getMetadata();
 
-                if (claimMetadata != null) {
+                if (claimMetadata != null && claimMetadata.getCreationTimestamp() != null) {
 
                     log.info("Deleting volume claim [{}]", claimMetadata.getName());
 
@@ -476,31 +480,52 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 }
             }
 
-            if (batchState.job != null && batchState.job.getMetadata() != null) {
+            if (batchState.job != null) {
 
-                log.info("Deleting job [{}]", batchState.job.getMetadata().getName());
+                var jobMetadata = batchState.job.getMetadata();
 
-                batchClient.deleteNamespacedJob(
-                        batchState.job.getMetadata().getName(),
-                        batchState.jobNamespace);
+                if (jobMetadata != null && jobMetadata.getCreationTimestamp() != null) {
+
+                    log.info("Deleting job [{}]", batchState.job.getMetadata().getName());
+
+                    var request = batchClient.deleteNamespacedJob(
+                            batchState.job.getMetadata().getName(),
+                            batchState.jobNamespace);
+
+                    request.execute();
+                }
             }
 
-            if (batchState.pod != null && batchState.pod.getMetadata() != null) {
+            if (batchState.pod != null) {
 
-                log.info("Deleting pod [{}]", batchState.pod.getMetadata().getName());
+                var podMetadata = batchState.pod.getMetadata();
 
-                coreClient.deleteNamespacedPod(
-                        batchState.pod.getMetadata().getName(),
-                        batchState.jobNamespace);
+                if (podMetadata != null && podMetadata.getCreationTimestamp() != null) {
+
+                    log.info("Deleting pod [{}]", batchState.pod.getMetadata().getName());
+
+                    var request = coreClient.deleteNamespacedPod(
+                            batchState.pod.getMetadata().getName(),
+                            batchState.jobNamespace);
+
+                    request.execute();
+                }
             }
 
-            if (batchState.service != null && batchState.service.getMetadata() != null) {
+            if (batchState.service != null) {
 
-                log.info("Deleting API service for [{}]", batchState.service.getMetadata().getName());
+                var serviceMetadata = batchState.service.getMetadata();
 
-                coreClient.deleteNamespacedService(
-                        batchState.service.getMetadata().getName(),
-                        batchState.jobNamespace);
+                if (serviceMetadata != null && serviceMetadata.getCreationTimestamp() != null) {
+
+                    log.info("Deleting API service for [{}]", batchState.service.getMetadata().getName());
+
+                    var request = coreClient.deleteNamespacedService(
+                            batchState.service.getMetadata().getName(),
+                            batchState.jobNamespace);
+
+                    request.execute();
+                }
             }
         }
         catch (ApiException apiError) {
