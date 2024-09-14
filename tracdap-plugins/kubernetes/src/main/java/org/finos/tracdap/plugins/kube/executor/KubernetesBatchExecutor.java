@@ -492,6 +492,11 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                             batchState.job.getMetadata().getName(),
                             batchState.jobNamespace);
 
+                    // Set propagation so the job pods will also get cleaned up
+                    var options = new V1DeleteOptions();
+                    options.setPropagationPolicy("Background");
+
+                    request.body(options);
                     request.execute();
                 }
             }
