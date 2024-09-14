@@ -475,30 +475,6 @@ public class SshExecutor implements IBatchExecutor<SshExecutorState> {
     }
 
     @Override
-    public List<BatchStatus> pollBatches(List<Map.Entry<String, SshExecutorState>> priorStates) {
-
-        var results = new ArrayList<BatchStatus>();
-
-        for (var job : priorStates) {
-
-            try {
-
-                var priorState = job.getValue();
-                var pollResult = getBatchStatus(job.getKey(), priorState);
-
-                results.add(pollResult);
-            }
-            catch (Exception e) {
-
-                log.warn("Failed to poll job: [{}] {}", job.getKey(), e.getMessage(), e);
-                results.add(new BatchStatus(BatchStatusCode.STATUS_UNKNOWN));
-            }
-        }
-
-        return results;
-    }
-
-    @Override
     public boolean hasOutputFile(String batchKey, SshExecutorState batchState, String volumeName, String fileName) {
 
         try {
@@ -546,6 +522,13 @@ public class SshExecutor implements IBatchExecutor<SshExecutorState> {
         }
 
         // No need to close scp client, not a closable resource and session stays open
+    }
+
+    @Override
+    public InetSocketAddress getBatchAddress(String batchKey, SshExecutorState batchState) {
+
+        // This should never be called, the executor does not advertise expose_port in its features
+        throw new ETracInternal("SSH executor does not support expose_port");
     }
 
 

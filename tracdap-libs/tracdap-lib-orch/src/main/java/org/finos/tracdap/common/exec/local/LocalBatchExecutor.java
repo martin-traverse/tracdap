@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.net.InetSocketAddress;
 import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
@@ -376,29 +377,6 @@ public class LocalBatchExecutor implements IBatchExecutor<LocalBatchState> {
         }
     }
 
-    @Override public List<BatchStatus>
-    pollBatches(List<Map.Entry<String, LocalBatchState>> priorStates) {
-
-        var results = new ArrayList<BatchStatus>();
-
-        for (var job : priorStates) {
-
-            try {
-
-                var jobState = validState(job.getValue());
-                var pollResult = getBatchStatus(job.getKey(), jobState);
-                results.add(pollResult);
-            }
-            catch (Exception e) {
-
-                log.warn("Failed to poll job: [{}] {}", job.getKey(), e.getMessage(), e);
-                results.add(new BatchStatus(BatchStatusCode.STATUS_UNKNOWN));
-            }
-        }
-
-        return results;
-    }
-
     @Override
     public boolean hasOutputFile(String jobKey, LocalBatchState state, String volumeName, String fileName) {
 
@@ -457,6 +435,13 @@ public class LocalBatchExecutor implements IBatchExecutor<LocalBatchState> {
             var message = String.format("Executor read failed for [%s]: %s", fileName, e.getMessage());
             throw new EExecutorFailure(message, e);
         }
+    }
+
+    @Override
+    public InetSocketAddress getBatchAddress(String batchKey, LocalBatchState batchState) {
+
+        // This should never be called, the executor does not advertise expose_port in its features
+        throw new ETracInternal("Local executor does not support expose_port");
     }
 
     private Path prepareVenvPath(Properties properties) {

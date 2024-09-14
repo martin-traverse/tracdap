@@ -17,8 +17,7 @@
 package org.finos.tracdap.common.exec;
 
 import java.io.Serializable;
-import java.util.List;
-import java.util.Map;
+import java.net.InetSocketAddress;
 
 
 public interface IBatchExecutor<TState extends Serializable> {
@@ -27,9 +26,8 @@ public interface IBatchExecutor<TState extends Serializable> {
 
     enum Feature {
         OUTPUT_VOLUMES,
-        REMOTE_API,
-        CANCELLATION,
-        LOG_OUTPUT
+        EXPOSE_PORT,
+        CANCELLATION
     }
 
     void start();
@@ -53,9 +51,5 @@ public interface IBatchExecutor<TState extends Serializable> {
     boolean hasOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
     byte[] getOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
 
-    // This isn't used and the only available implementations call getBatchStatus for each batch
-    // Is there a reliable way of getting all job statuses in one go, at least for some executor types?
-
-    @Deprecated
-    List<BatchStatus> pollBatches(List<Map.Entry<String, TState>> batches);
+    InetSocketAddress getBatchAddress(String batchKey, TState batchState);
 }

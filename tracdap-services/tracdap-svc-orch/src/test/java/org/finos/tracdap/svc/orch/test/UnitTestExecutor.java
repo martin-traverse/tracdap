@@ -18,6 +18,7 @@ package org.finos.tracdap.svc.orch.test;
 
 import org.finos.tracdap.common.exec.*;
 
+import java.net.InetSocketAddress;
 import java.util.List;
 import java.util.Map;
 
@@ -80,11 +81,6 @@ public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
     }
 
     @Override
-    public List<BatchStatus> pollBatches(List<Map.Entry<String, UnitTestExecutorState>> batches) {
-        return List.of();
-    }
-
-    @Override
     public boolean hasOutputFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName) {
         return false;
     }
@@ -92,5 +88,10 @@ public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
     @Override
     public byte[] getOutputFile(String batchKey, UnitTestExecutorState batchState, String volumeName, String fileName) {
         return new byte[0];
+    }
+
+    @Override
+    public InetSocketAddress getBatchAddress(String batchKey, UnitTestExecutorState batchState) {
+        return null;
     }
 }
