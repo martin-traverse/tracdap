@@ -138,9 +138,9 @@ class RuntimeApiServer(runtime_grpc.TracRuntimeApiServicer):
 
         return await request_task.complete(self.__request_timeout)
 
-    async def getJobDetails(self, request: runtime_pb2.RuntimeJobInfoRequest, context: grpc.ServicerContext):
+    async def getJobResult(self, request: runtime_pb2.RuntimeJobInfoRequest, context: grpc.ServicerContext):
 
-        request_task = GetJobStatusRequest(self.__engine_id, request, context)
+        request_task = GetJobResultRequest(self.__engine_id, request, context)
         self.__agent.threadsafe().spawn(request_task)
 
         return await request_task.complete(self.__request_timeout)
@@ -293,5 +293,41 @@ class GetJobStatusRequest(ApiRequest[runtime_pb2.RuntimeJobInfoRequest, runtime_
                 jobId=codec.encode(job_details.jobId),
                 statusCode=codec.encode(job_details.statusCode),
                 statusMessage=codec.encode(job_details.statusMessage))
+
+        self._mark_complete()
+
+
+class GetJobResultRequest(ApiRequest[runtime_pb2.RuntimeJobInfoRequest, runtime_pb2.RuntimeJobResult]):
+
+    def __init__(self, engine_id, request, context):
+
+        super().__init__(engine_id, "get_job_result", request, context)
+
+        if request.HasField("jobKey"):
+            self._job_key = self._request.jobKey
+        elif request.HasField("jobSelector"):
+            self._job_key = util.object_key(self._request.jobSelector)
+        else:
+            raise ex.EValidation("Bad request: Neither jobKey nor jobSelector is specified")
+
+    def on_start(self):
+        self.actors().send(self._engine_id, "get_job_details", self._job_key, details=True)
+
+    @actors.Message
+    def job_details(self, job_details: tp.Optional[config.JobResult]):
+
+        if job_details is None:
+            self._grpc_code = grpc.StatusCode.NOT_FOUND
+            self._grpc_message = f"Job not found: [{self._job_key}]"
+
+        else:
+
+            encoded_results = dict((k, codec.encode(v)) for k, v in job_details.results.items())
+
+            self._response = runtime_pb2.RuntimeJobResult(
+                jobId=codec.encode(job_details.jobId),
+                statusCode=codec.encode(job_details.statusCode),
+                statusMessage=codec.encode(job_details.statusMessage),
+                results=encoded_results)
 
         self._mark_complete()
