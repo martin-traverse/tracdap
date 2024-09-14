@@ -26,9 +26,9 @@ service TracRuntimeApi {
     };
   }
 
-  rpc getJobDetails(RuntimeJobInfoRequest) returns (RuntimeJobResult) {
+  rpc getJobResult(RuntimeJobInfoRequest) returns (RuntimeJobResult) {
     option (google.api.http) = {
-      get: "/job-details/{jobKey}"
+      get: "/job-result/{jobKey}"
     };
   }
 }
