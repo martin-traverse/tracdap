@@ -82,7 +82,7 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
     @Override
     public BatchJobState<TBatchState> submitOneshotJob(TagHeader jobId, JobConfig jobConfig, RuntimeConfig sysConfig) {
 
-        var runtimeApiEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.REMOTE_API);
+        var runtimeApiEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.EXPOSE_PORT);
         var resultVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
         var logVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
 
@@ -136,8 +136,6 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
         jobState.runtimeApiEnabled = runtimeApiEnabled;
         jobState.resultVolumeEnabled = resultVolumesEnabled;
         jobState.logVolumeEnabled = logVolumesEnabled;
-
-        // TODO: Get runtime API address
 
         return jobState;
     }
@@ -203,16 +201,28 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
     private RuntimeJobStatus getStatusFromApi(BatchJobState<TBatchState> jobState) {
 
-        var runtimeRequest = RuntimeJobInfoRequest.newBuilder()
-                .setJobKey(jobState.batchKey)
-                .build();
+        var runtimeApiAddress = batchExecutor.getBatchAddress(jobState.batchKey, jobState.batchState);
+
+        if (runtimeApiAddress == null) {
+
+            log.warn("Runtime API address not yet known for batch [{}]", jobState.batchKey);
+
+            return RuntimeJobStatus.newBuilder()
+                    .setStatusCode(JobStatusCode.PENDING)
+                    .setStatusMessage("Runtime API address not yet known")
+                    .build();
+        }
 
         var runtimeChannel = (ManagedChannel) null;
 
         try {
 
-            runtimeChannel = channelFactory.createChannel(jobState.runtimeApiAddress);
+            runtimeChannel = channelFactory.createChannel(runtimeApiAddress);
             var runtimeApi = getRuntimeApi(runtimeChannel);
+
+            var runtimeRequest = RuntimeJobInfoRequest.newBuilder()
+                    .setJobKey(jobState.batchKey)
+                    .build();
 
             return runtimeApi.getJobStatus(runtimeRequest);
         }
@@ -272,18 +282,28 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
     private RuntimeJobResult getResultFromApi(BatchJobState<TBatchState> jobState) {
 
+        var runtimeApiAddress = batchExecutor.getBatchAddress(jobState.batchKey, jobState.batchState);
+
+        if (runtimeApiAddress == null) {
+
+            // TODO
+            throw new ETracInternal(String.format(
+                    "Runtime API address not yet known for batch [%s]",
+                    jobState.batchKey));
+        }
+
         var runtimeChannel = (ManagedChannel) null;
 
         try {
 
-            runtimeChannel = channelFactory.createChannel(jobState.runtimeApiAddress);
+            runtimeChannel = channelFactory.createChannel(runtimeApiAddress);
             var runtimeApi = getRuntimeApi(runtimeChannel);
 
             var runtimeRequest = RuntimeJobInfoRequest.newBuilder()
                     .setJobKey(jobState.batchKey)
                     .build();
 
-            return runtimeApi.getJobDetails(runtimeRequest);
+            return runtimeApi.getJobResult(runtimeRequest);
         }
         catch (StatusRuntimeException e) {
 

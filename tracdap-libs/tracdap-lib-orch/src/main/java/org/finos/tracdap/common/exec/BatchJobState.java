@@ -17,7 +17,6 @@
 package org.finos.tracdap.common.exec;
 
 import java.io.Serializable;
-import java.net.InetSocketAddress;
 
 
 public class BatchJobState<TBatchState extends Serializable> implements Serializable {
@@ -26,8 +25,6 @@ public class BatchJobState<TBatchState extends Serializable> implements Serializ
     TBatchState batchState;
 
     boolean runtimeApiEnabled;
-    InetSocketAddress runtimeApiAddress;
-
     boolean resultVolumeEnabled;
     boolean logVolumeEnabled;
 }
