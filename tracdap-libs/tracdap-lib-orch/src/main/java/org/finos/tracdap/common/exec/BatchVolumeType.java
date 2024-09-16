@@ -20,5 +20,5 @@ public enum BatchVolumeType {
 
     CONFIG_VOLUME,
     SCRATCH_VOLUME,
-    RESULT_VOLUME,
+    OUTPUT_VOLUME
 }

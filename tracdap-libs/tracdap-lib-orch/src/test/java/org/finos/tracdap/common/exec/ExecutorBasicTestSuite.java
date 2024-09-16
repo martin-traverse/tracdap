@@ -55,7 +55,7 @@ public abstract class ExecutorBasicTestSuite {
             // Set up volumes
 
             batchState = batchExecutor.addVolume(jobKey, batchState, "config", BatchVolumeType.CONFIG_VOLUME);
-            batchState = batchExecutor.addVolume(jobKey, batchState, "outputs", BatchVolumeType.RESULT_VOLUME);
+            batchState = batchExecutor.addVolume(jobKey, batchState, "outputs", BatchVolumeType.OUTPUT_VOLUME);
 
             // Write a test file into the config volume
 
@@ -113,7 +113,7 @@ public abstract class ExecutorBasicTestSuite {
             // Set up volumes
 
             batchState = batchExecutor.addVolume(jobKey, batchState, "config", BatchVolumeType.CONFIG_VOLUME);
-            batchState = batchExecutor.addVolume(jobKey, batchState, "outputs", BatchVolumeType.RESULT_VOLUME);
+            batchState = batchExecutor.addVolume(jobKey, batchState, "outputs", BatchVolumeType.OUTPUT_VOLUME);
 
             // Do not prepare input file, let it be missing
 
