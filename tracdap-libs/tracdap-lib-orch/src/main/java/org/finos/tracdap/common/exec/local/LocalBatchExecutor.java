@@ -20,6 +20,7 @@ import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.exec.*;
 import org.finos.tracdap.common.metadata.MetadataConstants;
 
+import org.finos.tracdap.config.StorageConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -29,6 +30,7 @@ import java.nio.file.*;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.CompletionException;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -81,11 +83,6 @@ public class LocalBatchExecutor implements IBatchExecutor<LocalBatchState> {
     public void stop() {
 
         log.info("Local executor is shutting down...");
-    }
-
-    @Override
-    public Class<LocalBatchState> stateClass() {
-        return LocalBatchState.class;
     }
 
     @Override
@@ -442,6 +439,15 @@ public class LocalBatchExecutor implements IBatchExecutor<LocalBatchState> {
 
         // This should never be called, the executor does not advertise expose_port in its features
         throw new ETracInternal("Local executor does not support expose_port");
+    }
+
+    @Override
+    public LocalBatchState configureBatchStorage(
+            String batchKey, LocalBatchState batchState,
+            StorageConfig storageConfig, Consumer<StorageConfig> storageUpdate) {
+
+        // This should never be called, the executor does not advertise storage_mapping in its features
+        throw new ETracInternal("Local executor does not support storage_mapping");
     }
 
     private Path prepareVenvPath(Properties properties) {

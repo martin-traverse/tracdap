@@ -16,8 +16,11 @@
 
 package org.finos.tracdap.common.exec;
 
+import org.finos.tracdap.config.StorageConfig;
+
 import java.io.Serializable;
 import java.net.InetSocketAddress;
+import java.util.function.Consumer;
 
 
 public interface IBatchExecutor<TState extends Serializable> {
@@ -27,14 +30,12 @@ public interface IBatchExecutor<TState extends Serializable> {
     enum Feature {
         OUTPUT_VOLUMES,
         EXPOSE_PORT,
+        STORAGE_MAPPING,
         CANCELLATION
     }
 
     void start();
-
     void stop();
-
-    Class<TState> stateClass();
 
     boolean hasFeature(Feature feature);
 
@@ -48,8 +49,15 @@ public interface IBatchExecutor<TState extends Serializable> {
 
     BatchStatus getBatchStatus(String batchKey, TState batchState);
 
+    // Optional feature - output volumes
     boolean hasOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
     byte[] getOutputFile(String batchKey, TState batchState, String volumeName, String fileName);
 
+    // Optional feature - expose port
     InetSocketAddress getBatchAddress(String batchKey, TState batchState);
+
+    // Optional feature - storage mapping
+    TState configureBatchStorage(
+            String batchKey, TState batchState,
+            StorageConfig storageConfig, Consumer<StorageConfig> storageUpdate);
 }

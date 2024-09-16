@@ -17,10 +17,10 @@
 package org.finos.tracdap.svc.orch.test;
 
 import org.finos.tracdap.common.exec.*;
+import org.finos.tracdap.config.StorageConfig;
 
 import java.net.InetSocketAddress;
-import java.util.List;
-import java.util.Map;
+import java.util.function.Consumer;
 
 
 public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
@@ -33,11 +33,6 @@ public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
     @Override
     public void stop() {
 
-    }
-
-    @Override
-    public Class<UnitTestExecutorState> stateClass() {
-        return null;
     }
 
     @Override
@@ -92,6 +87,14 @@ public class UnitTestExecutor implements IBatchExecutor<UnitTestExecutorState> {
 
     @Override
     public InetSocketAddress getBatchAddress(String batchKey, UnitTestExecutorState batchState) {
+        return null;
+    }
+
+    @Override
+    public UnitTestExecutorState configureBatchStorage(
+            String batchKey, UnitTestExecutorState batchState,
+            StorageConfig storageConfig, Consumer<StorageConfig> storageUpdate) {
+        
         return null;
     }
 }

@@ -32,6 +32,7 @@ import org.apache.sshd.scp.client.ScpClient;
 import org.apache.sshd.scp.client.ScpClientCreator;
 import org.apache.sshd.scp.common.helpers.ScpTimestampCommandDetails;
 
+import org.finos.tracdap.config.StorageConfig;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -50,6 +51,7 @@ import java.util.*;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 
@@ -167,11 +169,6 @@ public class SshExecutor implements IBatchExecutor<SshExecutorState> {
         log.info("SSH executor is shutting down...");
 
         client.stop();
-    }
-
-    @Override
-    public Class<SshExecutorState> stateClass() {
-        return SshExecutorState.class;
     }
 
     @Override
@@ -531,6 +528,14 @@ public class SshExecutor implements IBatchExecutor<SshExecutorState> {
         throw new ETracInternal("SSH executor does not support expose_port");
     }
 
+    @Override
+    public SshExecutorState configureBatchStorage(
+            String batchKey, SshExecutorState batchState,
+            StorageConfig storageConfig, Consumer<StorageConfig> storageUpdate) {
+
+        // This should never be called, the executor does not advertise storage_mapping in its features
+        throw new ETracInternal("SSH executor does not support storage_mapping");
+    }
 
     private ClientSession allocateSession(String jobKey) throws IOException {
 
