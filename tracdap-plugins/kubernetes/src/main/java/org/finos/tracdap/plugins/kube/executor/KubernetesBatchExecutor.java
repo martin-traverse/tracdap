@@ -18,6 +18,7 @@ package org.finos.tracdap.plugins.kube.executor;
 
 import org.finos.tracdap.common.config.ConfigHelpers;
 import org.finos.tracdap.common.config.ConfigManager;
+import org.finos.tracdap.config.StorageConfig;
 import org.finos.tracdap.common.exception.*;
 import org.finos.tracdap.common.exec.*;
 
@@ -33,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -48,7 +50,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     public static final String JOB_NAMESPACE_CONFIG_KEY = "job.namespace";
     public static final String SERVICE_ADDRESS_CONFIG_KEY = "service.address";
 
-    private static final List<Feature> EXECUTOR_FEATURES = List.of(Feature.EXPOSE_PORT);
+    private static final List<Feature> EXECUTOR_FEATURES = List.of(Feature.EXPOSE_PORT, Feature.STORAGE_MAPPING);
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -149,11 +151,6 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     }
 
     @Override
-    public Class<KubernetesBatchState> stateClass() {
-        return KubernetesBatchState.class;
-    }
-
-    @Override
     public boolean hasFeature(Feature feature) {
         return EXECUTOR_FEATURES.contains(feature);
     }
@@ -227,13 +224,80 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         return batchState;
     }
 
+    public KubernetesBatchState configureBatchStorage(
+            String batchKey, KubernetesBatchState batchState,
+            StorageConfig storageConfig, Consumer<StorageConfig> storageUpdate) {
+
+        // Find and map any volumes that are configured in Kubernetes
+        // Depending on the deployment, some volumes may be mapped and not others
+        // E.g. if volumes are using native cloud storage, it is fine to access that directly
+
+        V1PersistentVolumeClaimList storageClaims;
+
+        try {
+            var request = coreClient.listNamespacedPersistentVolumeClaim(batchState.jobNamespace);
+            request.labelSelector("trac-storage-key");
+            storageClaims = request.execute();
+        }
+        catch (ApiException apiError) {
+            // TODO: Consistent error mapping
+            throw new EExecutorFailure(apiError.getMessage(), apiError);
+        }
+
+        var storageConfigBuilder = storageConfig.toBuilder();
+
+        for (var storageClaim : storageClaims.getItems()) {
+
+            var storageMetadata = storageClaim.getMetadata();
+
+            // Should never happen - request used a label selector so labels should always exist
+            if (storageMetadata == null || storageMetadata.getLabels() == null || storageClaim.getSpec() == null)
+                throw new EUnexpected();
+
+            var tracStorageKey = storageMetadata.getLabels().get("trac-storage-key");
+
+            // Ignore any volumes not needed for this job (do not map anything extra)
+            if (!storageConfig.containsBuckets(tracStorageKey))
+                continue;
+
+            // TODO: Check access mode on storage?
+            // Or rely on checking pod status for hung pods?
+
+            var volumeName = tracStorageKey.toLowerCase().replace("_", "-");
+
+            var claimSource = new V1PersistentVolumeClaimVolumeSource();
+            claimSource.setClaimName(storageMetadata.getName());
+            claimSource.setReadOnly(false);  // TODO: Read only claims?
+
+            var volume = new V1Volume();
+            volume.setName(volumeName);
+            volume.setPersistentVolumeClaim(claimSource);
+
+            var mountPath = "/mnt/trac/storage/" + tracStorageKey;
+            var mount = new V1VolumeMount();
+            mount.setName(volumeName);
+            mount.setMountPath(mountPath);
+
+            addVolumeToPod(batchState, volume, mount);
+
+            var storageBucket = storageConfig.getBucketsOrThrow(tracStorageKey).toBuilder();
+            storageBucket.setProtocol("LOCAL");
+            storageBucket.clearProperties();
+            storageBucket.putProperties("rootPath", mountPath);
+            storageBucket.putProperties("readOnly", "false");  // TODO: Read only volume?
+
+            log.info(storageBucket.toString());
+
+            storageConfigBuilder.putBuckets(tracStorageKey, storageBucket.build());
+        }
+
+        storageUpdate.accept(storageConfigBuilder.build());
+
+        return batchState;
+    }
+
     @Override
     public KubernetesBatchState addVolume(String batchKey, KubernetesBatchState batchState, String volumeName, BatchVolumeType volumeType) {
-
-        var mountPath = "/mnt/trac/" + volumeName;
-        var mount = new V1VolumeMount();
-        mount.setName(volumeName);
-        mount.setMountPath(mountPath);
 
         var volume = new V1Volume();
         volume.setName(volumeName);
@@ -262,7 +326,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
                 break;
 
-            case RESULT_VOLUME:
+            case OUTPUT_VOLUME:
 
                 // Should never be called, the executor does not advertise output volumes in its features
                 throw new ETracInternal("Kubernetes executor does not support output volumes");
@@ -270,6 +334,16 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
             default:
                 throw new EUnexpected();
         }
+
+        var mountPath = "/mnt/trac/" + volumeName;
+        var mount = new V1VolumeMount();
+        mount.setName(volumeName);
+        mount.setMountPath(mountPath);
+
+        return addVolumeToPod(batchState, volume, mount);
+    }
+
+    private KubernetesBatchState addVolumeToPod(KubernetesBatchState batchState, V1Volume volume, V1VolumeMount mount) {
 
         var podSpec = getPodSpec(batchState);
         var container = podSpec.getContainers().get(0);
@@ -578,7 +652,23 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var jobResponse = jobStatusRequest.execute();
         var jobStatus = jobResponse.getStatus();
 
-        return jobStatus != null ? translateJobStatus(jobStatus) : null;
+        if (jobStatus == null)
+            return null;
+
+        var activePods = jobStatus.getActive();
+
+        if (activePods != null && activePods > 0) {
+
+            var podSelector = String.format("job-name=%s", batchState.jobName);
+            var podListRequest = coreClient.listNamespacedPod(batchState.jobNamespace);
+            podListRequest.labelSelector(podSelector);
+
+            var podList = podListRequest.execute();
+
+            // TODO: Consider status of hung pods
+        }
+
+        return translateJobStatus(jobStatus);
     }
 
     private BatchStatus getBatchStatusFromPod(String batchKey, KubernetesBatchState batchState) throws ApiException {
@@ -646,23 +736,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         throw new ETracInternal("Batch address not available");
 
-//        try {
-
-//            return new InetSocketAddress("localhost", 30000);
-
-//            var podStatusRequest = coreClient.readNamespacedPodStatus(batchState.podName, batchState.jobNamespace);
-//            var podStatusResponse = podStatusRequest.execute();
-//            var podStatus = podStatusResponse.getStatus();
-//
-//            if (podStatus == null || podStatus.getPodIP() == null)
-//                throw new EUnexpected();
-//
-//            var inetAddress = InetAddress.getByName(podStatus.getPodIP());
-//            return new InetSocketAddress(inetAddress, 9000);
-//        }
-//        catch (ApiException | UnknownHostException e) {
-//            throw new EUnexpected(e);
-//        }
+        // TODO: Get cluster address for pod / job
     }
 
     private String translateLaunchArg(KubernetesBatchState batchState, LaunchArg launchArg) {
