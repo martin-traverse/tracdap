@@ -89,22 +89,33 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
         try {
 
+            var batchSysConfig = sysConfig.toBuilder();
+
             var runtimeApiEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.EXPOSE_PORT);
-            var resultVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
-            var logVolumesEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
+            var storageMappingEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.STORAGE_MAPPING);
+            var resultVolumeEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
+            var logVolumeEnabled = batchExecutor.hasFeature(IBatchExecutor.Feature.OUTPUT_VOLUMES);
 
-            var runtimeApiConfig = ServiceConfig.newBuilder()
-                    .setEnabled(runtimeApiEnabled)
-                    .setPort(9000)  // TODO
-                    .clearAlias()
-                    .build();
+            if (runtimeApiEnabled) {
 
-            sysConfig = sysConfig.toBuilder()
-                    .setRuntimeApi(runtimeApiConfig)
-                    .build();
+                var runtimeApiConfig = ServiceConfig.newBuilder()
+                        .setEnabled(true)
+                        .setPort(9000)  // TODO
+                        .clearAlias()
+                        .build();
+
+                batchSysConfig.setRuntimeApi(runtimeApiConfig);
+            }
+
+            if (storageMappingEnabled) {
+
+                batchState = batchExecutor.configureBatchStorage(
+                        batchKey, batchState, sysConfig.getStorage(),
+                        batchSysConfig::mergeStorage);
+            }
 
             var jobConfigJson = ConfigParser.quoteConfig(jobConfig, ConfigFormat.JSON);
-            var sysConfigJson = ConfigParser.quoteConfig(sysConfig, ConfigFormat.JSON);
+            var sysConfigJson = ConfigParser.quoteConfig(batchSysConfig.build(), ConfigFormat.JSON);
 
             batchState = batchExecutor.addVolume(batchKey, batchState, "config", BatchVolumeType.CONFIG_VOLUME);
             batchState = batchExecutor.addFile(batchKey, batchState, "config", "job_config.json", jobConfigJson);
@@ -118,15 +129,15 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
                             LaunchArg.string("--job-config"), LaunchArg.path("config", "job_config.json"),
                             LaunchArg.string("--scratch-dir"), LaunchArg.path("scratch", ".")));
 
-            if (resultVolumesEnabled) {
-                batchState = batchExecutor.addVolume(batchKey, batchState, "result", BatchVolumeType.RESULT_VOLUME);
+            if (resultVolumeEnabled) {
+                batchState = batchExecutor.addVolume(batchKey, batchState, "result", BatchVolumeType.OUTPUT_VOLUME);
                 batchConfig.addExtraArgs(List.of(
                         LaunchArg.string("--job-result-dir"), LaunchArg.path("result", "."),
                         LaunchArg.string("--job-result-format"), LaunchArg.string("json")));
             }
 
-            if (logVolumesEnabled) {
-                batchState = batchExecutor.addVolume(batchKey, batchState, "log", BatchVolumeType.RESULT_VOLUME);
+            if (logVolumeEnabled) {
+                batchState = batchExecutor.addVolume(batchKey, batchState, "log", BatchVolumeType.OUTPUT_VOLUME);
                 batchConfig.addLoggingRedirect(
                         LaunchArg.path("log", "trac_rt_stdout.log"),
                         LaunchArg.path("log", "trac_rt_stderr.log"));
@@ -138,8 +149,8 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
             jobState.batchKey = batchKey;
             jobState.batchState = batchState;
             jobState.runtimeApiEnabled = runtimeApiEnabled;
-            jobState.resultVolumeEnabled = resultVolumesEnabled;
-            jobState.logVolumeEnabled = logVolumesEnabled;
+            jobState.resultVolumeEnabled = resultVolumeEnabled;
+            jobState.logVolumeEnabled = logVolumeEnabled;
 
             return jobState;
         }
