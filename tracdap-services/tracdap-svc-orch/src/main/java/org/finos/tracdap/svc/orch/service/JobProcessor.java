@@ -280,7 +280,7 @@ public class JobProcessor {
         var newState = jobState.clone();
         newState.executorStatus = executorStatus;
 
-        log.info("Job status received from executor: [{}] {}", newState.jobKey, newState.executorStatus);
+        log.info("Job status received from executor: [{}]", newState.jobKey);
 
         switch (executorStatus.getStatusCode()) {
 

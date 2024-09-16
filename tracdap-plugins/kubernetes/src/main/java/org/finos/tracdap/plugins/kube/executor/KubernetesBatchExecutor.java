@@ -286,8 +286,6 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
             storageBucket.putProperties("rootPath", mountPath);
             storageBucket.putProperties("readOnly", "false");  // TODO: Read only volume?
 
-            log.info(storageBucket.toString());
-
             storageConfigBuilder.putBuckets(tracStorageKey, storageBucket.build());
         }
 
