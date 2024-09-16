@@ -37,6 +37,9 @@ import java.util.Map;
 
 public class JobState implements Serializable, Cloneable {
 
+    // Note: Do not keep exceptions in job state, not all exception classes are fully serializable
+    // Serialization failures can mask real errors, especially for rare error conditions
+
     private final static long serialVersionUID = 1L;
 
     // Original request as received from the client
@@ -58,7 +61,6 @@ public class JobState implements Serializable, Cloneable {
     String cacheStatus;
     String statusMessage;
     String errorDetail;
-    Exception exception;
     int retries;
 
     // Job definition and resources, built up by the job logic

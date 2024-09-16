@@ -436,7 +436,7 @@ public class JobManager {
 
             case CacheStatus.PROCESSING_FAILED:
                 operation.operationName = "handle_processing_failed";
-                operation.operation = state -> processor.handleProcessingFailed(state, state.statusMessage, state.exception);
+                operation.operation = state -> processor.handleProcessingFailed(state, state.statusMessage);
                 operation.timeout = cacheTicketDuration;
                 break;
 
@@ -450,10 +450,9 @@ public class JobManager {
                 log.error("Internal job state error, key = [{}], revision = [{}], cache state = [{}]", key, revision, cacheStatus);
 
                 var message = "Internal job state error";
-                var error = new ETracInternal(message);
 
                 operation.operationName = "handle_processing_failed";
-                operation.operation = state -> processor.handleProcessingFailed(state, message, error);
+                operation.operation = state -> processor.handleProcessingFailed(state, message);
                 operation.timeout = cacheTicketDuration;
         }
 
@@ -482,10 +481,9 @@ public class JobManager {
                     cacheEntry.key(), cacheEntry.revision(), cacheEntry.status());
 
             var message = "Internal job state error";
-            var error = new ETracInternal(message);
 
             operation.operationName = "handle_processing_failed";
-            operation.operation = state -> processor.handleProcessingFailed(state, message, error);
+            operation.operation = state -> processor.handleProcessingFailed(state, message);
         }
 
         return operation;
@@ -647,7 +645,6 @@ public class JobManager {
 
             newState.cacheStatus = nextErrorState;
             newState.statusMessage = error.getMessage();
-            newState.exception = error;
 
             // Reset retries for cleanup operation
             newState.retries = 0;

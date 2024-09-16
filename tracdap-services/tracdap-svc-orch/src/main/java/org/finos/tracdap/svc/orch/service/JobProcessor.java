@@ -463,12 +463,11 @@ public class JobProcessor {
         return newState;
     }
 
-    public JobState handleProcessingFailed(JobState jobState, String errorMessage, Exception exception) {
+    public JobState handleProcessingFailed(JobState jobState, String errorMessage) {
 
         var newState = jobState.clone();
         newState.tracStatus = JobStatusCode.FAILED;
         newState.statusMessage = errorMessage;
-        newState.exception = exception;
 
         // Credentials are not serialized in the cache, they need to be regenerated
         newState.credentials = internalAuth.createDelegateSession(jobState.owner, DELEGATE_SESSION_TIMEOUT);
