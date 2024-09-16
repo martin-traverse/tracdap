@@ -157,11 +157,23 @@ class ApiAgent(actors.ThreadsafeActor):
 
     def __init__(self):
         super().__init__()
+        self._log = util.logger_for_object(self)
         self._event_loop = asyncio.get_event_loop()
         self.__start_signal = asyncio.Event()
 
     def on_start(self):
         self._event_loop.call_soon_threadsafe(lambda: self.__start_signal.set())
+
+    def on_signal(self, signal: actors.Signal) -> tp.Optional[bool]:
+
+        # Do not allow a failed request to bring down the API server
+        if signal.message == actors.SignalNames.FAILED:
+            error = signal.error if isinstance(signal, actors.ErrorSignal) else None
+            self._log.warning("Unhandled error during API request: " + str(error))
+            self._log.warning("The API agent will continue running")
+            return True
+
+        return False
 
     async def started(self):
         await self.__start_signal.wait()
