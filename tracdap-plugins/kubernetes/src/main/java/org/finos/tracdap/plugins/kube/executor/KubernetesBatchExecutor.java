@@ -34,6 +34,7 @@ import org.slf4j.LoggerFactory;
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -49,6 +50,14 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     public static final String CONTAINER_TAG_CONFIG_KEY = "container.tag";
     public static final String JOB_NAMESPACE_CONFIG_KEY = "job.namespace";
     public static final String SERVICE_ADDRESS_CONFIG_KEY = "service.address";
+
+    private static final String JOB_NAME_LABEL = "job-name";
+    private static final String TRAC_JOB_KEY_LABEL = "trac-job-key";
+    private static final String TRAC_STORAGE_KEY_LABEL = "trac-storage-key";
+
+    private static final int DEFAULT_JOB_RETRIES = 0;
+    private static final int MIN_SERVICE_PORT = 30000;
+    private static final int MAX_SERVICE_PORT = 32000;
 
     private static final List<Feature> EXECUTOR_FEATURES = List.of(Feature.EXPOSE_PORT, Feature.STORAGE_MAPPING);
 
@@ -66,6 +75,8 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     private final V1Pod podTemplate;
     private final V1Service serviceTemplate;
 
+    private final AtomicInteger nextServicePort;
+
     public KubernetesBatchExecutor(Properties properties, ConfigManager configManager) {
 
         coreClient = new CoreV1Api();
@@ -79,6 +90,8 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         jobTemplate = loadYaml(properties, configManager, JOB_YAML_CONFIG_KEY, V1Job.class);
         podTemplate = loadYaml(properties, configManager, POD_YAML_CONFIG_KEY, V1Pod.class);
         serviceTemplate = loadYaml(properties, configManager, SERVICE_YAML_CONFIG_KEY, V1Service.class);
+
+        nextServicePort = new AtomicInteger(MIN_SERVICE_PORT);
     }
 
     private <T> T loadYaml(Properties properties, ConfigManager configManager, String configKey, Class<T> configClass) {
@@ -147,7 +160,8 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public void stop() {
-        // TODO
+
+        // No-op, nothing to do
     }
 
     @Override
@@ -159,6 +173,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
     public KubernetesBatchState createBatch(String batchKey) {
 
         var batchState = new KubernetesBatchState();
+        batchState.tracJobKey = batchKey;
         batchState.jobNamespace = jobNamespace;
         batchState.jobName = batchKey.toLowerCase();
 
@@ -169,6 +184,16 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 if (batchState.job.getMetadata() == null)
                     batchState.job.setMetadata(new V1ObjectMeta());
                 batchState.job.getMetadata().setName(batchState.jobName);
+                batchState.job.getMetadata().putLabelsItem(TRAC_JOB_KEY_LABEL, batchState.jobName);
+                if (batchState.job.getSpec() == null)
+                    batchState.job.setSpec(new V1JobSpec());
+                var backoffLimit = batchState.job.getSpec().getBackoffLimit();
+                if (backoffLimit != null && backoffLimit > 0)
+                    batchState.jobRetries = backoffLimit;
+                else {
+                    batchState.jobRetries = DEFAULT_JOB_RETRIES;
+                    batchState.job.getSpec().setBackoffLimit(DEFAULT_JOB_RETRIES);
+                }
             }
 
             if (podTemplate != null) {
@@ -176,8 +201,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 batchState.pod = V1Pod.fromJson(podTemplate.toJson());
                 if (batchState.pod.getMetadata() == null)
                     batchState.pod.setMetadata(new V1ObjectMeta());
-                batchState.pod.getMetadata().setName(batchState.jobName);  // TODO suffix?
-                batchState.pod.getMetadata().putLabelsItem("job-name", batchState.jobName);
+                batchState.pod.getMetadata().setName(batchState.jobName);
+                batchState.pod.getMetadata().putLabelsItem(JOB_NAME_LABEL, batchState.jobName);
+                batchState.pod.getMetadata().putLabelsItem(TRAC_JOB_KEY_LABEL, batchState.tracJobKey);
 
                 // Save the pod name
                 batchState.podName = batchState.pod.getMetadata().getName();
@@ -193,15 +219,23 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 batchState.service = V1Service.fromJson(serviceTemplate.toJson());
                 if (batchState.service.getMetadata() == null)
                     batchState.service.setMetadata(new V1ObjectMeta());
-                batchState.service.getMetadata().setName(batchState.jobName);  // TODO suffix?
-                batchState.service.getMetadata().putLabelsItem("job-name", batchState.jobName);
+                batchState.service.getMetadata().setName(batchState.jobName + "-service");
+                batchState.service.getMetadata().putLabelsItem(JOB_NAME_LABEL, batchState.jobName);
+                batchState.service.getMetadata().putLabelsItem(TRAC_JOB_KEY_LABEL, batchState.tracJobKey);
                 if (batchState.service.getSpec() == null)
                     batchState.service.setSpec(new V1ServiceSpec());
                 if (batchState.service.getSpec().getSelector() == null)
                     batchState.service.getSpec().setSelector(new HashMap<>());
-                batchState.service.getSpec().getSelector().put("job-name", batchState.jobName);
+                batchState.service.getSpec().getSelector().put(JOB_NAME_LABEL, batchState.jobName);
+                // Assuming the first port mapping in the service YAML is for the runtime API
+                if (batchState.service.getSpec().getPorts() != null && !batchState.service.getSpec().getPorts().isEmpty()) {
+                    var portMapping = batchState.service.getSpec().getPorts().get(0);
+                    portMapping.setPort(nextServicePort.getAndIncrement());
+                    // Loop port number if the max is hit
+                    if (nextServicePort.get() == MAX_SERVICE_PORT)
+                        nextServicePort.set(MIN_SERVICE_PORT);
+                }
             }
-
         }
         catch (IOException e) {
             // Should never happen, JSON source is already valid
@@ -236,12 +270,16 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         try {
             var request = coreClient.listNamespacedPersistentVolumeClaim(batchState.jobNamespace);
-            request.labelSelector("trac-storage-key");
+            request.labelSelector(TRAC_STORAGE_KEY_LABEL);
             storageClaims = request.execute();
         }
         catch (ApiException apiError) {
-            // TODO: Consistent error mapping
-            throw new EExecutorFailure(apiError.getMessage(), apiError);
+
+            var detailMessage = getErrorMessage(apiError);
+            var message = String.format("Error querying Kubernetes volumes: %s", detailMessage);
+            log.error(message);
+
+            throw new EExecutorFailure(message, apiError);
         }
 
         var storageConfigBuilder = storageConfig.toBuilder();
@@ -254,20 +292,22 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
             if (storageMetadata == null || storageMetadata.getLabels() == null || storageClaim.getSpec() == null)
                 throw new EUnexpected();
 
-            var tracStorageKey = storageMetadata.getLabels().get("trac-storage-key");
+            var tracStorageKey = storageMetadata.getLabels().get(TRAC_STORAGE_KEY_LABEL);
 
             // Ignore any volumes not needed for this job (do not map anything extra)
             if (!storageConfig.containsBuckets(tracStorageKey))
                 continue;
 
-            // TODO: Check access mode on storage?
-            // Or rely on checking pod status for hung pods?
+            var bucketConfig = storageConfig.getBucketsOrThrow(tracStorageKey).toBuilder();
+            var bucketProps = new Properties();
+            bucketProps.putAll(bucketConfig.getPropertiesMap());
 
             var volumeName = tracStorageKey.toLowerCase().replace("_", "-");
+            var readOnly = ConfigHelpers.optionalBoolean(tracStorageKey, bucketProps, "readOnly", false);
 
             var claimSource = new V1PersistentVolumeClaimVolumeSource();
             claimSource.setClaimName(storageMetadata.getName());
-            claimSource.setReadOnly(false);  // TODO: Read only claims?
+            claimSource.setReadOnly(readOnly);
 
             var volume = new V1Volume();
             volume.setName(volumeName);
@@ -284,7 +324,7 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
             storageBucket.setProtocol("LOCAL");
             storageBucket.clearProperties();
             storageBucket.putProperties("rootPath", mountPath);
-            storageBucket.putProperties("readOnly", "false");  // TODO: Read only volume?
+            storageBucket.putProperties("readOnly", Boolean.toString(readOnly));
 
             storageConfigBuilder.putBuckets(tracStorageKey, storageBucket.build());
         }
@@ -306,8 +346,12 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
                 var configMapName = (batchKey + "-" + volumeName).toLowerCase();
 
+                var configMetadata = new V1ObjectMeta();
+                configMetadata.setName(configMapName);
+                configMetadata.putLabelsItem(TRAC_JOB_KEY_LABEL, batchState.tracJobKey);
+
                 var configMap = new V1ConfigMap();
-                configMap.setMetadata(new V1ObjectMeta().name(configMapName));
+                configMap.setMetadata(configMetadata);
 
                 batchState.configMaps.put(volumeName, configMap);
 
@@ -357,8 +401,11 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         var configMap = batchState.configMaps.get(volumeName);
 
-        if (configMap == null)
-            throw new EUnexpected();  // TODO
+        // Orchestrator should never ask for this, treat it as an internal error
+        if (configMap == null) {
+            var error = String.format("Cannot add files to volume [%s]: This is not a config volume", volumeName);
+            throw new ETracInternal(error);
+        }
 
         configMap.putBinaryDataItem(fileName, fileContent);
 
@@ -380,6 +427,11 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var podSpec = getPodSpec(batchState);
         var container = podSpec.getContainers().get(0);
         container.setCommand(command);
+
+        // TODO: Retry logic for submission failures
+        // Currently any error during submit will fail with a non-retrying error
+        // In fact some errors can be retried, we could raise a temporary failure in those cases
+        // Then we'd need to check and only create resources that don't already exist
 
         try {
 
@@ -425,9 +477,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         var metadata = batchState.job.getMetadata();
 
-        if (metadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // Should never happen, metadata is set up in createBatch()
+        if (metadata == null)
+            throw new EUnexpected();
 
         log.info("Creating job [{}]", metadata.getName());
 
@@ -435,9 +487,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var response = request.execute();
         var responseMetadata = response.getMetadata();
 
-        if (responseMetadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // A response without metadata is invalid (this should not happen in practice)
+        if (responseMetadata == null)
+            throw new EExecutorFailure("Invalid response from Kubernetes cluster (missing metadata)");
 
         log.info("Job created for [{}], namespace = [{}], UID = [{}]",
                 responseMetadata.getName(),
@@ -453,9 +505,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         var metadata = batchState.pod.getMetadata();
 
-        if (metadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // Should never happen, metadata is set up in createBatch()
+        if (metadata == null)
+            throw new EUnexpected();
 
         log.info("Creating pod [{}]", metadata.getName());
 
@@ -463,9 +515,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var response = request.execute();
         var responseMetadata = response.getMetadata();
 
-        if (responseMetadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // A response without metadata is invalid (this should not happen in practice)
+        if (responseMetadata == null)
+            throw new EExecutorFailure("Invalid response from Kubernetes cluster (missing metadata)");
 
         log.info("Pod created for [{}], namespace = [{}], UID = [{}]",
                 responseMetadata.getName(),
@@ -481,9 +533,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         var metadata = batchState.service.getMetadata();
 
-        if (metadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // Should never happen, metadata is set up in createBatch()
+        if (metadata == null)
+            throw new EUnexpected();
 
         log.info("Creating API service for [{}]", metadata.getName());
 
@@ -491,9 +543,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         var response = request.execute();
         var responseMetadata = response.getMetadata();
 
-        if (responseMetadata == null) {
-            throw new EUnexpected();  // TODO
-        }
+        // A response without metadata is invalid (this should not happen in practice)
+        if (responseMetadata == null)
+            throw new EExecutorFailure("Invalid response from Kubernetes cluster (missing metadata)");
 
         log.info("API service created for [{}], namespace = [{}], UID = [{}]",
                 responseMetadata.getName(),
@@ -653,20 +705,37 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         if (jobStatus == null)
             return null;
 
+        var batchStatus = translateJobStatus(jobStatus, batchState);
+
+        // It is possible for pods to hang indefinitely due to scheduling / affinity rules
+        // The job will still be reported as running though!
+        // So, if there are active pods, we need to check they are really running
+
         var activePods = jobStatus.getActive();
 
-        if (activePods != null && activePods > 0) {
+        // No active pods means nothing can hang - no need to check pod status
+        if (activePods == null || activePods == 0)
+            return batchStatus;
 
-            var podSelector = String.format("job-name=%s", batchState.jobName);
-            var podListRequest = coreClient.listNamespacedPod(batchState.jobNamespace);
-            podListRequest.labelSelector(podSelector);
+        // Find all the live pods associated with this job
+        var podSelector = String.format("job-name=%s", batchState.jobName);
+        var podListRequest = coreClient.listNamespacedPod(batchState.jobNamespace);
+        podListRequest.labelSelector(podSelector);
 
-            var podList = podListRequest.execute();
+        var podList = podListRequest.execute();
 
-            // TODO: Consider status of hung pods
+        // Check for pods that failed scheduling
+        // If it happens the job will not complete, report the error state
+        for (var pod : podList.getItems()) {
+            if (pod.getStatus() != null) {
+                var failedScheduling = podFailedScheduling(pod.getStatus());
+                if (failedScheduling.isPresent())
+                    return failedScheduling.get();
+            }
         }
 
-        return translateJobStatus(jobStatus);
+        // No hung pods found - return the status reported by the job
+        return batchStatus;
     }
 
     private BatchStatus getBatchStatusFromPod(String batchKey, KubernetesBatchState batchState) throws ApiException {
@@ -694,6 +763,9 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
     @Override
     public InetSocketAddress getBatchAddress(String batchKey, KubernetesBatchState batchState) {
+
+        // TODO: This logic assumes the job has an associated service
+        // Running inside the cluster, we should be able to use the active POD IP
 
         if (batchState.service != null && batchState.service.getSpec() != null) {
 
@@ -733,8 +805,6 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         }
 
         throw new ETracInternal("Batch address not available");
-
-        // TODO: Get cluster address for pod / job
     }
 
     private String translateLaunchArg(KubernetesBatchState batchState, LaunchArg launchArg) {
@@ -749,12 +819,20 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
                 var podSpec = getPodSpec(batchState);
                 var container = podSpec.getContainers().get(0);
 
-                var volumeMount = container.getVolumeMounts().stream()
+                var volumeMounts = container.getVolumeMounts() != null
+                        ? container.getVolumeMounts()
+                        : List.<V1VolumeMount>of();
+
+                var volumeMount = volumeMounts.stream()
                         .filter(mount -> mount.getName().equals(launchArg.getPathVolume()))
                         .findFirst();
 
-                if (volumeMount.isEmpty())
-                    throw new EUnexpected();  // TODO
+                // Sanity check - the orchestrator should never ask for this
+                if (volumeMount.isEmpty()) {
+                    throw new ETracInternal(String.format(
+                            "Launch arg refers to volume [%s], which is not configured",
+                            launchArg.getPathVolume()));
+                }
 
                 var mountPoint = volumeMount.get().getMountPath();
                 var childPath = launchArg.getPathArg();
@@ -785,6 +863,12 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         BatchStatusCode statusCode;
 
+        // Check for pods that failed scheduling - phase is Pending but they are hanging forever
+        var failedScheduling = podFailedScheduling(podStatus);
+
+        if (failedScheduling.isPresent())
+            return failedScheduling.get();
+
         if ("Pending".equals(phase))
             statusCode = BatchStatusCode.QUEUED;
         else if ("Running".equals(phase))
@@ -796,14 +880,40 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         else
             statusCode = BatchStatusCode.STATUS_UNKNOWN;
 
-        // podStatus.getContainerStatuses().get(0).getLastState().getTerminated().getMessage();
+        // Try to get a more detailed error message from the main (first) container for failures
+        if (statusCode == BatchStatusCode.FAILED) {
+            if (podStatus.getContainerStatuses() != null && !podStatus.getContainerStatuses().isEmpty()) {
+                var container = podStatus.getContainerStatuses().get(0);
+                if (container.getLastState() != null && container.getLastState().getTerminated() != null)
+                    statusMessage = container.getLastState().getTerminated().getMessage();
+            }
+        }
 
         return new BatchStatus(statusCode, statusMessage);
     }
 
-    private BatchStatus translateJobStatus(V1JobStatus kubeStatus) {
+    private Optional<BatchStatus> podFailedScheduling(V1PodStatus podStatus) {
 
-        var status = getJobStatus(kubeStatus);
+        if ("Pending".equals(podStatus.getPhase()) && podStatus.getConditions() != null) {
+
+            var scheduleCondition = podStatus.getConditions()
+                    .stream().filter(c -> "PodScheduled".equals(c.getType()))
+                    .findFirst().orElse(null);
+
+            // If a pod fails scheduling the job cannot complete
+            // Report a failed status code, the orchestrator will call to delete the job
+            if (scheduleCondition != null && "Unschedulable".equals(scheduleCondition.getReason())) {
+                var failedStatus = new BatchStatus(BatchStatusCode.FAILED, scheduleCondition.getMessage());
+                return Optional.of(failedStatus);
+            }
+        }
+
+        return Optional.empty();
+    }
+
+    private BatchStatus translateJobStatus(V1JobStatus kubeStatus, KubernetesBatchState batchState) {
+
+        var status = getJobStatus(kubeStatus, batchState);
 
         if (status != BatchStatusCode.FAILED)
             return new BatchStatus(status);
@@ -825,14 +935,14 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
         return new BatchStatus(status, message);
     }
 
-    private BatchStatusCode getJobStatus(V1JobStatus kubeStatus) {
+    private BatchStatusCode getJobStatus(V1JobStatus kubeStatus, KubernetesBatchState batchState) {
 
         var ready = kubeStatus.getReady();
         var active = kubeStatus.getActive();
         var succeeded = kubeStatus.getSucceeded();
         var failed = kubeStatus.getFailed();
 
-        if (failed != null && failed > 0)  // TODO: Retries
+        if (failed != null && failed > batchState.jobRetries)
             return BatchStatusCode.FAILED;
 
         if (succeeded != null && succeeded > 0)
@@ -855,8 +965,10 @@ public class KubernetesBatchExecutor implements IBatchExecutor<KubernetesBatchSt
 
         if (errorStatus != null)
             return errorStatus.getMessage();
-        else if (apiError.getCode() != 200)
+        // Error code != 0 means there was an HTTP error code
+        else if (apiError.getCode() != 0)
             return String.format("Cluster returned HTTP %d", apiError.getCode());
+        // Error code == 0 means HTTP communication failed, cause will be more relevant
         else if (apiError.getCause() != null)
             return apiError.getCause().getMessage();
         else

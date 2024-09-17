@@ -30,9 +30,13 @@ public class KubernetesBatchState implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    String tracJobKey;
+
     String jobNamespace;
     String jobName;
     String podName;
+
+    int jobRetries;
 
     transient V1Job job;
     transient V1Pod pod;
