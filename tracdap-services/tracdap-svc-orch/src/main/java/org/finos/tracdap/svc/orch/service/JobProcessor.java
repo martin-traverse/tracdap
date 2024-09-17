@@ -257,6 +257,9 @@ public class JobProcessor {
 
             if (jobState.executorState != null) {
 
+                // TODO: Errors can relate to the executor or individual jobs
+                // For individual job errors, jobs should be aborted after a number of retries
+
                 var executorState = stronglyTypedState(jobExecutor, jobState.executorState);
                 var jobStatus = jobExecutor.getJobStatus(executorState);
 
