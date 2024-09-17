@@ -692,7 +692,8 @@ public class JobManager {
             Status.Code.DEADLINE_EXCEEDED);
 
     private static final List<Class<? extends ETrac>> TRAC_CAN_RETRY = List.of(
-            EExecutorUnavailable.class);
+            EExecutorUnavailable.class,
+            EExecutorTemporaryFailure.class);
 
     // States that are not acted on:
     // CacheStatus.SCHEDULED_TO_REMOVE
