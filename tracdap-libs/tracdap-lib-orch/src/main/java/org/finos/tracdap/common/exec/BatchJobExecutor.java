@@ -47,6 +47,8 @@ import java.util.regex.Pattern;
 
 public class BatchJobExecutor<TBatchState extends Serializable> implements IJobExecutor<BatchJobState<TBatchState>> {
 
+    private static final short DEFAULT_RUNTIME_API_PORT = 9000;
+
     private static final Pattern TRAC_ERROR_LINE = Pattern.compile("tracdap.rt.exceptions.(E\\w+): (.+)");
 
     private final Logger log = LoggerFactory.getLogger(getClass());
@@ -99,9 +101,10 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
 
             if (runtimeApiEnabled) {
 
+                // TODO: Make runtime API port a config property
                 var runtimeApiConfig = ServiceConfig.newBuilder()
                         .setEnabled(true)
-                        .setPort(9000)  // TODO
+                        .setPort(DEFAULT_RUNTIME_API_PORT)
                         .clearAlias()
                         .build();
 
@@ -225,15 +228,15 @@ public class BatchJobExecutor<TBatchState extends Serializable> implements IJobE
         if (jobStatus.getStatusCode() == JobStatusCode.SUCCEEDED ||
             jobStatus.getStatusCode() == JobStatusCode.FINISHING) {
 
-            log.info("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusMessage());
+            log.info("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusCode());
         }
         else if (jobStatus.getStatusCode() == JobStatusCode.CANCELLED) {
 
-            log.warn("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusMessage());
+            log.warn("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusCode());
         }
         else if (jobStatus.getStatusCode() == JobStatusCode.FAILED) {
 
-            log.error("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusMessage());
+            log.error("Reporting job status for [{}]: {}", jobState.batchKey, jobStatus.getStatusCode());
             log.error(jobStatus.getStatusMessage());
 
             if (!jobStatus.getErrorDetail().isBlank())
