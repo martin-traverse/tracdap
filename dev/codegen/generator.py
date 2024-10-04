@@ -149,7 +149,7 @@ class TracGenerator:
         '{DOC_COMMENT}')
 
     DATA_CLASS_TEMPLATE = (
-        '{INDENT}@_dc.dataclass\n'
+        '{INDENT}@_dc.dataclass(kw_only=True)\n'
         '{INDENT}class {CLASS_NAME}:\n'
         '\n'
         '{DOC_COMMENT}'
