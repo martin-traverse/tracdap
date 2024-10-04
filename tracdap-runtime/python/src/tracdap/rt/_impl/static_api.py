@@ -53,10 +53,10 @@ class StaticApiImpl(_StaticApiHook):
         if attr_type is None:
             trac_value = _type_system.MetadataCodec.encode_value(attr_value)
         elif isinstance(attr_value, list):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.ARRAY, arrayType=_meta.TypeDescriptor(attr_type))
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.ARRAY, arrayType=_meta.TypeDescriptor(basicType=attr_type))
             trac_value = _type_system.MetadataCodec.convert_value(attr_value, type_desc)
         else:
-            type_desc = _meta.TypeDescriptor(attr_type)
+            type_desc = _meta.TypeDescriptor(basicType=attr_type)
             trac_value = _type_system.MetadataCodec.convert_value(attr_value, type_desc)
 
         return _Named(attr_name, trac_value)
@@ -83,7 +83,7 @@ class StaticApiImpl(_StaticApiHook):
         if isinstance(param_type, _meta.TypeDescriptor):
             param_type_descriptor = param_type
         else:
-            param_type_descriptor = _meta.TypeDescriptor(param_type, None, None)
+            param_type_descriptor = _meta.TypeDescriptor(basicType=param_type)
 
         if default_value is not None and not isinstance(default_value, _meta.Value):
             try:
@@ -93,7 +93,7 @@ class StaticApiImpl(_StaticApiHook):
                 raise _ex.EModelValidation(msg) from e
 
         return _Named(param_name, _meta.ModelParameter(
-            param_type_descriptor, label, default_value,
+            paramType=param_type_descriptor, label=label, defaultValue=default_value,
             paramProps=param_props))
 
     def define_parameters(
@@ -120,10 +120,10 @@ class StaticApiImpl(_StaticApiHook):
             not_null = business_key
 
         return _meta.FieldSchema(
-            field_name,
-            field_order,
-            field_type,
-            label,
+            fieldName=field_name,
+            fieldOrder=field_order,
+            fieldType=field_type,
+            label=label,
             businessKey=business_key,
             categorical=categorical,
             notNull=not_null,
@@ -139,7 +139,7 @@ class StaticApiImpl(_StaticApiHook):
         if schema_type == _meta.SchemaType.TABLE:
 
             table_schema = self._build_table_schema(*fields)
-            return _meta.SchemaDefinition(_meta.SchemaType.TABLE, table=table_schema)
+            return _meta.SchemaDefinition(schemaType=_meta.SchemaType.TABLE, table=table_schema)
 
         raise _ex.ERuntimeValidation(f"Invalid schema type [{schema_type.name}]")
 
@@ -166,7 +166,7 @@ class StaticApiImpl(_StaticApiHook):
         # Do not define details for dynamic schemas
 
         if dynamic:
-            schema_def = _meta.SchemaDefinition(_meta.SchemaType.TABLE)
+            schema_def = _meta.SchemaDefinition(schemaType=_meta.SchemaType.TABLE)
         else:
             schema_def = self.define_schema(*fields, schema_type=_meta.SchemaType.TABLE)
 
@@ -189,7 +189,7 @@ class StaticApiImpl(_StaticApiHook):
         # Do not define details for dynamic schemas
 
         if dynamic:
-            schema_def = _meta.SchemaDefinition(_meta.SchemaType.TABLE)
+            schema_def = _meta.SchemaDefinition(schemaType=_meta.SchemaType.TABLE)
         else:
             schema_def = self.define_schema(*fields, schema_type=_meta.SchemaType.TABLE)
 
@@ -222,4 +222,4 @@ class StaticApiImpl(_StaticApiHook):
             for index, field in enumerate(fields_):
                 field.fieldOrder = index
 
-        return _meta.TableSchema([*fields_])
+        return _meta.TableSchema(fields=[*fields_])

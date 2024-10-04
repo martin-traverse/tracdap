@@ -32,14 +32,14 @@ class SchemaLoader:
 
     __SCHEMA_OF_SCHEMA = _meta.SchemaDefinition(
         schemaType=_meta.SchemaType.TABLE,
-        table=_meta.TableSchema([
-            _meta.FieldSchema("field_name", 0, _meta.BasicType.STRING, "Field name", businessKey=True, notNull=True),
-            _meta.FieldSchema("field_type", 1, _meta.BasicType.STRING, "Field type", categorical=True, notNull=True),
-            _meta.FieldSchema("label", 2, _meta.BasicType.STRING, "Label", notNull=True),
-            _meta.FieldSchema("business_key", 3, _meta.BasicType.BOOLEAN, "Business key flag"),
-            _meta.FieldSchema("categorical", 4, _meta.BasicType.BOOLEAN, "Categorical flag"),
-            _meta.FieldSchema("not_null", 5, _meta.BasicType.BOOLEAN, "Not null flag"),
-            _meta.FieldSchema("format_code", 6, _meta.BasicType.STRING, "Format code"),
+        table=_meta.TableSchema(fields=[
+            _meta.FieldSchema(fieldName="field_name", fieldOrder=0, fieldType=_meta.BasicType.STRING, label="Field name", businessKey=True, notNull=True),
+            _meta.FieldSchema(fieldName="field_type", fieldOrder=1, fieldType=_meta.BasicType.STRING, label="Field type", categorical=True, notNull=True),
+            _meta.FieldSchema(fieldName="label", fieldOrder=2, fieldType=_meta.BasicType.STRING, label="Label", notNull=True),
+            _meta.FieldSchema(fieldName="business_key", fieldOrder=3, fieldType=_meta.BasicType.BOOLEAN, label="Business key flag"),
+            _meta.FieldSchema(fieldName="categorical", fieldOrder=4, fieldType=_meta.BasicType.BOOLEAN, label="Categorical flag"),
+            _meta.FieldSchema(fieldName="not_null", fieldOrder=5, fieldType=_meta.BasicType.BOOLEAN, label="Not null flag"),
+            _meta.FieldSchema(fieldName="format_code", fieldOrder=6, fieldType=_meta.BasicType.STRING, label="Format code"),
         ])
     )
 
@@ -123,14 +123,14 @@ class SchemaLoader:
                 raise _ex.EDataConformance(err)
 
             field_schema = _meta.FieldSchema(
-                field_name, field_index, field_type, label,
-                business_key, categorical, not_null, format_code)
+                fieldName=field_name, fieldOrder=field_index, fieldType=field_type, label=label,
+                businessKey=business_key, categorical=categorical, notNull=not_null, formatCode=format_code)
 
             field_list.append(field_schema)
 
         return _meta.SchemaDefinition(
             schemaType=_meta.SchemaType.TABLE,
-            table=_meta.TableSchema(field_list))
+            table=_meta.TableSchema(fields=field_list))
 
     @classmethod
     def _arrow_to_py_string(

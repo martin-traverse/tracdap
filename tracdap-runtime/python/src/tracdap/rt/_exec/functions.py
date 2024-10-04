@@ -348,7 +348,7 @@ class DynamicDataSpecFunc(NodeFunction[_data.DataSpec]):
 
         object_timestamp = datetime.datetime.now(datetime.timezone.utc)
 
-        part_key = meta.PartKey("part-root", meta.PartType.PART_ROOT)
+        part_key = meta.PartKey(opaqueKey="part-root", partType=meta.PartType.PART_ROOT)
         snap_index = 0
         delta_index = 0
 
@@ -358,9 +358,9 @@ class DynamicDataSpecFunc(NodeFunction[_data.DataSpec]):
             data_type, data_id.objectId,
             part_key.opaqueKey, snap_index, delta_index)
 
-        delta = meta.DataDefinition.Delta(delta_index, data_item)
-        snap = meta.DataDefinition.Snap(snap_index, [delta])
-        part = meta.DataDefinition.Part(part_key, snap)
+        delta = meta.DataDefinition.Delta(deltaIndex=delta_index, dataItem=data_item)
+        snap = meta.DataDefinition.Snap(snapIndex=snap_index, deltas=[delta])
+        part = meta.DataDefinition.Part(partKey=part_key, snap=snap)
 
         data_def = meta.DataDefinition()
         data_def.storageId = _util.selector_for_latest(storage_id)
@@ -377,17 +377,17 @@ class DynamicDataSpecFunc(NodeFunction[_data.DataSpec]):
             storage_suffix_bytes)
 
         storage_copy = meta.StorageCopy(
-            storage_key, storage_path, storage_format,
+            storageKey=storage_key, storagePath=storage_path, storageFormat=storage_format,
             copyStatus=meta.CopyStatus.COPY_AVAILABLE,
-            copyTimestamp=meta.DatetimeValue(object_timestamp.isoformat()))
+            copyTimestamp=meta.DatetimeValue(isoDatetime=object_timestamp.isoformat()))
 
         storage_incarnation = meta.StorageIncarnation(
-            [storage_copy],
+            copies=[storage_copy],
             incarnationIndex=0,
-            incarnationTimestamp=meta.DatetimeValue(object_timestamp.isoformat()),
+            incarnationTimestamp=meta.DatetimeValue(isoDatetime=object_timestamp.isoformat()),
             incarnationStatus=meta.IncarnationStatus.INCARNATION_AVAILABLE)
 
-        storage_item = meta.StorageItem([storage_incarnation])
+        storage_item = meta.StorageItem(incarnations=[storage_incarnation])
 
         storage_def = meta.StorageDefinition()
         storage_def.dataItems[data_item] = storage_item
@@ -530,7 +530,7 @@ class ImportModelFunc(NodeFunction[meta.ObjectDefinition]):
         model_class = self._models.load_model_class(self.node.model_scope, model_stub)
         model_def = self._models.scan_model(model_stub, model_class)
 
-        return meta.ObjectDefinition(meta.ObjectType.MODEL, model=model_def)
+        return meta.ObjectDefinition(objectType=meta.ObjectType.MODEL, model=model_def)
 
 
 class RunModelFunc(NodeFunction[Bundle[_data.DataView]]):

@@ -175,9 +175,9 @@ def new_object_id(object_type: meta.ObjectType) -> meta.TagHeader:
         objectType=object_type,
         objectId=str(uuid.uuid4()),
         objectVersion=1,
-        objectTimestamp=meta.DatetimeValue(timestamp.isoformat()),
+        objectTimestamp=meta.DatetimeValue(isoDatetime=timestamp.isoformat()),
         tagVersion=1,
-        tagTimestamp=meta.DatetimeValue(timestamp.isoformat()))
+        tagTimestamp=meta.DatetimeValue(isoDatetime=timestamp.isoformat()))
 
 
 def object_key(object_id: tp.Union[meta.TagHeader, meta.TagSelector]) -> str:

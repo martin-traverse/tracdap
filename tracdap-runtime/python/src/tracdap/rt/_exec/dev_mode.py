@@ -396,9 +396,9 @@ class DevModeTranslator:
         def add_param_to_flow(nodel_node: str, param: str):
             target = f"{nodel_node}.{param}"
             if target not in edges and param not in nodes:
-                param_node = _meta.FlowNode(_meta.FlowNodeType.PARAMETER_NODE)
+                param_node = _meta.FlowNode(nodeType=_meta.FlowNodeType.PARAMETER_NODE)
                 nodes[param] = param_node
-                socket = _meta.FlowSocket(param)
+                socket = _meta.FlowSocket(node=param)
                 add_source(param, socket)
 
         def add_edge(target: _meta.FlowSocket):
@@ -407,7 +407,7 @@ class DevModeTranslator:
                 return
             target_name = target.socket if target.socket else target.node
             if target_name in sources:
-                edges[target_key] = _meta.FlowEdge(sources[target_name], target)
+                edges[target_key] = _meta.FlowEdge(source=sources[target_name], target=target)
             elif target_name in duplicates:
                 sources_info = ', '.join(map(socket_key, duplicates[target_name]))
                 errors[target_key] = f"Flow target {target_name} is provided by multiple nodes: [{sources_info}]"
@@ -416,10 +416,10 @@ class DevModeTranslator:
 
         for node_name, node in flow.nodes.items():
             if node.nodeType == _meta.FlowNodeType.INPUT_NODE or node.nodeType == _meta.FlowNodeType.PARAMETER_NODE:
-                add_source(node_name, _meta.FlowSocket(node_name))
+                add_source(node_name, _meta.FlowSocket(node=node_name))
             if node.nodeType == _meta.FlowNodeType.MODEL_NODE:
                 for model_output in node.outputs:
-                    add_source(model_output, _meta.FlowSocket(node_name, model_output))
+                    add_source(model_output, _meta.FlowSocket(node=node_name, socket=model_output))
                 # Generate node param sockets needed by the model
                 if node_name in job.models:
                     model_selector = job.models[node_name]
@@ -432,12 +432,12 @@ class DevModeTranslator:
         # Look at the new set of nodes, which includes any added by auto-wiring
         for node_name, node in nodes.items():
             if node.nodeType == _meta.FlowNodeType.OUTPUT_NODE:
-                add_edge(_meta.FlowSocket(node_name))
+                add_edge(_meta.FlowSocket(node=node_name))
             if node.nodeType == _meta.FlowNodeType.MODEL_NODE:
                 for model_input in node.inputs:
-                    add_edge(_meta.FlowSocket(node_name, model_input))
+                    add_edge(_meta.FlowSocket(node=node_name, socket=model_input))
                 for model_param in node.parameters:
-                    add_edge(_meta.FlowSocket(node_name, model_param))
+                    add_edge(_meta.FlowSocket(node=node_name, socket=model_param))
 
         if any(errors):
 
@@ -811,7 +811,7 @@ class DevModeTranslator:
             data_def.schema = None
 
         data_def.storageId = _meta.TagSelector(
-            _meta.ObjectType.STORAGE, storage_id.objectId,
+            objectType=_meta.ObjectType.STORAGE, objectId=storage_id.objectId,
             objectVersion=storage_id.objectVersion, latestTag=True)
 
         storage_copy = _meta.StorageCopy(

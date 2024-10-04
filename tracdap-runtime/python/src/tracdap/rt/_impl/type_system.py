@@ -68,7 +68,7 @@ class TypeMapping:
     def python_to_trac(cls, python_type: type) -> _meta.TypeDescriptor:
 
         basic_type = cls.python_to_trac_basic_type(python_type)
-        return _meta.TypeDescriptor(basic_type)
+        return _meta.TypeDescriptor(basicType=basic_type)
 
     @classmethod
     def python_to_trac_basic_type(cls, python_type: type) -> _meta.BasicType:
@@ -143,33 +143,33 @@ class MetadataCodec:
             raise _ex.ETracInternal("Cannot encode a null value")
 
         if isinstance(value, bool):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.BOOLEAN)
-            return _meta.Value(type_desc, booleanValue=value)
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.BOOLEAN)
+            return _meta.Value(type=type_desc, booleanValue=value)
 
         if isinstance(value, int):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.INTEGER)
-            return _meta.Value(type_desc, integerValue=value)
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.INTEGER)
+            return _meta.Value(type=type_desc, integerValue=value)
 
         if isinstance(value, float):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.FLOAT)
-            return _meta.Value(type_desc, floatValue=value)
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.FLOAT)
+            return _meta.Value(type=type_desc, floatValue=value)
 
         if isinstance(value, decimal.Decimal):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.DECIMAL)
-            return _meta.Value(type_desc, decimalValue=_meta.DecimalValue(str(value)))
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DECIMAL)
+            return _meta.Value(type=type_desc, decimalValue=_meta.DecimalValue(decimal=str(value)))
 
         if isinstance(value, str):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.STRING)
-            return _meta.Value(type_desc, stringValue=value)
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.STRING)
+            return _meta.Value(type=type_desc, stringValue=value)
 
         # dt.datetime inherits dt.date, so check datetime first to avoid encoding datetime as a date
         if isinstance(value, dt.datetime):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.DATETIME)
-            return _meta.Value(type_desc, datetimeValue=_meta.DatetimeValue(value.isoformat()))
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DATETIME)
+            return _meta.Value(type=type_desc, datetimeValue=_meta.DatetimeValue(isoDatetime=value.isoformat()))
 
         if isinstance(value, dt.date):
-            type_desc = _meta.TypeDescriptor(_meta.BasicType.DATE)
-            return _meta.Value(type_desc, dateValue=_meta.DateValue(value.isoformat()))
+            type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DATE)
+            return _meta.Value(type=type_desc, dateValue=_meta.DateValue(isoDate=value.isoformat()))
 
         if isinstance(value, list):
 
@@ -185,8 +185,8 @@ class MetadataCodec:
             encoded_items = list(map(lambda x: cls.convert_value(x, array_trac_type), value))
 
             return _meta.Value(
-                _meta.TypeDescriptor(_meta.BasicType.ARRAY, arrayType=array_trac_type),
-                arrayValue=_meta.ArrayValue(encoded_items))
+                type=_meta.TypeDescriptor(basicType=_meta.BasicType.ARRAY, arrayType=array_trac_type),
+                arrayValue=_meta.ArrayValue(items=encoded_items))
 
         raise _ex.ETracInternal(f"Value type [{type(value)}] is not supported yet")
 
@@ -222,7 +222,7 @@ class MetadataCodec:
     @staticmethod
     def convert_array_value(raw_value: tp.List[tp.Any], array_type: _meta.TypeDescriptor) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.ARRAY, array_type)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.ARRAY, arrayType=array_type)
 
         if not isinstance(raw_value, list):
             msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.ARRAY.name}"
@@ -230,15 +230,15 @@ class MetadataCodec:
 
         items = list(map(lambda x: MetadataCodec.convert_value(x, array_type), raw_value))
 
-        return _meta.Value(type_desc, arrayValue=_meta.ArrayValue(items))
+        return _meta.Value(type=type_desc, arrayValue=_meta.ArrayValue(items=items))
 
     @staticmethod
     def convert_boolean_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.BOOLEAN)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.BOOLEAN)
 
         if isinstance(raw_value, bool):
-            return _meta.Value(type_desc, booleanValue=raw_value)
+            return _meta.Value(type=type_desc, booleanValue=raw_value)
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.BOOLEAN.name}"
         raise _ex.ETracInternal(msg)
@@ -246,13 +246,13 @@ class MetadataCodec:
     @staticmethod
     def convert_integer_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.INTEGER)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.INTEGER)
 
         if isinstance(raw_value, int):
-            return _meta.Value(type_desc, integerValue=raw_value)
+            return _meta.Value(type=type_desc, integerValue=raw_value)
 
         if isinstance(raw_value, float) and raw_value.is_integer():
-            return _meta.Value(type_desc, integerValue=int(raw_value))
+            return _meta.Value(type=type_desc, integerValue=int(raw_value))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.INTEGER.name}"
         raise _ex.ETracInternal(msg)
@@ -260,13 +260,13 @@ class MetadataCodec:
     @staticmethod
     def convert_float_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.FLOAT)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.FLOAT)
 
         if isinstance(raw_value, float):
-            return _meta.Value(type_desc, floatValue=raw_value)
+            return _meta.Value(type=type_desc, floatValue=raw_value)
 
         if isinstance(raw_value, int):
-            return _meta.Value(type_desc, floatValue=float(raw_value))
+            return _meta.Value(type=type_desc, floatValue=float(raw_value))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.FLOAT.name}"
         raise _ex.ETracInternal(msg)
@@ -274,13 +274,13 @@ class MetadataCodec:
     @staticmethod
     def convert_decimal_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.DECIMAL)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DECIMAL)
 
         if isinstance(raw_value, decimal.Decimal):
-            return _meta.Value(type_desc, decimalValue=_meta.DecimalValue(str(raw_value)))
+            return _meta.Value(type=type_desc, decimalValue=_meta.DecimalValue(decimal=str(raw_value)))
 
         if isinstance(raw_value, int) or isinstance(raw_value, float):
-            return _meta.Value(type_desc, decimalValue=_meta.DecimalValue(str(raw_value)))
+            return _meta.Value(type=type_desc, decimalValue=_meta.DecimalValue(decimal=str(raw_value)))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.DECIMAL.name}"
         raise _ex.ETracInternal(msg)
@@ -288,17 +288,17 @@ class MetadataCodec:
     @staticmethod
     def convert_string_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.STRING)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.STRING)
 
         if isinstance(raw_value, str):
-            return _meta.Value(type_desc, stringValue=raw_value)
+            return _meta.Value(type=type_desc, stringValue=raw_value)
 
         if isinstance(raw_value, bool) or \
            isinstance(raw_value, int) or \
            isinstance(raw_value, float) or \
            isinstance(raw_value, decimal.Decimal):
 
-            return _meta.Value(type_desc, stringValue=str(raw_value))
+            return _meta.Value(type=type_desc, stringValue=str(raw_value))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.STRING.name}"
         raise _ex.ETracInternal(msg)
@@ -306,14 +306,14 @@ class MetadataCodec:
     @staticmethod
     def convert_date_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.DATE)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DATE)
 
         if isinstance(raw_value, dt.date):
-            return _meta.Value(type_desc, dateValue=_meta.DateValue(isoDate=raw_value.isoformat()))
+            return _meta.Value(type=type_desc, dateValue=_meta.DateValue(isoDate=raw_value.isoformat()))
 
         if isinstance(raw_value, str):
             date_value = dt.date.fromisoformat(raw_value)
-            return _meta.Value(type_desc, dateValue=_meta.DateValue(isoDate=date_value.isoformat()))
+            return _meta.Value(type=type_desc, dateValue=_meta.DateValue(isoDate=date_value.isoformat()))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.DATE.name}"
         raise _ex.ETracInternal(msg)
@@ -321,14 +321,14 @@ class MetadataCodec:
     @staticmethod
     def convert_datetime_value(raw_value: tp.Any) -> _meta.Value:
 
-        type_desc = _meta.TypeDescriptor(_meta.BasicType.DATETIME)
+        type_desc = _meta.TypeDescriptor(basicType=_meta.BasicType.DATETIME)
 
         if isinstance(raw_value, dt.datetime):
-            return _meta.Value(type_desc, datetimeValue=_meta.DatetimeValue(isoDatetime=raw_value.isoformat()))
+            return _meta.Value(type=type_desc, datetimeValue=_meta.DatetimeValue(isoDatetime=raw_value.isoformat()))
 
         if isinstance(raw_value, str):
             datetime_value = dt.datetime.fromisoformat(raw_value)
-            return _meta.Value(type_desc, datetimeValue=_meta.DatetimeValue(isoDatetime=datetime_value.isoformat()))
+            return _meta.Value(type=type_desc, datetimeValue=_meta.DatetimeValue(isoDatetime=datetime_value.isoformat()))
 
         msg = f"Value of type [{type(raw_value)}] cannot be converted to {_meta.BasicType.DATETIME.name}"
         raise _ex.ETracInternal(msg)

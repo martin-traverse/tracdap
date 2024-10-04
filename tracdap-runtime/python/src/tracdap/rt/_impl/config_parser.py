@@ -258,7 +258,7 @@ class ConfigManager:
     def _get_loader(self, resolved_url: _urlp.ParseResult) -> _config_ext.IConfigLoader:
 
         protocol = resolved_url.scheme
-        loader_config = _config.PluginConfig(protocol)
+        loader_config = _config.PluginConfig(protocol=protocol)
 
         if not _plugins.PluginManager.is_plugin_available(_config_ext.IConfigLoader, protocol):
             message = f"No config loader available for protocol [{protocol}]: {self._url_to_str(resolved_url)}"
