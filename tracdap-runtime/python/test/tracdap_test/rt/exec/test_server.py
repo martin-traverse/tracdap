@@ -85,7 +85,7 @@ class RuntimeApiServerTest(unittest.TestCase):
                 entryPoint="tutorial.using_data.UsingDataModel",
                 path="examples/models/python/src"))
 
-        job_config = config.JobConfig(job_id, job_def)
+        job_config = config.JobConfig(jobId=job_id, job=job_def)
 
         with runtime.TracRuntime(self.SYS_CONFIG) as rt:
             with grpc.insecure_channel(self.UNIT_TEST_ADDRESS) as channel:
@@ -132,7 +132,7 @@ class RuntimeApiServerTest(unittest.TestCase):
                 entryPoint="tutorial.using_data.UsingDataModel",
                 path="examples/models/python/src"))
 
-        job_config = config.JobConfig(job_id, job_def)
+        job_config = config.JobConfig(jobId=job_id, job=job_def)
 
         with runtime.TracRuntime(self.SYS_CONFIG) as rt:
             with grpc.insecure_channel(self.UNIT_TEST_ADDRESS) as channel:

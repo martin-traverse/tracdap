@@ -183,7 +183,7 @@ class ImportModelTest(unittest.TestCase):
     def test_scan_model_ok(self):
 
         def _td(basic_type: meta.BasicType) -> meta.TypeDescriptor:
-            return meta.TypeDescriptor(basic_type)
+            return meta.TypeDescriptor(basicType=basic_type)
 
         sys_config = config.RuntimeConfig()
         loader = models.ModelLoader(sys_config, self.scratch_dir)

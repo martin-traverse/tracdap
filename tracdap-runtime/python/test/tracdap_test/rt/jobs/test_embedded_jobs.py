@@ -47,7 +47,10 @@ class EmbeddedJobsTest(unittest.TestCase):
         job_id = str(uuid.uuid4())
         job_timestamp = meta.DatetimeValue(isoDatetime=dt.datetime.utcnow().isoformat())
         job_config = config.JobConfig(
-            jobId=meta.TagHeader(meta.ObjectType.JOB, job_id, 1, job_timestamp, 1, job_timestamp),
+            jobId=meta.TagHeader(
+                objectType=meta.ObjectType.JOB, objectId=job_id,
+                objectVersion=1, objectTimestamp=job_timestamp,
+                tagVersion=1, tagTimestamp=job_timestamp),
             job=meta.JobDefinition(
                 jobType=meta.JobType.IMPORT_MODEL,
                 importModel=meta.ImportModelJob(

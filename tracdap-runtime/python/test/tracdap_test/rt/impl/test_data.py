@@ -31,16 +31,16 @@ import tracdap.rt._impl.util as _util  # noqa
 class DataMappingTest(unittest.TestCase):
 
     TRAC_SCHEMA = _meta.SchemaDefinition(
-        _meta.SchemaType.TABLE,
-        _meta.PartType.PART_ROOT,
-        _meta.TableSchema(fields=[
-            _meta.FieldSchema("boolean_field", fieldType=_meta.BasicType.BOOLEAN),
-            _meta.FieldSchema("integer_field", fieldType=_meta.BasicType.INTEGER),
-            _meta.FieldSchema("float_field", fieldType=_meta.BasicType.FLOAT),
-            _meta.FieldSchema("decimal_field", fieldType=_meta.BasicType.DECIMAL),
-            _meta.FieldSchema("string_field", fieldType=_meta.BasicType.STRING),
-            _meta.FieldSchema("date_field", fieldType=_meta.BasicType.DATE),
-            _meta.FieldSchema("datetime_field", fieldType=_meta.BasicType.DATETIME),
+        schemaType=_meta.SchemaType.TABLE,
+        partType=_meta.PartType.PART_ROOT,
+        table=_meta.TableSchema(fields=[
+            _meta.FieldSchema(fieldName="boolean_field", fieldType=_meta.BasicType.BOOLEAN),
+            _meta.FieldSchema(fieldName="integer_field", fieldType=_meta.BasicType.INTEGER),
+            _meta.FieldSchema(fieldName="float_field", fieldType=_meta.BasicType.FLOAT),
+            _meta.FieldSchema(fieldName="decimal_field", fieldType=_meta.BasicType.DECIMAL),
+            _meta.FieldSchema(fieldName="string_field", fieldType=_meta.BasicType.STRING),
+            _meta.FieldSchema(fieldName="date_field", fieldType=_meta.BasicType.DATE),
+            _meta.FieldSchema(fieldName="datetime_field", fieldType=_meta.BasicType.DATETIME),
         ]))
 
     @classmethod
@@ -73,10 +73,10 @@ class DataMappingTest(unittest.TestCase):
         field_name = f"{field_type.name.lower()}_field"
 
         trac_schema = _meta.SchemaDefinition(
-            _meta.SchemaType.TABLE,
-            _meta.PartType.PART_ROOT,
-            _meta.TableSchema(fields=[
-                _meta.FieldSchema(field_name, fieldType=field_type)]))
+            schemaType=_meta.SchemaType.TABLE,
+            partType=_meta.PartType.PART_ROOT,
+            table=_meta.TableSchema(fields=[
+                _meta.FieldSchema(fieldName=field_name, fieldType=field_type)]))
 
         return _data.DataMapping.trac_to_arrow_schema(trac_schema)
 

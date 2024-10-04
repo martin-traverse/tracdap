@@ -73,7 +73,7 @@ class CoreJobsTest(unittest.TestCase):
                 entryPoint="tutorial.using_data.UsingDataModel",
                 path="examples/models/python/src"))
 
-        job_config = cfg.JobConfig(job_id, job_def)
+        job_config = cfg.JobConfig(jobId=job_id, job=job_def)
 
         with tempfile.TemporaryDirectory() as tmpdir:
 
@@ -129,7 +129,7 @@ class CoreJobsTest(unittest.TestCase):
             input_data_def = util.get_job_resource(input_id, job_config)
 
             input_schema_id = util.new_object_id(meta.ObjectType.SCHEMA)
-            input_schema = meta.ObjectDefinition(meta.ObjectType.SCHEMA, schema=input_data_def.data.schema)
+            input_schema = meta.ObjectDefinition(objectType=meta.ObjectType.SCHEMA, schema=input_data_def.data.schema)
             job_config.resources[util.object_key(input_schema_id)] = input_schema
 
             input_data_def.data.schemaId = util.selector_for(input_schema_id)
@@ -182,27 +182,27 @@ class CoreJobsTest(unittest.TestCase):
                     "filter_defaults": meta.ModelParameter(paramType=types.TypeMapping.python_to_trac(bool)),
                 },
                 inputs={
-                    "customer_loans": meta.ModelInputSchema(meta.SchemaDefinition(
+                    "customer_loans": meta.ModelInputSchema(schema=meta.SchemaDefinition(
                         schemaType=meta.SchemaType.TABLE,
                         table=meta.TableSchema(fields=[
-                            meta.FieldSchema("id", fieldType=meta.BasicType.STRING, businessKey=True),
-                            meta.FieldSchema("loan_amount", fieldType=meta.BasicType.DECIMAL),
-                            meta.FieldSchema("total_pymnt", fieldType=meta.BasicType.DECIMAL),
-                            meta.FieldSchema("region", fieldType=meta.BasicType.STRING, categorical=True),
-                            meta.FieldSchema("loan_condition_cat", fieldType=meta.BasicType.INTEGER)
+                            meta.FieldSchema(fieldName="id", fieldType=meta.BasicType.STRING, businessKey=True),
+                            meta.FieldSchema(fieldName="loan_amount", fieldType=meta.BasicType.DECIMAL),
+                            meta.FieldSchema(fieldName="total_pymnt", fieldType=meta.BasicType.DECIMAL),
+                            meta.FieldSchema(fieldName="region", fieldType=meta.BasicType.STRING, categorical=True),
+                            meta.FieldSchema(fieldName="loan_condition_cat", fieldType=meta.BasicType.INTEGER)
                         ])))
                 },
                 outputs={
-                    "profit_by_region": meta.ModelOutputSchema(meta.SchemaDefinition(
+                    "profit_by_region": meta.ModelOutputSchema(schema=meta.SchemaDefinition(
                         schemaType=meta.SchemaType.TABLE,
                         table=meta.TableSchema(fields=[
-                            meta.FieldSchema("region", fieldType=meta.BasicType.STRING, categorical=True),
-                            meta.FieldSchema("gross_profit", fieldType=meta.BasicType.DECIMAL)
+                            meta.FieldSchema(fieldName="region", fieldType=meta.BasicType.STRING, categorical=True),
+                            meta.FieldSchema(fieldName="gross_profit", fieldType=meta.BasicType.DECIMAL)
                         ])))
                 }
             ))
 
-        job_config = cfg.JobConfig(job_id, job_def)
+        job_config = cfg.JobConfig(jobId=job_id, job=job_def)
         job_config.resources[util.object_key(model_id)] = model_def
 
         return job_id, job_config
