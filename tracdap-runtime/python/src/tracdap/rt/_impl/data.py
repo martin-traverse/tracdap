@@ -22,8 +22,18 @@ import platform
 
 import pyarrow as pa
 import pyarrow.compute as pc
-import pandas as pd
-import polars as pl
+
+try:
+    import pandas
+    import pandas as pd
+except ModuleNotFoundError:
+    pandas = None
+    pd = None
+
+try:
+    import polars
+except ModuleNotFoundError:
+    polars = None
 
 import tracdap.rt.metadata as _meta
 import tracdap.rt.exceptions as _ex
@@ -489,7 +499,6 @@ class DataMapping:
 
         filtered_df = df.select(pl.col(*column_filter)) if column_filter else df
         table = filtered_df.to_arrow()
-
 
         if schema is None:
             DataConformance.check_duplicate_fields(table.schema.names, False)

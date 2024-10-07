@@ -12,25 +12,31 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from __future__ import annotations
-
 import abc as _abc
 import typing as _tp
 import logging as _logging
-
-import pandas as pd
 
 # Import metadata domain objects into the API namespace
 # This significantly improves type hinting, inline documentation and auto-complete in JetBrains IDEs
 from tracdap.rt.metadata import *  # DOCGEN_REMOVE
 
+
 if _tp.TYPE_CHECKING:
-    import pandas
 
-import polars as pl
+    import typing as tp
 
+    try:
+        import pandas
+    except ModuleNotFoundError:
+        pandas = None
 
-DATAFRAME: _tp.TypeVar = _tp.TypeVar('DATAFRAME', pandas.DataFrame, pl.DataFrame)
+    try:
+        import polars
+    except ModuleNotFoundError:
+        polars = None
+
+    DATAFRAME: _tp.TypeVar = _tp.TypeVar(
+        'DATAFRAME', pandas.DataFrame, polars.DataFrame)
 
 
 class TracContext:
@@ -141,7 +147,8 @@ class TracContext:
         pass
 
     @_abc.abstractmethod
-    def get_pandas_table(self, dataset_name: str, use_temporal_objects: _tp.Optional[bool] = None) -> pandas.DataFrame:
+    def get_pandas_table(self, dataset_name: str, use_temporal_objects: _tp.Optional[bool] = None) \
+            -> "pandas.DataFrame":
 
         """
         Get the data for a model input or output as a Pandas dataframe
@@ -173,12 +180,7 @@ class TracContext:
         pass
 
     @_abc.abstractmethod
-    def get_table(self, dataset_name: str, df_type: _tp.Type[DATAFRAME] = pd.DataFrame, **kwargs) -> DATAFRAME:
-
-        pass
-
-    @_abc.abstractmethod
-    def put_table(self, dataset_name: str, dataset: DATAFRAME):
+    def get_table(self, dataset_name: str, df_type: "tp.Type[DATAFRAME]" = None, **kwargs) -> "DATAFRAME":
 
         pass
 
@@ -213,7 +215,7 @@ class TracContext:
         pass
 
     @_abc.abstractmethod
-    def put_pandas_table(self, dataset_name: str, dataset: pandas.DataFrame):
+    def put_pandas_table(self, dataset_name: str, dataset: "pandas.DataFrame"):
 
         """
         Save the data for a model output as a Pandas dataframe
@@ -236,6 +238,11 @@ class TracContext:
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`,
                  :py:class:`EDataValidation <tracdap.rt.exceptions.EDataValidation>`
         """
+
+        pass
+
+    @_abc.abstractmethod
+    def put_table(self, dataset_name: str, dataset: "DATAFRAME"):
 
         pass
 

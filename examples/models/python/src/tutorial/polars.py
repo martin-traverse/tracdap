@@ -66,9 +66,11 @@ class SchemaFilesModel(trac.TracModel):
         default_weighting = ctx.get_parameter("default_weighting")
         filter_defaults = ctx.get_parameter("filter_defaults")
 
-        customer_loans = ctx.get_table("customer_loans").joi
+        customer_loans = ctx.get_table("customer_loans", polars.DataFrame)
 
         ctx.put_table("profit_by_region", customer_loans)
+
+        ctx.put_pandas_table("", customer_loans)
 
         trac.ModelInputSchema = 7
 
