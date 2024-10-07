@@ -135,6 +135,27 @@ class TracContextImpl(_api.TracContext):
 
         _val.validate_signature(self.get_pandas_table, dataset_name, use_temporal_objects)
 
+        data_view, schema = self.__get_data_view(dataset_name)
+        part_key = _data.DataPartKey.for_root()
+
+        if use_temporal_objects is None:
+            use_temporal_objects = self.__DEFAULT_TEMPORAL_OBJECTS
+
+        return _data.DataMapping.view_to_pandas(data_view, part_key, schema, use_temporal_objects)
+
+    def get_polars_table(self, dataset_name: str) -> pl.DataFrame:
+
+        _val.validate_signature(self.get_pandas_table, dataset_name)
+
+        data_view, schema = self.__get_data_view(dataset_name)
+        part_key = _data.DataPartKey.for_root()
+
+        return _data.DataMapping.view_to_polars(data_view, part_key, schema)
+
+    def __get_data_view(self, dataset_name: str):
+
+        _val.validate_signature(self.get_pandas_table, dataset_name)
+
         self.__val.check_dataset_valid_identifier(dataset_name)
         self.__val.check_dataset_defined_in_model(dataset_name)
         self.__val.check_dataset_available_in_context(dataset_name)
@@ -155,10 +176,7 @@ class TracContextImpl(_api.TracContext):
         else:
             schema = data_view.arrow_schema
 
-        if use_temporal_objects is None:
-            use_temporal_objects = self.__DEFAULT_TEMPORAL_OBJECTS
-
-        return _data.DataMapping.view_to_pandas(data_view, part_key, schema, use_temporal_objects)
+        return data_view, schema
 
     def put_schema(self, dataset_name: str, schema: _meta.SchemaDefinition):
 

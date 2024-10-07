@@ -435,7 +435,7 @@ class DataMapping:
         else:
             DataConformance.check_duplicate_fields(table.schema.names, False)
 
-        pl.schema.
+        # todo
 
         return pl.from_arrow(table)
 
@@ -481,6 +481,22 @@ class DataMapping:
         else:
             df_types = df.dtypes.filter(column_filter) if column_filter else df.dtypes
             return DataConformance.conform_to_schema(table, schema, df_types)
+
+    @classmethod
+    def polars_to_arrow(cls, df: pl.DataFrame, schema: tp.Optional[pa.Schema] = None) -> pa.Table:
+
+        column_filter = DataConformance.column_filter(df.columns, schema)
+
+        filtered_df = df.select(pl.col(*column_filter)) if column_filter else df
+        table = filtered_df.to_arrow()
+
+
+        if schema is None:
+            DataConformance.check_duplicate_fields(table.schema.names, False)
+            return table
+
+        else:
+            return DataConformance.conform_to_schema(table, schema, None)
 
 
 class DataConformance:
