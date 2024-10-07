@@ -188,6 +188,12 @@ class DevModeTranslator:
         elif job_config.job.importModel is not None:
             job_type = _meta.JobType.IMPORT_MODEL
 
+        elif job_config.job.importData is not None:
+            job_type = _meta.JobType.IMPORT_DATA
+
+        elif job_config.job.exportData is not None:
+            job_type = _meta.JobType.EXPORT_DATA
+
         else:
             cls._log.error("Could not infer job type")
             raise _ex.EConfigParse("Could not infer job type")

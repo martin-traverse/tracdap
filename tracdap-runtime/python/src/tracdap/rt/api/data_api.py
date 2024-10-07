@@ -14,6 +14,7 @@
 
 import abc as _abc
 import dataclasses as _dc
+import datetime as _dt
 import enum as _enum
 import typing as _tp
 
@@ -102,10 +103,17 @@ class TracFileStorage:
             stream.write(data)
 
 
+
+T_DATAFRAME = _tp.TypeVar('T_DATAFRAME')
+
+
 class TracDataStorage:
 
     @_abc.abstractmethod
     def has_table(self, table_name: str):
+        pass
+
+    def read_table(self, table_name: str, df_type: _tp.Optional[_tp.Type[T_DATAFRAME]] = None) -> T_DATAFRAME:
         pass
 
     @_abc.abstractmethod
@@ -135,27 +143,21 @@ class TracDataContext(TracContext):
         pass
 
 
-class TracDataImport(TracModel):
+class TracImportModel(TracModel):
 
     def define_inputs(self) -> _tp.Dict[str, ModelInputSchema]:
         return dict()
 
-    def run_model(self, ctx:TracContext):
-        pass
-
     @_abc.abstractmethod
-    def run_import(self, ctx: TracDataContext):
+    def run_model(self, ctx: TracDataContext):
         pass
 
 
-class TracDataExport(TracModel):
+class TracExportModel(TracModel):
 
     def define_outputs(self) -> _tp.Dict[str, ModelOutputSchema]:
         return dict()
 
-    def run_model(self, ctx:TracContext):
-        pass
-
     @_abc.abstractmethod
-    def run_export(self, ctx: TracDataContext):
+    def run_model(self, ctx: TracDataContext):
         pass

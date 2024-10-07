@@ -12,13 +12,15 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-import typing as tp
+import pyarrow
+
 import tracdap.rt.api as trac
 
 import tutorial.schemas as schemas
+from tracdap.rt.api import TracDataContext
 
 
-class DataExportExample(trac.TracDataExport):
+class DataExportExample(trac.TracExportModel):
 
     def define_parameters(self):
 
@@ -32,7 +34,7 @@ class DataExportExample(trac.TracDataExport):
 
         return {"profit_by_region": trac.ModelInputSchema(profit_by_region)}
 
-    def run_export(self, ctx: trac.TracDataContext):
+    def run_model(self, ctx: TracDataContext):
 
         # Get a dataset - set up as inputs the same as model run jobs
         profit_by_region = ctx.get_pandas_table("profit_by_region")
@@ -48,6 +50,8 @@ class DataExportExample(trac.TracDataExport):
 
         if clear_tables and db_storage.has_table("profit_by_region"):
             db_storage.clear_table("profit_by_region")
+
+        df = db_storage.read_table("profit_by_region", pyarrow.Table)
 
         # Write data into the table, create the table if required, append if the table already has data
         db_storage.write_table("profit_by_region", pbr_augmented, create_if_missing=True)

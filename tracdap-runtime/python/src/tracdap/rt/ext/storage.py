@@ -107,6 +107,10 @@ class IFileStorage:
 class IDataStorage:
 
     @_abc.abstractmethod
+    def has_feature(self, feature_name: str) -> bool:
+        pass
+
+    @_abc.abstractmethod
     def read_table(
             self,
             storage_path: str, storage_format: str,

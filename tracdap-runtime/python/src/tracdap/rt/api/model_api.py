@@ -18,6 +18,9 @@ import abc as _abc
 import typing as _tp
 import logging as _logging
 
+import typing as tp
+import tracdap.rt.metadata as trac
+
 # Import metadata domain objects into the API namespace
 # This significantly improves type hinting, inline documentation and auto-complete in JetBrains IDEs
 from tracdap.rt.metadata import *  # DOCGEN_REMOVE
@@ -134,7 +137,7 @@ class TracContext:
         pass
 
     @_abc.abstractmethod
-    def get_pandas_table(self, dataset_name: str, use_temporal_objects: _tp.Optional[bool] = None) -> pandas.DataFrame:
+    def get_pandas_table(self, dataset_name: str, use_temporal_objects: tp.Optional[bool] = None) -> pandas.DataFrame:
 
         """
         Get the data for a model input or output as a Pandas dataframe
@@ -272,7 +275,7 @@ class TracModel:
     .. seealso:: :py:class:`TracContext`
     """
 
-    def define_attributes(self) -> _tp.Dict[str, Value]:  # noqa
+    def define_attributes(self) -> tp.Dict[str, Value]:  # noqa
 
         """
         Define attributes that will be associated with the model when it is loaded into the TRAC platform
@@ -297,7 +300,7 @@ class TracModel:
         return {}
 
     @_abc.abstractmethod
-    def define_parameters(self) -> _tp.Dict[str, ModelParameter]:
+    def define_parameters(self) -> tp.Dict[str, trac.ModelParameter]:
 
         """
         Define parameters that will be available to the model at runtime
@@ -318,7 +321,7 @@ class TracModel:
         pass
 
     @_abc.abstractmethod
-    def define_inputs(self) -> _tp.Dict[str, ModelInputSchema]:
+    def define_inputs(self) -> tp.Dict[str, trac.ModelInputSchema]:
 
         """
         Define data inputs that will be available to the model at runtime
@@ -339,7 +342,7 @@ class TracModel:
         pass
 
     @_abc.abstractmethod
-    def define_outputs(self) -> _tp.Dict[str, ModelOutputSchema]:
+    def define_outputs(self) -> tp.Dict[str, trac.ModelOutputSchema]:
 
         """
         Define data outputs that will be produced by the model at runtime

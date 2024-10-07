@@ -358,6 +358,13 @@ class RunModelNode(Node[Bundle[_data.DataView]]):
     def _node_dependencies(self) -> tp.Dict[NodeId, DependencyType]:
         return {dep_id: DependencyType.HARD for dep_id in [*self.parameter_ids, *self.input_ids]}
 
+@_node_type
+class DataImportNode(Node[Bundle[_data.DataItem]]):
+
+    pass
+
+
+
 
 @_node_type
 class RunModelResultNode(Node[None]):
