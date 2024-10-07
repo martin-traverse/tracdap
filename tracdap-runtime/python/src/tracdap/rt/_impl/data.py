@@ -23,6 +23,7 @@ import platform
 import pyarrow as pa
 import pyarrow.compute as pc
 import pandas as pd
+import polars as pl
 
 import tracdap.rt.metadata as _meta
 import tracdap.rt.exceptions as _ex
@@ -424,6 +425,19 @@ class DataMapping:
             # Do not consolidate memory across columns when preparing the Pandas vectors
             # This is a significant performance win for very wide datasets
             split_blocks=True)  # noqa
+
+    @classmethod
+    def arrow_to_polars(
+            cls, table: pa.Table, schema: tp.Optional[pa.Schema] = None) -> pl.DataFrame:
+
+        if schema is not None:
+            table = DataConformance.conform_to_schema(table, schema, warn_extra_columns=False)
+        else:
+            DataConformance.check_duplicate_fields(table.schema.names, False)
+
+        pl.schema.
+
+        return pl.from_arrow(table)
 
     @classmethod
     def pandas_to_arrow(cls, df: pd.DataFrame, schema: tp.Optional[pa.Schema] = None) -> pa.Table:

@@ -18,12 +18,19 @@ import abc as _abc
 import typing as _tp
 import logging as _logging
 
+import pandas as pd
+
 # Import metadata domain objects into the API namespace
 # This significantly improves type hinting, inline documentation and auto-complete in JetBrains IDEs
 from tracdap.rt.metadata import *  # DOCGEN_REMOVE
 
 if _tp.TYPE_CHECKING:
     import pandas
+
+import polars as pl
+
+
+DATAFRAME: _tp.TypeVar = _tp.TypeVar('DATAFRAME', pandas.DataFrame, pl.DataFrame)
 
 
 class TracContext:
@@ -163,6 +170,16 @@ class TracContext:
         :return: A pandas dataframe containing the data for the named dataset
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`
         """
+        pass
+
+    @_abc.abstractmethod
+    def get_table(self, dataset_name: str, df_type: _tp.Type[DATAFRAME] = pd.DataFrame, **kwargs) -> DATAFRAME:
+
+        pass
+
+    @_abc.abstractmethod
+    def put_table(self, dataset_name: str, dataset: DATAFRAME):
+
         pass
 
     @_abc.abstractmethod
