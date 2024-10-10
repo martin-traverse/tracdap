@@ -20,6 +20,12 @@ import pandas as pd
 
 class BulkDataImport(trac.TracImportModel):
 
+    # trac_data_origin = import | upload | generated
+    # trac_data_source = risk_dw
+    # trac_data_key = economic_scenario
+    # trac_data_category = primary | generated | experimental | results
+
+
     IMPORT_LOG_SCHEMA = trac.define_schema(
         trac.F("storage_path", trac.STRING, "Storage path", business_key=True),
         trac.F("file_name", trac.STRING, "File name", business_key=True),
@@ -34,36 +40,45 @@ class BulkDataImport(trac.TracImportModel):
         return dict()
 
     def define_outputs(self) -> tp.Dict[str, trac.ModelOutputSchema]:
-        return { "import_log": trac.ModelOutputSchema(schema=self.IMPORT_LOG_SCHEMA) }
+        return {"import_log": trac.ModelOutputSchema(schema=self.IMPORT_LOG_SCHEMA)}
 
     def run_model(self, ctx: trac.TracDataContext):
 
         storage = ctx.get_file_storage("staging_data")
         root_dir = storage.stat(".")
 
-        import_log = self.import_dir(storage, root_dir)
+        import_log = self.import_dir(storage, root_dir, ctx)
 
         ctx.put_pandas_table("import_log", pd.DataFrame(import_log))
 
-    def import_dir(self, storage: trac.TracFileStorage, dir_info: trac.FileStat):
+    def import_dir(self, storage: trac.TracFileStorage, dir_info: trac.FileStat, ctx: trac.TracDataContext):
 
         import_log = []
 
         for entry in storage.ls(dir_info.storage_path):
 
             if entry.file_type == trac.FileType.FILE:
-                log_entry = self.import_file(storage, entry)
+                log_entry = self.import_file(storage, entry, ctx)
                 import_log.append(log_entry)
             else:
-                log_entries = self.import_dir(storage, entry)
+                log_entries = self.import_dir(storage, entry, ctx)
                 import_log.extend(log_entries)
 
         return import_log
 
-    def import_file(self, storage: trac.TracFileStorage, file: trac.FileStat):
+    def import_file(self, storage: trac.TracFileStorage, file: trac.FileStat, ctx: trac.TracDataContext):
 
         with storage.read_byte_stream(file.storage_path) as file_stream:
-            pass
+
+            dataset_key = file.file_name
+
+            dataset = ctx.read_table(file_stream, pd.DataFrame)
+            schema = ctx.infer_schema(dataset)
+
+            ctx.add_import_dataset(dataset_key)
+            ctx.put_schema(dataset_key, schema)
+            ctx.put_table(dataset_key, dataset, data_import=True)
+            ctx.put_attributes(dataset_key)
 
         # Log entry for this file
         return {
@@ -72,6 +87,7 @@ class BulkDataImport(trac.TracImportModel):
             "size": file.size,
             "mtime": file.mtime
         }
+
 
 class SelectiveDataImport(trac.TracImportModel):
 
