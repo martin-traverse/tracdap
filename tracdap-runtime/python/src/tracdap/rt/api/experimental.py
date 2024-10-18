@@ -24,49 +24,51 @@ from .hook import _StaticApiHook
 
 _DATA_FRAMEWORK = _tp.TypeVar('_DATA_FRAMEWORK')
 
+_PROTOCOL_API = _tp.TypeVar("_PROTOCOL_API")
 
-class _DataFramework(_tp.Generic[_DATA_FRAMEWORK]):
 
-    PANDAS: "_DataFramework"
-    POLARS: "_DataFramework"
+class TracProtocol(_tp.Generic[_PROTOCOL_API]):
 
-    def __init__(self, framework_name, framework_type: _DATA_FRAMEWORK):
-        self.__framework_name = framework_name
-        self.__framework_type = framework_type
+    @classmethod
+    def of(cls, protocol_name: str, protocol_api: _tp.Type[_PROTOCOL_API]) -> 'TracProtocol[_PROTOCOL_API]':
+        return TracProtocol(protocol_name, protocol_api)
+
+    def __init__(self, protocol_name: str, protocol_api: _tp.Type[_PROTOCOL_API]):
+        self.__protocol_name = protocol_name
+        self.__protocol_api = protocol_api
+
+    def available(self):
+        return self.__protocol_api is not None
+
+    def __bool__(self):
+        return self.available()
 
     def __str__(self):
-        return self.__framework_name
+        return self.__protocol_name
 
+try:
+    import pandas
+    PANDAS = TracProtocol.of("pandas", pandas.DataFrame)
+    """The original Python dataframe library, most widely used"""
 
-if _tp.TYPE_CHECKING:
+except ModuleNotFoundError:
+    PANDAS = TracProtocol.of("pandas", None)
+    """Pandas data framework is not installed"""
 
-    if pandas:
-        _DataFramework.PANDAS = _DataFramework('pandas', pandas.DataFrame)
-        """The original Python dataframe library, most widely used"""
-    else:
-        _DataFramework.PANDAS = _DataFramework('pandas', None)
-        """Pandas data framework is not installed"""
+try:
+    import polars
+    POLARS = TracProtocol.of("polars", polars.DataFrame)
+    """A modern, fast and simple alternative to Pandas"""
 
-    if polars:
-        _DataFramework.POLARS = _DataFramework('polars', polars.DataFrame)
-        """A modern, fast and simple alternative to Pandas"""
-    else:
-        _DataFramework.POLARS = _DataFramework('polars', None)
-        """Polars data framework is not installed"""
-
-else:
-
-    _DataFramework.PANDAS = _DataFramework('pandas', None)
-    _DataFramework.POLARS = _DataFramework('polars', None)
-
-PANDAS = _DataFramework.PANDAS
-POLARS = _DataFramework.POLARS
+except ModuleNotFoundError:
+    POLARS = TracProtocol.of("polars", None)
+    """Polars data framework is not installed"""
 
 
 class TracContext(TracContext):
 
     @_abc.abstractmethod
-    def get_table(self, dataset_name: str, framework: _DataFramework[_DATA_FRAMEWORK]) -> _DATA_FRAMEWORK:
+    def get_table(self, dataset_name: str, framework: TracProtocol[_DATA_FRAMEWORK]) -> _DATA_FRAMEWORK:
 
         pass
 
@@ -172,15 +174,34 @@ class TracFileStorage:
             stream.write(data)
 
 
+class TracDataStorage(_tp.Generic[_DATA_FRAMEWORK]):
+
+
+    def read_table(self, table_name: str) -> _DATA_FRAMEWORK:
+        pass
+
+    def write_table(self, table_name: str, records: _DATA_FRAMEWORK):
+        pass
+
+
+
 
 class TracDataContext(TracContext):
+
+    __T_API = _tp.TypeVar('__T_API')
 
     @_abc.abstractmethod
     def get_file_storage(self, storage_key: str) -> TracFileStorage:
         pass
 
     @_abc.abstractmethod
-    def get_data_storage(self, storage_key: str) -> None:
+    def get_data_storage(self, storage_key: str, framework: TracProtocol[_DATA_FRAMEWORK]) -> \
+            TracDataStorage[_DATA_FRAMEWORK]:
+
+        pass
+
+    @_abc.abstractmethod
+    def get_custom_storage(self, storage_key: str, protocol: TracProtocol[_PROTOCOL_API]) -> _PROTOCOL_API:
         pass
 
     @_abc.abstractmethod

@@ -125,6 +125,13 @@ class IDataStorage:
         pass
 
 
+CUSTOM_STORAGE_API = _tp.TypeVar("CUSTOM_STORAGE_API")
+
+class ICustomStorage(_tp.Generic[CUSTOM_STORAGE_API]):
+
+    def get_custom_storage(self, storage_path: str) -> CUSTOM_STORAGE_API:
+
+
 class IStorageProvider(_abc.ABC):
 
     def has_arrow_native(self) -> bool:

@@ -67,6 +67,12 @@ class SqlDataStorage(IDataStorage):
         with self._connection():
             pass
 
+    def native_read_query(self, query: str, **parameters) -> pa.Table:
+        pass
+
+    def native_write_query(self, query: str, records: pa.Table, **parameters):
+        pass
+
     def read_table(
             self, storage_path: str, storage_format: str,
             schema: tp.Optional[pa.Schema],
