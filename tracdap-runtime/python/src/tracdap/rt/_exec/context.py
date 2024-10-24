@@ -495,6 +495,98 @@ class TracFileStorageImpl(_eapi.TracFileStorage):
         super().write_bytes(storage_path, data)
 
 
+class TracDataStorageImpl(_eapi.TracDataStorage[_eapi.DATA_API]):
+
+    def __init__(
+            self, storage_key: str, storage_impl: _storage.IDataStorageBase[_data.T_INTERNAL_DATA],
+            data_converter: _data.DataConverter[_eapi.DATA_API, _data.T_INTERNAL_DATA, _data.T_INTERNAL_SCHEMA],
+            write_access: bool, checkout_directory):
+
+        self.__storage_key = storage_key
+        self.__converter = data_converter
+
+        self.__has_table = lambda tn: storage_impl.has_table(tn)
+        self.__list_tables = lambda: storage_impl.list_tables()
+        self.__read_table = lambda tn, s: storage_impl.read_table(tn)
+        self.__native_read_query = lambda q, ps: storage_impl.native_read_query(q, **ps)
+
+        if write_access:
+            self.__create_table = lambda tn, s: storage_impl.create_table(tn, s)
+            self.__write_table = lambda tn, ds: storage_impl.write_table(tn, ds)
+        else:
+            self.__create_table = None
+            self.__write_table = None
+
+        self.__log = _util.logger_for_object(self)
+        self.__val = TracStorageValidator(self.__log, checkout_directory, self.__storage_key)
+
+    def has_table(self, table_name: str) -> bool:
+
+        _val.validate_signature(self.has_table, table_name)
+
+        self.__val.check_operation_available(self.has_table, self.__has_table)
+        self.__val.check_table_name_is_valid(table_name)
+        self.__val.check_storage_path_is_valid(table_name)
+
+        return self.__has_table(table_name)
+
+    def list_tables(self) -> tp.List[str]:
+
+        _val.validate_signature(self.list_tables)
+
+        self.__val.check_operation_available(self.list_tables, self.__list_tables)
+
+        return self.__list_tables()
+
+    def create_table(self, table_name: str, schema: _api.SchemaDefinition):
+
+        _val.validate_signature(self.create_table, table_name, schema)
+
+        self.__val.check_operation_available(self.create_table, self.__create_table)
+        self.__val.check_table_name_is_valid(table_name)
+        self.__val.check_storage_path_is_valid(table_name)
+
+        self.__create_table(table_name, schema)
+
+    def read_table(self, table_name: str, schema: tp.Optional[_api.SchemaDefinition] = None) -> _eapi.DATA_API:
+
+        _val.validate_signature(self.read_table, table_name, schema)
+
+        self.__val.check_operation_available(self.read_table, self.__read_table)
+        self.__val.check_table_name_is_valid(table_name)
+        self.__val.check_table_name_not_reserved(table_name)
+
+        raw_data = self.__read_table(table_name, schema)
+
+        return self.__converter.from_internal(raw_data)
+
+    def native_read_query(self, query: str, **parameters) -> _eapi.DATA_API:
+
+        _val.validate_signature(self.native_read_query, query, **parameters)
+
+        self.__val.check_operation_available(self.native_read_query, self.__native_read_query)
+
+        # TODO: validate query and parameters
+
+        raw_data = self.__native_read_query(query, **parameters)
+
+        return self.__converter.from_internal(raw_data)
+
+    def write_table(self, table_name: str, dataset: _eapi.DATA_API):
+
+        _val.validate_signature(self.write_table, table_name, dataset)
+
+        self.__val.check_operation_available(self.read_table, self.__read_table)
+        self.__val.check_table_name_is_valid(table_name)
+        self.__val.check_table_name_not_reserved(table_name)
+
+        # TODO: Check dataset matches data API type
+
+        raw_data = self.__converter.to_internal(dataset)
+
+        self.__write_table(table_name, raw_data)
+
+
 class TracContextErrorReporter:
 
     _VALID_IDENTIFIER = re.compile("^[a-zA-Z_]\\w*$",)
@@ -768,3 +860,16 @@ class TracStorageValidator(TracContextErrorReporter):
 
         if _val.StorageValidator.storage_path_is_empty(storage_path):
             self._report_error(f"Storage path [{storage_path}] is not allowed")
+
+    def check_table_name_is_valid(self, table_name: str):
+
+        if table_name is None:
+            self._report_error(f"Table name is null")
+
+        if not self._VALID_IDENTIFIER.match(table_name):
+            self._report_error(f"Table name {table_name} is not a valid identifier")
+
+    def check_table_name_not_reserved(self, table_name: str):
+
+        if self._RESERVED_IDENTIFIER.match(table_name):
+            self._report_error(f"Table name {table_name} is a reserved identifier")

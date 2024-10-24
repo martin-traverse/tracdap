@@ -106,6 +106,10 @@ class IFileStorage:
 
 class IDataStorage:
 
+    """
+    **This is an experimental API**
+    """
+
     @_abc.abstractmethod
     def read_table(
             self,
