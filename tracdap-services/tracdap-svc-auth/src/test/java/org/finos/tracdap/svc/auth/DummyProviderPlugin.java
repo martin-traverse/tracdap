@@ -137,7 +137,7 @@ public class DummyProviderPlugin extends TracPlugin {
 
         static CommonHttpResponse processRequest(CommonHttpRequest request) {
 
-            var uri = URI.create(request.path());
+            var uri = URI.create(request.uri());
             var path = uri.getPath();
             var query = uri.getQuery();
 
