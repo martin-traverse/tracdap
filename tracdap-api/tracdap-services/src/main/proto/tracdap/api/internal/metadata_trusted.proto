@@ -26,6 +26,7 @@ import "tracdap/metadata/tag.proto";
 import "tracdap/api/metadata.proto";
 
 import "google/api/annotations.proto";
+import "tracdap/api/authorization.proto";
 
 /**
  * Trusted API reading, writing and searching for objects in the TRAC metadata store.
@@ -56,6 +57,9 @@ service TrustedMetadataApi {
       post: "/{tenant}/trusted/create-object"
       body: "*"
     };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
+    };
   }
 
   /**
@@ -72,6 +76,9 @@ service TrustedMetadataApi {
       post: "/{tenant}/trusted/update-object"
       body: "*"
     };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
+    };
   }
 
   /**
@@ -85,6 +92,9 @@ service TrustedMetadataApi {
     option (google.api.http) = {
       post: "/{tenant}/trusted/update-tag"
       body: "*"
+    };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
     };
   }
 
@@ -103,6 +113,9 @@ service TrustedMetadataApi {
     option (google.api.http) = {
       post: "/{tenant}/trusted/preallocate"
       body: "*"
+    };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
     };
   }
 
@@ -123,6 +136,9 @@ service TrustedMetadataApi {
       post: "/{tenant}/trusted/create-preallocated"
       body: "*"
     };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
+    };
   }
 
   /**
@@ -141,6 +157,9 @@ service TrustedMetadataApi {
       post: "/{tenant}/trusted/write-batch"
       body: "*"
     };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
+    };
   }
 
   /**
@@ -154,6 +173,9 @@ service TrustedMetadataApi {
     option (google.api.http) = {
       post: "/{tenant}/trusted/read-object"
       body: "selector"
+    };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
     };
   }
 
@@ -169,6 +191,9 @@ service TrustedMetadataApi {
       post: "/{tenant}/trusted/read-batch"
       body: "selector"
     };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
+    };
   }
 
   /**
@@ -182,6 +207,9 @@ service TrustedMetadataApi {
     option (google.api.http) = {
       post: "/{tenant}/trusted/search"
       body: "searchParams"
+    };
+    option (tracdap.api.authorization) = {
+      role: "trac.system"
     };
   }
 };
