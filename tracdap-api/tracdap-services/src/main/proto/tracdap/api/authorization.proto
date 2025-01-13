@@ -1,0 +1,14 @@
+
+syntax = "proto3";
+package tracdap.api;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.MethodOptions {
+  optional AuthorizationOptions authorization = 10000;
+}
+
+message AuthorizationOptions {
+  string role = 1;
+  optional string semantics = 2;
+}
