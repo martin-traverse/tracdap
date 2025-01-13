@@ -27,6 +27,7 @@ import "tracdap/metadata/file.proto";
 import "tracdap/metadata/tag_update.proto";
 
 import "google/api/annotations.proto";
+import "tracdap/api/authorization.proto";
 
 
 /**
@@ -98,7 +99,11 @@ service TracDataApi {
    * with the underlying storage technology. In the event of an error, TRAC will do its
    * best to clean up any partially-written data in the storage layer.
    */
-  rpc createDataset (stream DataWriteRequest) returns (metadata.TagHeader);
+  rpc createDataset (stream DataWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Create a new dataset, supplying the schema and content as a single blob
@@ -138,7 +143,11 @@ service TracDataApi {
    * with the underlying storage technology. In the event of an error, TRAC will do its
    * best to clean up any partially-written data in the storage layer.
    */
-  rpc createSmallDataset (DataWriteRequest) returns (metadata.TagHeader);
+  rpc createSmallDataset (DataWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Update an existing dataset, supplying the schema and content as a data stream
@@ -193,7 +202,11 @@ service TracDataApi {
    * a problem communicating with the underlying storage technology. In the event of an error,
    * TRAC will do its best to clean up any partially-written data in the storage layer.
    */
-  rpc updateDataset (stream DataWriteRequest) returns (metadata.TagHeader);
+  rpc updateDataset (stream DataWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Update an existing dataset, supplying the schema and content as a single blob
@@ -242,7 +255,11 @@ service TracDataApi {
    * a problem communicating with the underlying storage technology. In the event of an error,
    * TRAC will do its best to clean up any partially-written data in the storage layer.
    */
-  rpc updateSmallDataset (DataWriteRequest) returns (metadata.TagHeader);
+  rpc updateSmallDataset (DataWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Read an existing dataset, returning the content as a data stream
@@ -264,7 +281,11 @@ service TracDataApi {
    * not supported. Storage errors may also be reported if there is a problem communicating
    * with the underlying storage technology.
    */
-  rpc readDataset (DataReadRequest) returns (stream DataReadResponse);
+  rpc readDataset (DataReadRequest) returns (stream DataReadResponse) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
+  }
 
   /**
    * Read an existing dataset, returning the content as a single blob
@@ -285,7 +306,11 @@ service TracDataApi {
    * not supported. Storage errors may also be reported if there is a problem communicating
    * with the underlying storage technology.
    */
-  rpc readSmallDataset (DataReadRequest) returns (DataReadResponse);
+  rpc readSmallDataset (DataReadRequest) returns (DataReadResponse) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
+  }
 
   /**
    * Upload a new file into TRAC, sending the content as a data stream
@@ -318,7 +343,11 @@ service TracDataApi {
    * underlying storage technology. In the event of an error, TRAC will do its best to
    * clean up any partially-written data in the storage layer.
    */
-  rpc createFile (stream FileWriteRequest) returns (metadata.TagHeader);
+  rpc createFile (stream FileWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Upload a new file into TRAC, sending the content as a single blob
@@ -344,7 +373,11 @@ service TracDataApi {
    * the underlying storage technology. In the event of an error, TRAC will do its best to
    * clean up any partially-written data in the storage layer.
    */
-  rpc createSmallFile (FileWriteRequest) returns (metadata.TagHeader);
+  rpc createSmallFile (FileWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Upload a new version of an existing file into TRAC, sending the content as a data stream
@@ -382,7 +415,11 @@ service TracDataApi {
    * if there is a problem communicating with the underlying storage technology. In the event
    * of an error, TRAC will do its best to clean up any partially-written data in the storage layer.
    */
-  rpc updateFile (stream FileWriteRequest) returns (metadata.TagHeader);
+  rpc updateFile (stream FileWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Upload a new version of an existing file into TRAC, sending the content as a single blob
@@ -414,7 +451,11 @@ service TracDataApi {
    * In the event of an error, TRAC will do its best to clean up any partially-written data in
    * the storage layer.
    */
-  rpc updateSmallFile (FileWriteRequest) returns (metadata.TagHeader);
+  rpc updateSmallFile (FileWriteRequest) returns (metadata.TagHeader) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 
   /**
    * Download a file that has been stored in TRAC and return it as a data stream
@@ -438,7 +479,11 @@ service TracDataApi {
    * Storage errors may also be reported if there is a problem communicating with the
    * underlying storage technology.
    */
-  rpc readFile (FileReadRequest) returns (stream FileReadResponse);
+  rpc readFile (FileReadRequest) returns (stream FileReadResponse) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
+  }
 
   /**
    * Download a file that has been stored in TRAC and return it as a single blob
@@ -456,7 +501,11 @@ service TracDataApi {
    * file too large. Storage errors may also be reported if there is a problem
    * communicating with the underlying storage technology.
    */
-  rpc readSmallFile (FileReadRequest) returns (FileReadResponse);
+  rpc readSmallFile (FileReadRequest) returns (FileReadResponse) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
+  }
 
   /**
    * Download a file as a data stream
@@ -468,6 +517,9 @@ service TracDataApi {
     option (google.api.http) = {
       get: "/{tenant}/FILE/{objectId}/versions/{objectVersion}/*"
       response_body: "content"
+    };
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
     };
   }
 
@@ -481,6 +533,9 @@ service TracDataApi {
     option (google.api.http) = {
       get: "/{tenant}/FILE/{objectId}/versions/latest/*"
       response_body: "content"
+    };
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
     };
   }
 

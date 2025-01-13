@@ -26,6 +26,7 @@ import "tracdap/metadata/job.proto";
 import "tracdap/metadata/tag_update.proto";
 
 import "google/api/annotations.proto";
+import "tracdap/api/authorization.proto";
 
 
 /**
@@ -38,12 +39,18 @@ service TracOrchestratorApi {
       post: "/{tenant}/validate-job"
       body: "*"
     };
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
   }
 
   rpc submitJob (JobRequest) returns (JobStatus) {
     option (google.api.http) = {
       post: "/{tenant}/submit-job"
       body: "*"
+    };
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
     };
   }
 
@@ -52,11 +59,22 @@ service TracOrchestratorApi {
       post: "/{tenant}/check-job"
       body: "selector"
     };
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
   }
 
-  rpc followJob (JobStatusRequest) returns (stream JobStatus);
+  rpc followJob (JobStatusRequest) returns (stream JobStatus) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.read"
+    };
+  }
 
-  rpc cancelJob (JobStatusRequest) returns (JobStatus);
+  rpc cancelJob (JobStatusRequest) returns (JobStatus) {
+    option (tracdap.api.authorization) = {
+      role: "tenant.write"
+    };
+  }
 }
 
 /**
