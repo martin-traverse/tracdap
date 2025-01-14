@@ -18,6 +18,7 @@
 package org.finos.tracdap.common.auth;
 
 import java.io.Serializable;
+import java.util.List;
 
 
 public class UserInfo implements Serializable {
@@ -26,6 +27,8 @@ public class UserInfo implements Serializable {
 
     private String userId;
     private String displayName;
+
+    private List<String> userRoles = List.of();
 
     public String getUserId() {
         return userId;
@@ -41,5 +44,17 @@ public class UserInfo implements Serializable {
 
     public void setDisplayName(String displayName) {
         this.displayName = displayName;
+    }
+
+    public List<String> getUserRoles() {
+        return userRoles;
+    }
+
+    public void setUserRoles(List<String> userRoles) {
+        this.userRoles = userRoles;
+    }
+
+    public boolean hasUserRole(String role) {
+        return userRoles.contains(role);
     }
 }

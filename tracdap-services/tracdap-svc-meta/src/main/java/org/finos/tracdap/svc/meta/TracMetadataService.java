@@ -19,6 +19,7 @@ package org.finos.tracdap.svc.meta;
 
 import org.finos.tracdap.api.Metadata;
 import org.finos.tracdap.api.internal.MetadataTrusted;
+import org.finos.tracdap.common.auth.GrpcAuthzInterceptor;
 import org.finos.tracdap.common.auth.JwtSetup;
 import org.finos.tracdap.common.auth.GrpcAuthValidator;
 import org.finos.tracdap.common.config.ConfigKeys;
@@ -145,6 +146,7 @@ public class TracMetadataService extends CommonServiceBase {
                     .addService(trustedApi)
                     .intercept(new ErrorMappingInterceptor())
                     .intercept(new LoggingServerInterceptor(TracMetadataApi.class))
+                    .intercept(new GrpcAuthzInterceptor(platformConfig.getAuthentication(), serviceRegister))
                     .intercept(new GrpcRequestValidator(serviceRegister))
                     .intercept(new GrpcAuthValidator(platformConfig.getAuthentication(), jwtValidator))
                     .intercept(new CompressionServerInterceptor())
