@@ -53,6 +53,8 @@ public class JwtProcessor extends JwtValidator {
             jwt.withClaim(JWT_DELEGATE_NAME_CLAIM, session.getDelegate().getDisplayName());
         }
 
+        jwt.withArrayClaim()
+
         return jwt.sign(algorithm).trim();
     }
 }

@@ -32,8 +32,9 @@ import java.time.Instant;
 public class JwtValidator {
 
     protected static final String JWT_NAME_CLAIM = "name";
-    protected static final String JWT_LIMIT_CLAIM = "limit";
+    protected static final String JWT_ROLES_CLAIM = "roles";
 
+    protected static final String JWT_LIMIT_CLAIM = "limit";
     protected static final String JWT_DELEGATE_ID_CLAIM = "delegate";
     protected static final String JWT_DELEGATE_NAME_CLAIM = "delegateName";
 
