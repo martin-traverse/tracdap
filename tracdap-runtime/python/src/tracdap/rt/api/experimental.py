@@ -108,6 +108,11 @@ def map_type(entry_type: BasicType) -> TypeDescriptor:
     return sa.map_type(entry_type)
 
 
+def struct_type(*, python_type: _tp.Optional[_dc.dataclass] = None, **kwargs: BasicType):
+
+    pass
+
+
 class FileType(_enum.Enum):
 
     FILE = 1

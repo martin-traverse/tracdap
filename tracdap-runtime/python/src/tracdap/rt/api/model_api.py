@@ -62,7 +62,7 @@ class TracContext(metaclass=_abc.ABCMeta):
     .. seealso:: :py:class:`TracModel <tracdap.rt.api.TracModel>`
     """
 
-    def get_parameter(self, parameter_name: str) -> _tp.Any:
+    def get_parameter(self, parameter_name: str, use_type: _tp.Type = _tp.Any) -> use_type:
 
         """
         Get the value of a model parameter.
