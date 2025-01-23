@@ -347,7 +347,7 @@ class TracModel(metaclass=_abc.ABCMeta):
     .. seealso:: :py:class:`TracContext <tracdap.rt.api.TracContext>`
     """
 
-    def define_attributes(self) -> _tp.Dict[str, Value]:  # noqa
+    def define_attributes(self) -> dict[str, Value]:  # noqa
 
         """
         Define attributes that will be associated with the model when it is loaded into the TRAC platform.
@@ -372,7 +372,7 @@ class TracModel(metaclass=_abc.ABCMeta):
         return {}
 
     @_abc.abstractmethod
-    def define_parameters(self) -> _tp.Dict[str, ModelParameter]:
+    def define_parameters(self) -> dict[str, ModelParameter]:
 
         """
         Define parameters that will be available to the model at runtime.
@@ -393,7 +393,7 @@ class TracModel(metaclass=_abc.ABCMeta):
         pass
 
     @_abc.abstractmethod
-    def define_inputs(self) -> _tp.Dict[str, ModelInputSchema]:
+    def define_inputs(self) -> dict[str, ModelInputSchema]:
 
         """
         Define data inputs that will be available to the model at runtime.
@@ -414,7 +414,7 @@ class TracModel(metaclass=_abc.ABCMeta):
         pass
 
     @_abc.abstractmethod
-    def define_outputs(self) -> _tp.Dict[str, ModelOutputSchema]:
+    def define_outputs(self) -> dict[str, ModelOutputSchema]:
 
         """
         Define data outputs that will be produced by the model at runtime.

@@ -715,11 +715,11 @@ class TracGenerator:
                 key_type = self.python_base_type(scope, nested_type.field[0], make_relative=True, translate_package=True, doc_semantics=doc_semantics)
                 value_type = self.python_base_type(scope, nested_type.field[1], make_relative=True, translate_package=True, doc_semantics=doc_semantics)
                 qualified_value_type = self.python_base_type(scope, nested_type.field[1], make_relative=False, translate_package=False)
-                return f"{typing_prefix}Dict[{key_type}, {format_type_string(value_type, qualified_value_type)}]"
+                return f"dict[{key_type}, {format_type_string(value_type, qualified_value_type)}]"
 
             # Otherwise repeated fields are generated as lists
             else:
-                return f"{typing_prefix}List[{format_type_string(base_type, qualified_type)}]"
+                return f"list[{format_type_string(base_type, qualified_type)}]"
 
         # Fields explicitly marked optional in the proto are, of course, optional!
         elif field.proto3_optional:
