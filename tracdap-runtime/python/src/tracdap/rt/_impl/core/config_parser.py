@@ -365,6 +365,9 @@ class ConfigParser(tp.Generic[_T]):
         if _dc.is_dataclass(annotation):
             return self._parse_simple_class(location, raw_value, annotation)
 
+        if annotation in [list, dict]:
+            return self._parse_generic_class(location, raw_value, annotation)
+
         if isinstance(annotation, self.__generic_metaclass):
             return self._parse_generic_class(location, raw_value, annotation)  # noqa
 
