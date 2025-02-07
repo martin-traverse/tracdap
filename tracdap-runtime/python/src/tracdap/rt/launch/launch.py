@@ -20,10 +20,6 @@ import pathlib as _pathlib
 import typing as _tp
 
 import tracdap.rt.api as _api
-import tracdap.rt._impl.core.config_parser as _cparse  # noqa
-import tracdap.rt._impl.core.util as _util  # noqa
-import tracdap.rt._impl.runtime as _runtime  # noqa
-
 from .cli import _cli_args
 
 
@@ -36,7 +32,7 @@ def _resolve_config_file(
     if isinstance(config_path, str):
         scheme_sep = config_path.find(":")
         # Single letter scheme is a Windows file path (C:\...)
-        scheme = scheme = config_path[:scheme_sep] if scheme_sep > 1 else "file"
+        scheme = config_path[:scheme_sep] if scheme_sep > 1 else "file"
         if scheme != "file":
             return config_path
 
@@ -109,7 +105,9 @@ def launch_model(
     plugin_package = _optional_arg(launch_args, 'plugin_package')
     plugin_packages = [plugin_package] if plugin_package else None
 
-    runtime_instance = _runtime.TracRuntime(_sys_config, dev_mode=True, plugin_packages=plugin_packages)
+    # Avoid pulling in the entire runtime dependency tree as an API dependency
+    import tracdap.rt._impl.runtime as runtime  # noqa
+    runtime_instance = runtime.TracRuntime(_sys_config, dev_mode=True, plugin_packages=plugin_packages)
     runtime_instance.pre_start()
 
     with runtime_instance as rt:
@@ -158,7 +156,9 @@ def launch_job(
     plugin_package = _optional_arg(launch_args, 'plugin_package')
     plugin_packages = [plugin_package] if plugin_package else None
 
-    runtime_instance = _runtime.TracRuntime(_sys_config, dev_mode=dev_mode, plugin_packages=plugin_packages)
+    # Avoid pulling in the entire runtime dependency tree as an API dependency
+    import tracdap.rt._impl.runtime as runtime  # noqa
+    runtime_instance = runtime.TracRuntime(_sys_config, dev_mode=dev_mode, plugin_packages=plugin_packages)
     runtime_instance.pre_start()
 
     with runtime_instance as rt:
@@ -188,7 +188,9 @@ def launch_cli(programmatic_args: _tp.Optional[_tp.List[str]] = None):
     _sys_config = _resolve_config_file(launch_args.sys_config, None)
     _job_config = _resolve_config_file(launch_args.job_config, None) if launch_args.job_config else None
 
-    runtime_instance = _runtime.TracRuntime(
+    # Avoid pulling in the entire runtime dependency tree as an API dependency
+    import tracdap.rt._impl.runtime as runtime  # noqa
+    runtime_instance = runtime.TracRuntime(
         _sys_config,
         dev_mode=launch_args.dev_mode,
         job_result_dir=launch_args.job_result_dir,
