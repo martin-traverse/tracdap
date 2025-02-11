@@ -67,6 +67,8 @@ ext {
     gcp_sdk_version = '26.37.0'
     azure_sdk_version = '1.2.24'
 
+    avro_version = "1.12.0"
+
     apache_sshd_version = "2.12.1"
 
 

@@ -110,6 +110,20 @@ public interface DataPipeline {
         void onError(Throwable error);
     }
 
+    interface SeekableControl {
+
+        long size();
+        void request(long position, long chunkSize);
+        void close();
+    }
+
+    interface SeekableApi extends DataInterface<SeekableApi> {
+
+        void onStart(SeekableControl control);
+        void onChunk(long position, ArrowBuf chunk);
+        void onError(Throwable error);
+    }
+
     interface BufferApi extends DataInterface<BufferApi> {
 
         void onBuffer(List<ArrowBuf> buffer);

@@ -89,9 +89,11 @@ include 'aws-storage'
 include 'gcp-storage'
 include 'azure-storage'
 include 'ssh-executor'
+include "avro-format"
 
 project(":sql-drivers").projectDir = file("tracdap-plugins/sql-drivers")
 project(":aws-storage").projectDir = file("tracdap-plugins/aws-storage")
 project(":gcp-storage").projectDir = file("tracdap-plugins/gcp-storage")
 project(":azure-storage").projectDir = file("tracdap-plugins/azure-storage")
 project(":ssh-executor").projectDir = file("tracdap-plugins/ssh-executor")
+project(":avro-format").projectDir = file("tracdap-plugins/avro-format")
