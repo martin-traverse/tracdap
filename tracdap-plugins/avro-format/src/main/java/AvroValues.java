@@ -15,18 +15,15 @@
  * limitations under the License.
  */
 
+import org.apache.arrow.memory.ArrowBuf;
+import org.finos.tracdap.common.exception.EDataTypeNotSupported;
+
 import org.apache.arrow.vector.*;
 import org.apache.avro.io.Encoder;
-import org.finos.tracdap.common.exception.EDataTypeNotSupported;
-import org.finos.tracdap.common.metadata.MetadataCodec;
 
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
-import java.time.LocalDate;
-import java.time.LocalDateTime;
-import java.time.OffsetDateTime;
-import java.time.ZoneOffset;
 
 
 public class AvroValues {
@@ -76,7 +73,7 @@ public class AvroValues {
                 SmallIntVector int16Vec = (SmallIntVector) vector;
                 short int16Val = int16Vec.get(row);
 
-                generator.writeNumber(int16Val);
+                encoder.writeInt(int16Val);
 
                 break;
 
@@ -85,7 +82,7 @@ public class AvroValues {
                 TinyIntVector int8Vec = (TinyIntVector) vector;
                 byte int8Val = int8Vec.get(row);
 
-                generator.writeNumber(int8Val);
+                encoder.writeInt(int8Val);
 
                 break;
 
@@ -110,7 +107,14 @@ public class AvroValues {
             case DECIMAL:
 
                 DecimalVector decimal128Vec = (DecimalVector) vector;
+                ArrowBuf decimalBytes = decimal128Vec.get(row);
+
+                encoder.writeFixed(decimalBytes.nioBuffer());
+
+
+
                 BigDecimal decimal128Val = decimal128Vec.getObject(row);
+
 
                 // This will render zeroes as "0" when the scale is large, preferable to 0e-12
                 // For small scales use the default rendering, particularly currency with scale == 2
@@ -147,31 +151,17 @@ public class AvroValues {
 
                 DateDayVector dateVec = (DateDayVector) vector;
                 int unixEpochDay = dateVec.get(row);
-                LocalDate dateVal = LocalDate.ofEpochDay(unixEpochDay);
-                String dateStr = dateVal.format(MetadataCodec.ISO_DATE_FORMAT);
 
-                generator.writeString(dateStr);
+                encoder.writeInt(unixEpochDay);
 
                 break;
 
             case TIMESTAMPMILLI:
 
                 TimeStampMilliVector timeStampMVec = (TimeStampMilliVector) vector;
-
                 long epochMillis = timeStampMVec.get(row);
-                long epochSeconds = epochMillis / 1000;
-                int nanos = (int) (epochMillis % 1000) * 1000000;
 
-                if (epochSeconds < 0 && nanos != 0) {
-                    --epochSeconds;
-                    nanos = nanos + 1000000000;
-                }
-
-                LocalDateTime localDatetimeVal = LocalDateTime.ofEpochSecond(epochSeconds, nanos, ZoneOffset.UTC);
-                OffsetDateTime offsetDatetimeVal = localDatetimeVal.atOffset(ZoneOffset.UTC);
-                String datetimeStr = MetadataCodec.ISO_DATETIME_NO_ZONE_FORMAT.format(offsetDatetimeVal);
-
-                generator.writeString(datetimeStr);
+                encoder.writeLong(epochMillis);
 
                 break;
 
