@@ -29,14 +29,14 @@ group = "org.finos.tracdap.plugins"
 
 dependencies {
 
-    implementation project(":tracdap-lib-common")
-    implementation project(":tracdap-lib-data")
+    compileOnly project(":tracdap-lib-common")
+    compileOnly project(":tracdap-lib-data")
 
     implementation platform(group: "com.google.cloud", name: "libraries-bom", version: "$gcp_sdk_version")
     implementation "com.google.cloud:google-cloud-storage"
 
     // Explicit dependency required to configure transport
-    implementation "io.grpc:grpc-netty"
+    compileOnly "io.grpc:grpc-netty"
 
     testImplementation project(path: ":tracdap-lib-data", configuration: "testSuite")
 }
