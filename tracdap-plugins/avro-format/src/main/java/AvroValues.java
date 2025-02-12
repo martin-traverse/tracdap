@@ -106,18 +106,22 @@ public class AvroValues {
             case DECIMAL:
 
                 DecimalVector decimal128Vec = (DecimalVector) vector;
-                ArrowBuf decimal128Bytes = decimal128Vec.get(row);
 
-                encoder.writeFixed(decimal128Bytes.nioBuffer());
+                // ArrowBuf is a slice on the vector, closing decrements the reference count
+                try (ArrowBuf decimal128Bytes = decimal128Vec.get(row)) {
+                    encoder.writeFixed(decimal128Bytes.nioBuffer());
+                }
 
                 break;
 
             case DECIMAL256:
 
                 Decimal256Vector decimal256Vec = (Decimal256Vector) vector;
-                ArrowBuf decimal256Bytes = decimal256Vec.get(row);
 
-                encoder.writeFixed(decimal256Bytes.nioBuffer());
+                // ArrowBuf is a slice on the vector, closing decrements the reference count
+                try (ArrowBuf decimal256Bytes = decimal256Vec.get(row)) {
+                    encoder.writeFixed(decimal256Bytes.nioBuffer());
+                }
 
                 break;
 
