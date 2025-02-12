@@ -22,7 +22,6 @@ import org.apache.arrow.vector.*;
 import org.apache.avro.io.Encoder;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.nio.charset.StandardCharsets;
 
 
@@ -107,34 +106,18 @@ public class AvroValues {
             case DECIMAL:
 
                 DecimalVector decimal128Vec = (DecimalVector) vector;
-                ArrowBuf decimalBytes = decimal128Vec.get(row);
+                ArrowBuf decimal128Bytes = decimal128Vec.get(row);
 
-                encoder.writeFixed(decimalBytes.nioBuffer());
-
-
-
-                BigDecimal decimal128Val = decimal128Vec.getObject(row);
-
-
-                // This will render zeroes as "0" when the scale is large, preferable to 0e-12
-                // For small scales use the default rendering, particularly currency with scale == 2
-
-                if (decimal128Vec.getScale() > 3 && BigDecimal.ZERO.compareTo(decimal128Val) == 0)
-                    generator.writeString(BigDecimal.ZERO.toString());
-                else
-                    generator.writeString(decimal128Val.toString());
+                encoder.writeFixed(decimal128Bytes.nioBuffer());
 
                 break;
 
             case DECIMAL256:
 
                 Decimal256Vector decimal256Vec = (Decimal256Vector) vector;
-                BigDecimal decimal256Val = decimal256Vec.getObject(row);
+                ArrowBuf decimal256Bytes = decimal256Vec.get(row);
 
-                if (decimal256Vec.getScale() > 3 && BigDecimal.ZERO.compareTo(decimal256Val) == 0)
-                    generator.writeString(BigDecimal.ZERO.toString());
-                else
-                    generator.writeString(decimal256Val.toString());
+                encoder.writeFixed(decimal256Bytes.nioBuffer());
 
                 break;
 
