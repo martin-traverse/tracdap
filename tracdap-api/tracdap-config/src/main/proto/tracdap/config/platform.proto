@@ -23,6 +23,7 @@ option java_outer_classname = "PlatformConfigProto";
 option java_multiple_files = true;
 
 import "tracdap/metadata/common.proto";
+import "tracdap/metadata/resource.proto";
 import "tracdap/config/common.proto";
 
 import "google/protobuf/any.proto";
@@ -36,15 +37,10 @@ message PlatformConfig {
 
   MetadataConfig metadata = 6;
 
-  StorageConfig storage = 7;
-
-  map<string, PluginConfig> repositories = 8;
-
   PluginConfig executor = 9;
-
   PluginConfig jobCache = 12;
 
-  map<string, TenantConfig> tenants = 10;
+  map<string, string> tenantConfig = 10;
 
   GatewayConfig gateway = 13;
 
@@ -57,7 +53,6 @@ message PlatformConfig {
   map<string, google.protobuf.Any> extensions = 16;
 }
 
-
 message MetadataConfig {
 
   PluginConfig database = 1;
@@ -65,13 +60,18 @@ message MetadataConfig {
   metadata.MetadataFormat format = 2;
 }
 
-
 message TenantConfig {
 
-  optional string defaultBucket = 1;
-  optional string defaultFormat = 2;
-}
+  map<string, string> config = 1;
 
+  metadata.TenantInfo tenantInfo = 2;
+
+  map<string, metadata.ResourceSpec> resourceSpecs = 3;
+  map<string, metadata.ResourceDefinition> resources = 4;
+
+  optional string defaultBucket = 5;
+  optional string defaultFormat = 6;
+}
 
 message GatewayConfig {
 

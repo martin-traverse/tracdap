@@ -23,6 +23,7 @@ option java_multiple_files = true;
 
 import "tracdap/metadata/object_id.proto";
 import "tracdap/metadata/object.proto";
+import "tracdap/metadata/type.proto";
 
 
 /**
@@ -41,4 +42,33 @@ enum ResourceType {
   // Storage location for upstream / downstream integration points (not available yet in the resource API)
   reserved "EXTERNAL_STORAGE";
   reserved 3;
+}
+
+
+message ResourceDefinition {
+
+  ResourceType resourceType = 1;
+  ResourceConfig config = 2;
+}
+
+message ResourceConfig {
+
+  string protocol = 1;
+  optional string subProtocol = 2;
+  map<string, string> properties = 3;
+  map<string, string> publicProperties = 4;
+  map<string, string> secrets = 5;
+}
+
+message ResourceSpec {
+
+  ResourceType resourceType = 1;
+  string protocol = 2;
+  optional string subProtocol = 3;
+
+  map<string, metadata.TypeDescriptor> requiredProperties;
+  map<string, metadata.TypeDescriptor> requiredPublicProperties;
+  map<string, metadata.TypeDescriptor> optionalProperties;
+  map<string, metadata.TypeDescriptor> optionalPublicProperties;
+
 }
