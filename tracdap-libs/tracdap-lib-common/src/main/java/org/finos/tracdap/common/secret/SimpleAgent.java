@@ -17,18 +17,21 @@
 
 package org.finos.tracdap.common.secret;
 
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.util.List;
+import java.util.concurrent.CompletableFuture;
 
-public interface ISecretService {
 
-    List<String> listSecretKeys(SecretKey scope);
+public class SimpleAgent implements ISecretAgent{
 
-    void storeSecret(SecretKey key, SecretHolder secret);
-    SecretHolder retrieveSecret(SecretKey key);
+    private final ISecretService service;
 
-    void storePassword(SecretKey key, String password);
-    void storePublicKey(SecretKey key, PublicKey publicKey);
-    void storeKeyPair(SecretKey key, KeyPair keyPair);
+    SimpleAgent(ISecretService service) {
+        this.service = service;
+    }
+
+    @Override
+    public CompletableFuture<SecretHolder> fetchAsync(SecretKey key) {
+
+        var secret = service.retrieveSecret(key);
+        return CompletableFuture.completedFuture(secret);
+    }
 }

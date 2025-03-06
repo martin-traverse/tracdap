@@ -17,18 +17,26 @@
 
 package org.finos.tracdap.common.secret;
 
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.util.List;
+import org.finos.tracdap.common.exception.ETracInternal;
 
-public interface ISecretService {
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Function;
 
-    List<String> listSecretKeys(SecretKey scope);
+public class GuardedAgent {
 
-    void storeSecret(SecretKey key, SecretHolder secret);
-    SecretHolder retrieveSecret(SecretKey key);
+    private final Function<SecretKey, CompletableFuture<SecretHolder>> guardedAccess;
+    private final SecretKey boundary;
 
-    void storePassword(SecretKey key, String password);
-    void storePublicKey(SecretKey key, PublicKey publicKey);
-    void storeKeyPair(SecretKey key, KeyPair keyPair);
+    public GuardedAgent(ISecretAgent delegate, SecretKey boundary) {
+
+        this.boundary = boundary;
+
+        guardedAccess = (secretKey -> {
+
+            if (boundary.tenant().equals(secretKey.tenant()))
+                return delegate.fetchAsync(secretKey);
+            else
+                throw new ETracInternal("");
+        });
+    }
 }

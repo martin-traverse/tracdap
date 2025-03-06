@@ -17,18 +17,28 @@
 
 package org.finos.tracdap.common.secret;
 
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.util.List;
+import org.finos.tracdap.common.exception.ETracInternal;
 
-public interface ISecretService {
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 
-    List<String> listSecretKeys(SecretKey scope);
 
-    void storeSecret(SecretKey key, SecretHolder secret);
-    SecretHolder retrieveSecret(SecretKey key);
+public interface ISecretAgent {
 
-    void storePassword(SecretKey key, String password);
-    void storePublicKey(SecretKey key, PublicKey publicKey);
-    void storeKeyPair(SecretKey key, KeyPair keyPair);
+    CompletableFuture<SecretHolder> fetchAsync(SecretKey key);
+
+    default SecretHolder block(SecretKey key) {
+
+        var future = fetchAsync(key);
+
+        try {
+            return future.join();
+        }
+        catch (CompletionException e) {
+            if (e.getCause() != null)
+                throw new ETracInternal(e.getMessage(), e.getCause());
+            else
+                throw new ETracInternal(e.getMessage(), e);
+        }
+    }
 }

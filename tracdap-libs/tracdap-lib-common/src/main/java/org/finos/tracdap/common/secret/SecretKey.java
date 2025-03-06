@@ -17,18 +17,27 @@
 
 package org.finos.tracdap.common.secret;
 
-import java.security.KeyPair;
-import java.security.PublicKey;
-import java.util.List;
+public class SecretKey {
 
-public interface ISecretService {
+    private final String tenant;
+    private final String user;
+    private final String secret;
 
-    List<String> listSecretKeys(SecretKey scope);
+    public SecretKey(String tenant, String user, String secret) {
+        this.tenant = tenant;
+        this.user = user;
+        this.secret = secret;
+    }
 
-    void storeSecret(SecretKey key, SecretHolder secret);
-    SecretHolder retrieveSecret(SecretKey key);
+    public String tenant() {
+        return tenant;
+    }
 
-    void storePassword(SecretKey key, String password);
-    void storePublicKey(SecretKey key, PublicKey publicKey);
-    void storeKeyPair(SecretKey key, KeyPair keyPair);
+    public String user() {
+        return user;
+    }
+
+    public String secret() {
+        return secret;
+    }
 }
