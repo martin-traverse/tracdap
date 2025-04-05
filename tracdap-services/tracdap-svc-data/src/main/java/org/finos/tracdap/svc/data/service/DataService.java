@@ -45,7 +45,6 @@ import org.slf4j.LoggerFactory;
 import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Random;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.Flow;
@@ -58,7 +57,6 @@ import static org.finos.tracdap.common.metadata.MetadataUtil.selectorForLatest;
 public class DataService {
 
     private static final String DATA_ITEM_TEMPLATE = "data/%s/%s/%s/snap-%d/delta-%d";
-    private static final String STORAGE_PATH_TEMPLATE = "data/%s/%s/%s/snap-%d/delta-%d-x%06x";
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -69,7 +67,6 @@ public class DataService {
     private final InternalMetadataApiGrpc.InternalMetadataApiFutureStub metaClient;
 
     private final Validator validator = new Validator();
-    private final Random random = new Random();
 
     public DataService(
             StorageConfig storageConfig,
@@ -492,15 +489,9 @@ public class DataService {
 
     private String buildStoragePath(RequestState state) {
 
-        var dataType = state.schema.getSchemaType().name().toLowerCase();
-        var objectId = state.dataId.getObjectId();
-        var partKey = state.part.getOpaqueKey();
-        var suffixBytes = random.nextInt(1 << 24);
-
-        return String.format(STORAGE_PATH_TEMPLATE,
-                dataType, objectId,
-                partKey, state.snap, state.delta,
-                suffixBytes);
+        return state.layout.dataLayout(
+                state.dataId, state.data, state.schema,
+                state.part, state.snap, state.delta);
     }
 
     private DataDefinition createDataDef(DataWriteRequest request, RequestState state, String dataItem) {

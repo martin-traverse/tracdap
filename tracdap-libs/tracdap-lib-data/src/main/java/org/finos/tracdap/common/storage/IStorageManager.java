@@ -24,4 +24,6 @@ public interface IStorageManager {
     IDataStorage getDataStorage(String storageKey);
 
     IFileStorage getFileStorage(String storageKey);
+
+    IStorageLayout getLayout(String layout);
 }

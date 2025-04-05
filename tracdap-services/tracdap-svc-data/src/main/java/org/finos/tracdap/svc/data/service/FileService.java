@@ -369,7 +369,6 @@ public class FileService {
     private RequestState createMetadata(FileWriteRequest request, RequestState state) {
 
         var timestamp = state.requestMetadata.requestTimestamp().toInstant();
-        var storageKey = selectStorage(request.getTenant());
 
         state.fileId = MetadataUtil.nextObjectVersion(state.preAllocFileId, timestamp);
         state.storageId = MetadataUtil.nextObjectVersion(state.preAllocStorageId, timestamp);
@@ -379,10 +378,14 @@ public class FileService {
                 state.fileId, selectorForLatest(state.storageId),
                 request.getName(), request.getMimeType());
 
+        var dataItem = buildDataItem(state.fileId);
+        var storageKey = selectStorage(request.getTenant());
+        var storagePath = buildStoragePath(state.fileId, state.file);
+
         state.storage = buildStorageDef(
-                StorageDefinition.newBuilder(),
-                state.fileId, timestamp, storageKey,
-                request.getName(), request.getMimeType());
+                StorageDefinition.newBuilder(), state.file,
+                state.fileId, timestamp,
+                dataItem, storageKey, storagePath);
 
         return state;
     }
@@ -390,7 +393,6 @@ public class FileService {
     private RequestState updateMetadata(FileWriteRequest request, RequestState state, RequestState prior) {
 
         var timestamp = state.requestMetadata.requestTimestamp().toInstant();
-        var storageKey = selectStorage(request.getTenant());
 
         state.fileId = MetadataUtil.nextObjectVersion(prior.fileId, timestamp);
         state.storageId = MetadataUtil.nextObjectVersion(prior.storageId, timestamp);
@@ -400,10 +402,14 @@ public class FileService {
                 state.fileId, prior.file.getStorageId(),
                 request.getName(), request.getMimeType());
 
+        var dataItem = buildDataItem(state.fileId);
+        var storageKey = selectStorage(request.getTenant());
+        var storagePath = buildStoragePath(state.fileId, state.file);
+
         state.storage = buildStorageDef(
-                prior.storage.toBuilder(),
-                state.fileId, timestamp, storageKey,
-                request.getName(), request.getMimeType());
+                prior.storage.toBuilder(), state.file,
+                state.fileId, timestamp,
+                dataItem, storageKey, storagePath);
 
         return state;
     }
@@ -433,14 +439,9 @@ public class FileService {
     }
 
     private StorageDefinition buildStorageDef(
-            StorageDefinition.Builder storageDef,
-            TagHeader fileId, Instant storageTimestamp, String storageKey,
-            String fileName, String mimeType) {
-
-        var fileUuid = UUID.fromString(fileId.getObjectId());
-        var fileVersion = fileId.getObjectVersion();
-
-        var dataItem = String.format(FILE_DATA_ITEM_TEMPLATE, fileUuid, fileVersion);
+            StorageDefinition.Builder storageDef, FileDefinition fileDef,
+            TagHeader fileId, Instant storageTimestamp,
+            String dataItem, String storageKey, String storagePath) {
 
         // We are going to add this data item to the storage definition
         // If the item already exists in storage, then the file object must have been superseded
@@ -448,30 +449,13 @@ public class FileService {
 
         if (storageDef.containsDataItems(dataItem)) {
 
-            var err = String.format("File version [%d] has been superseded", fileVersion - 1);
+            var err = String.format("File version [%d] has been superseded", fileId.getObjectVersion() - 1);
 
             log.error(err);
             log.error("(updates are present in the storage definition)");
 
             throw new EMetadataDuplicate(err);
         }
-
-        // It is possible to call updateFile twice on the same prior version at the same time,
-        // In this case, the check above passes and both calls try to create the same file at the same time
-        // It is also possible that a failed call leaves behind a file without creating a valid metadata record
-        // In this case, it would not be possible for an update to succeed as an orphan file is there
-        // Best efforts checks can be made but will never cover all possible concurrent code paths
-
-        // To get around this problem, we add some random hex digits into the storage path
-        // Update collisions are still resolved when the final metadata record is created
-        // In this case, the request error handler *should* clean up the file
-        // For orphaned files, there is still a chance the random bytes collide
-        // But this can be resolved by retrying
-
-        var storageSuffixBytes = random.nextInt(1 << 24);
-        var storageSuffix = String.format(FILE_STORAGE_PATH_SUFFIX_TEMPLATE, storageSuffixBytes);
-
-        var storagePath = String.format(FILE_STORAGE_PATH_TEMPLATE, fileUuid, fileVersion, storageSuffix, fileName);
 
         var storageEncodedTimestamp = MetadataCodec.encodeDatetime(storageTimestamp);
 
@@ -480,7 +464,7 @@ public class FileService {
         var storageCopy = StorageCopy.newBuilder()
                 .setStorageKey(storageKey)
                 .setStoragePath(storagePath)
-                .setStorageFormat(mimeType)
+                .setStorageFormat(fileDef.getMimeType())
                 .setCopyStatus(CopyStatus.COPY_AVAILABLE)
                 .setCopyTimestamp(storageEncodedTimestamp);
 
@@ -497,6 +481,38 @@ public class FileService {
         return storageDef
                 .putDataItems(dataItem, storageItem)
                 .build();
+    }
+
+    private String buildDataItem(TagHeader fileId) {
+
+        var fileUuid = UUID.fromString(fileId.getObjectId());
+        var fileVersion = fileId.getObjectVersion();
+
+        return String.format(FILE_DATA_ITEM_TEMPLATE, fileUuid, fileVersion);
+    }
+
+    private String buildStoragePath(TagHeader fileId, FileDefinition fileDef) {
+
+        // It is possible to call updateFile twice on the same prior version at the same time,
+        // In this case, the check above passes and both calls try to create the same file at the same time
+        // It is also possible that a failed call leaves behind a file without creating a valid metadata record
+        // In this case, it would not be possible for an update to succeed as an orphan file is there
+        // Best efforts checks can be made but will never cover all possible concurrent code paths
+
+        // To get around this problem, we add some random hex digits into the storage path
+        // Update collisions are still resolved when the final metadata record is created
+        // In this case, the request error handler *should* clean up the file
+        // For orphaned files, there is still a chance the random bytes collide
+        // But this can be resolved by retrying
+
+        var fileUuid = UUID.fromString(fileId.getObjectId());
+        var fileVersion = fileId.getObjectVersion();
+        var fileName = fileDef.getName();
+
+        var storageSuffixBytes = random.nextInt(1 << 24);
+        var storageSuffix = String.format(FILE_STORAGE_PATH_SUFFIX_TEMPLATE, storageSuffixBytes);
+
+        return String.format(FILE_STORAGE_PATH_TEMPLATE, fileUuid, fileVersion, storageSuffix, fileName);
     }
 
     private String selectStorage(String tenant) {

@@ -23,6 +23,7 @@ import org.finos.tracdap.common.codec.ICodecManager;
 import org.finos.tracdap.common.exception.EStartup;
 import org.finos.tracdap.common.exception.EStorageConfig;
 import org.finos.tracdap.common.plugin.IPluginManager;
+import org.finos.tracdap.common.storage.layouts.ObjectIdLayout;
 import org.finos.tracdap.config.PluginConfig;
 import org.finos.tracdap.metadata.ResourceDefinition;
 
@@ -45,6 +46,10 @@ public class StorageManager implements IStorageManager, AutoCloseable {
     private final EventLoopGroup eventLoopGroup;
 
     private final Map<String, StorageBackend> storage;
+
+    private final Map<String, IStorageLayout> layouts = Map.ofEntries(
+            Map.entry(ObjectIdLayout.LAYOUT_NAME, new ObjectIdLayout())
+    );
 
     public StorageManager(
             IPluginManager plugins, ConfigManager configManager,
@@ -241,6 +246,18 @@ public class StorageManager implements IStorageManager, AutoCloseable {
         }
 
         return instance;
+    }
+
+    @Override
+    public IStorageLayout getLayout(String layoutKey) {
+
+        var layout = layouts.get(layoutKey);
+
+        if (layout == null) {
+            throw new EStorageConfig("Storage layout not available: " + layoutKey);
+        }
+
+        return layout;
     }
 
     private static class StorageBackend {

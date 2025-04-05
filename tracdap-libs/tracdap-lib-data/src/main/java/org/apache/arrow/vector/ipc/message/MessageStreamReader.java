@@ -142,7 +142,7 @@ public class MessageStreamReader extends MessageChannelReader {
 
             case BODY:
 
-                var body = (ArrowBuf) consumeArrowBuf(bytesExpected);
+                var body = consumeArrowBuf(bytesExpected);
                 var result = new MessageResult(currentMessage, body);
                 messageQueue.addLast(result);
 
@@ -189,7 +189,7 @@ public class MessageStreamReader extends MessageChannelReader {
     @Override
     public MessageResult readNext() throws IOException {
 
-        if (messageQueue.size() > 0)
+        if (!messageQueue.isEmpty())
             return messageQueue.pop();
 
         if (gotEos)
@@ -333,8 +333,10 @@ public class MessageStreamReader extends MessageChannelReader {
             }
         }
 
-        if (buffer.writerIndex() != size)
+        if (buffer.writerIndex() != size) {
+            buffer.close();
             throw new EOFException("Unexpected end of Arrow data stream");
+        }
 
         return buffer;
     }
