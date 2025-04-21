@@ -102,14 +102,15 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
 
     private final List<Class<? extends TracServiceBase>> serviceClasses;
     private final Map<String, String> serviceKeys;
-    private final GrpcConcern clientConcerns;
+    private final CommonConcerns<GrpcConcern> clientConcerns;
     private final List<Consumer<PlatformTest>> preStartActions;
+    private final List<Consumer<PlatformTest>> postConfigActions;
 
     private PlatformTest(
             String testConfig, String secretKey, Map<String, String> tenants, String storageFormat,
             boolean runDbDeploy, boolean manageDataPrefix, boolean localExecutor,
             List<Class<? extends TracServiceBase>> serviceClasses, Map<String, String> serviceKeys,
-            GrpcConcern clientConcerns, List<Consumer<PlatformTest>> preStartActions) {
+            CommonConcerns<GrpcConcern> clientConcerns, List<Consumer<PlatformTest>> preStartActions, List<Consumer<PlatformTest>> postConfigActions) {
 
         this.testConfig = testConfig;
         this.tenants = tenants;
@@ -121,6 +122,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         this.serviceKeys = serviceKeys;
         this.clientConcerns = clientConcerns;
         this.preStartActions = preStartActions;
+        this.postConfigActions = postConfigActions;
 
         // Secret key can be set here, otherwise it is discovered later
         this.secretKey = secretKey;
@@ -152,6 +154,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         private final List<Class<? extends TracServiceBase>> serviceClasses = new ArrayList<>();
         private final CommonConcerns<GrpcConcern> clientConcerns = new CommonGrpcConcerns("client_concerns");
         private final List<Consumer<PlatformTest>> preStartActions = new ArrayList<>();
+        private final List<Consumer<PlatformTest>> postConfigActions = new ArrayList<>();
         private final Map<String, String> serviceKeys = new HashMap<>();
 
         // Should client concerns be pre-configured? If so what is the right configuration for testing?
@@ -166,6 +169,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         public Builder startService(Class<? extends TracServiceBase> serviceClass, String serviceKey) { addService(serviceClass, serviceKey); return this; }
         public Builder clientConcern(GrpcConcern concern) { clientConcerns.addLast(concern); return this; }
         public Builder preStartAction(Consumer<PlatformTest> action) { this.preStartActions.add(action); return this; }
+        public Builder postConfigAction(Consumer<PlatformTest> action) { this.postConfigActions.add(action); return this; }
 
         public PlatformTest build() {
 
@@ -173,7 +177,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
                     testConfig, secretKey, tenants, storageFormat,
                     runDbDeploy, manageDataPrefix, localExecutor,
                     serviceClasses, serviceKeys,
-                    clientConcerns.build(), preStartActions);
+                    clientConcerns, preStartActions, postConfigActions);
         }
 
         private void addService(Class<? extends TracServiceBase> serviceClass, String serviceKey) {
@@ -211,7 +215,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
             throw new ETracInternal("Client not started for service key [" + serviceKey + "]");
         var channel = serviceChannels.get(serviceKey);
         var client = clientFactory.apply(channel);
-        return clientConcerns.configureClient(client);
+        return clientConcerns.build().configureClient(client);
     }
 
     public TracMetadataApiGrpc.TracMetadataApiFutureStub metaClientFuture() {
@@ -241,7 +245,7 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
     public TracAdminApiGrpc.TracAdminApiBlockingStub adminClientBlocking() {
         var channel = serviceChannels.get(ConfigKeys.METADATA_SERVICE_KEY);
         var client = TracAdminApiGrpc.newBlockingStub(channel);
-        return clientConcerns.configureClient(client);
+        return clientConcerns.build().configureClient(client);
     }
 
     public Path workingDir() {
@@ -268,6 +272,8 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         return platformConfig;
     }
 
+    public CommonConcerns<GrpcConcern> clientConcerns() { return clientConcerns; }
+
     @Override
     public void beforeAll(ExtensionContext context) throws Exception {
 
@@ -277,6 +283,8 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
         runPreStartActions();
 
         loadPluginsAndConfig();
+
+        runPostConfigActions();
 
         if (runDbDeploy)
             prepareDatabase();
@@ -409,6 +417,12 @@ public class PlatformTest implements BeforeAllCallback, AfterAllCallback {
     private void runPreStartActions() {
 
         for (var action : preStartActions)
+            action.accept(this);
+    }
+
+    private void runPostConfigActions() {
+
+        for (var action : postConfigActions)
             action.accept(this);
     }
 
