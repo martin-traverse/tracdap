@@ -514,6 +514,26 @@ public class JobProcessorHelpers {
 
                 commonResults.add(resultUpdate);
             }
+            else if (resultId != null) {
+
+                // In case a RESULT is expected but nothing comes back from the runtime
+                // Build a skeleton RESULT object based on the job state
+
+                var resultObj = ObjectDefinition.newBuilder()
+                        .setObjectType(ObjectType.RESULT)
+                        .setResult(ResultDefinition.newBuilder()
+                        .setJobId(MetadataUtil.selectorFor(jobState.jobId))
+                        .setStatusCode(jobState.tracStatus)
+                        .setStatusMessage(jobState.statusMessage));
+
+                var resultUpdate = MetadataWriteRequest.newBuilder()
+                        .setObjectType(ObjectType.RESULT)
+                        .setPriorVersion(MetadataUtil.preallocated(resultId))
+                        .setDefinition(resultObj)
+                        .build();
+
+                commonResults.add(resultUpdate);
+            }
         }
 
         if (jobState.resultMapping.containsKey(JOB_LOG_FILE_KEY)) {
