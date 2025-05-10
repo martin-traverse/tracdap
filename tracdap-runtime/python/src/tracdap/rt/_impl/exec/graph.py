@@ -170,21 +170,31 @@ class GraphSection:
     must_run: _tp.List[NodeId] = _dc.field(default_factory=list)
 
 
-Bundle: _tp.Generic[_T] = _tp.Dict[str, _T]
+@_dc.dataclass(frozen=False)
+class GraphUpdate:
+
+    nodes: NodeMap = _dc.field(default_factory=dict)
+    dependencies: _tp.Dict[NodeId, _tp.List[Dependency]] = _dc.field(default_factory=dict)
+
+
+@_dc.dataclass
+class GraphOutput:
+
+    objectId: _meta.TagHeader
+    definition: _meta.ObjectDefinition
+    attrs: _tp.List[_meta.TagUpdate] = _dc.field(default_factory=list)
+
+
+Bundle: _tp.TypeAlias = _tp.Dict[str, _T]
 ObjectBundle = Bundle[_meta.ObjectDefinition]
-
-
-@_dc.dataclass(frozen=True)
-class JobOutputs:
-
-    objects: _tp.Dict[str, NodeId[_meta.ObjectDefinition]] = _dc.field(default_factory=dict)
-    bundles: _tp.List[NodeId[ObjectBundle]] = _dc.field(default_factory=list)
 
 
 # ----------------------------------------------------------------------------------------------------------------------
 #  NODE DEFINITIONS
 # ----------------------------------------------------------------------------------------------------------------------
 
+
+# STATIC VALUES
 
 @_node_type
 class NoopNode(Node):
@@ -196,8 +206,33 @@ class StaticValueNode(Node[_T]):
     value: _T
 
 
+# MAPPING OPERATIONS
+
 class MappingNode(Node[_T]):
     pass
+
+
+@_node_type
+class IdentityNode(MappingNode[_T]):
+
+    """Map one graph node directly from another (identity function)"""
+
+    src_id: NodeId[_T]
+
+    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
+        return {self.src_id: DependencyType.HARD}
+
+
+@_node_type
+class KeyedItemNode(MappingNode[_T]):
+
+    """Map a graph node from a keyed item in an existing node (dictionary lookup)"""
+
+    src_id: NodeId[Bundle[_T]]
+    src_item: str
+
+    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
+        return {self.src_id: DependencyType.HARD}
 
 
 @_node_type
@@ -238,27 +273,7 @@ class ContextPopNode(Node[Bundle[_tp.Any]]):
         return {nid: DependencyType.HARD for nid in self.mapping.keys()}
 
 
-@_node_type
-class IdentityNode(MappingNode[_T]):
-
-    """Map one graph node directly from another (identity function)"""
-
-    src_id: NodeId[_T]
-
-    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
-        return {self.src_id: DependencyType.HARD}
-
-
-@_node_type
-class KeyedItemNode(MappingNode[_T]):
-
-    """Map a graph node from a keyed item in an existing node (dictionary lookup)"""
-
-    src_id: NodeId[Bundle[_T]]
-    src_item: str
-
-    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
-        return {self.src_id: DependencyType.HARD}
+# DATA HANDLING
 
 
 @_node_type
@@ -268,6 +283,8 @@ class DynamicDataSpecNode(Node[_data.DataSpec]):
 
     data_obj_id: _meta.TagHeader
     storage_obj_id: _meta.TagHeader
+
+    storage_config: _cfg.StorageConfig
 
     prior_data_spec: _tp.Optional[_data.DataSpec]
 
@@ -294,23 +311,6 @@ class DataItemNode(MappingNode[_data.DataItem]):
 
     def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
         return {self.data_view_id: DependencyType.HARD}
-
-
-@_node_type
-class DataResultNode(Node[ObjectBundle]):
-
-    # TODO: Remove this node type
-    # Either produce metadata in SaveDataNode, or handle DataSpec outputs in result processing nodes
-
-    output_name: str
-    data_save_id: NodeId[_data.DataSpec]
-
-    data_key: str = None
-    file_key: str = None
-    storage_key: str = None
-
-    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
-        return {self.data_save_id: DependencyType.HARD}
 
 
 @_node_type
@@ -350,6 +350,8 @@ class SaveDataNode(Node[_data.DataSpec]):
         return deps
 
 
+# MODEL EXECUTION
+
 @_node_type
 class ImportModelNode(Node[_meta.ObjectDefinition]):
 
@@ -370,6 +372,39 @@ class RunModelNode(Node[Bundle[_data.DataView]]):
         return {dep_id: DependencyType.HARD for dep_id in [*self.parameter_ids, *self.input_ids]}
 
 
+# RESULTS PROCESSING
+
+JOB_OUTPUT_TYPE: _tp.TypeAlias = _tp.Union[GraphOutput, _data.DataSpec]
+
+@_node_type
+class JobResultNode(Node[_cfg.JobResult]):
+
+    job_id: _meta.TagHeader
+    result_id: _meta.TagHeader
+
+    named_outputs: _tp.Dict[str, JOB_OUTPUT_TYPE]
+    unnamed_outputs: _tp.List[NodeId[JOB_OUTPUT_TYPE]]
+
+    # dynamic_outputs: _tp.Optional[_tp.List[NodeId[JOB_OUTPUT_TYPE]]] = None
+
+    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
+        dep_ids = [*self.named_outputs.values(), *self.unnamed_outputs]
+        # if self.dynamic_outputs is not None:
+        #     dep_ids.extend(*self.dynamic_outputs)
+        return {node_id: DependencyType.HARD for node_id in dep_ids}
+
+
+@_node_type
+class DynamicOutputsNode(Node[JobResultNode]):
+
+    named_outputs: _tp.Dict[str, JOB_OUTPUT_TYPE]
+    unnamed_outputs: _tp.List[NodeId[JOB_OUTPUT_TYPE]]
+
+    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
+        dep_ids = [*self.named_outputs.values(), *self.unnamed_outputs]
+        return {node_id: DependencyType.HARD for node_id in dep_ids}
+
+
 @_node_type
 class RunModelResultNode(Node[None]):
 
@@ -379,30 +414,8 @@ class RunModelResultNode(Node[None]):
         return {self.model_id: DependencyType.HARD}
 
 
-@_node_type
-class RuntimeOutputsNode(Node[JobOutputs]):
+# MISC NODE TYPES
 
-    outputs: JobOutputs
-
-    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
-        dep_ids = [*self.outputs.bundles, *self.outputs.objects.values()]
-        return {node_id: DependencyType.HARD for node_id in dep_ids}
-
-
-@_node_type
-class BuildJobResultNode(Node[_cfg.JobResult]):
-
-    result_id: _meta.TagHeader
-    job_id: _meta.TagHeader
-
-    outputs: JobOutputs
-    runtime_outputs: _tp.Optional[NodeId[JobOutputs]] = None
-
-    def _node_dependencies(self) -> _tp.Dict[NodeId, DependencyType]:
-        dep_ids = [*self.outputs.bundles, *self.outputs.objects.values()]
-        if self.runtime_outputs is not None:
-            dep_ids.append(self.runtime_outputs)
-        return {node_id: DependencyType.HARD for node_id in dep_ids}
 
 
 @_node_type

@@ -136,6 +136,10 @@ public class JobProcessor {
             var metadata = new MetadataBundle(newState.objectMapping, newState.objects, newState.tags);
             validator.validateConsistency(newState.definition, metadata, resources);
 
+            // Apply any transformations specific to the job type
+            // Including this step during validation will catch more errors before jobs are submitted
+            newState = lifecycle.applyTransform(newState);
+
             newState.tracStatus = JobStatusCode.VALIDATED;
 
             return newState;
@@ -156,18 +160,14 @@ public class JobProcessor {
 
         var newState = jobState.clone();
 
-        // Apply any transformations specific to the job type
-        newState = lifecycle.applyTransform(newState);
+        // The job definition was prepared in assembleAndValidate() - write it to the metadata store
+        newState = lifecycle.saveJobDefinition(newState);
 
-        // Result IDs are needed in order to generate the job instruction
-        // They are also updated in the job definition that is being created
-        newState = lifecycle.allocateResultIds(newState);
+        // Preallocate IDs that will be used by the runtime for output objects
+        newState = lifecycle.preallocateObjectIds(newState);
 
         // Create the job instruction - this is what will go to the executor
         newState = lifecycle.buildJobConfig(newState);
-
-        // The job definition is ready - write it to the metadata store
-        newState = lifecycle.saveInitialMetadata(newState);
 
         newState.tracStatus = JobStatusCode.QUEUED;
         newState.cacheStatus = CacheStatus.QUEUED_IN_TRAC;
@@ -370,7 +370,7 @@ public class JobProcessor {
             // If the validator is extended to cover the config interface,
             // The top level job result could be validated directly
 
-            for (var result : executorResult.getResultsMap().entrySet()) {
+            for (var result : executorResult.getObjectsMap().entrySet()) {  // TODO
 
                 log.info("Validating job result: [{}] item [{}]", jobState.jobKey, result.getKey());
                 validator.validateFixedObject(result.getValue());

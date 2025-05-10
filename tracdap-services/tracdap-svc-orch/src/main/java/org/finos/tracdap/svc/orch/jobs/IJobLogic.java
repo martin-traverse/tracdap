@@ -30,13 +30,13 @@ import java.util.Map;
 
 public interface IJobLogic {
 
+    List<TagSelector> requiredMetadata(JobDefinition job);
+
     JobDefinition applyTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources);
 
     MetadataBundle applyMetadataTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources);
 
-    List<TagSelector> requiredMetadata(JobDefinition job);
-
-    List<TagSelector> requiredMetadata(Map<String, ObjectDefinition> newResources);
+    Map<ObjectType, Integer> preallocateIds(JobDefinition job, MetadataBundle metadata);
 
     Map<String, TagHeader> priorResultIds(
             JobDefinition job,
@@ -53,5 +53,5 @@ public interface IJobLogic {
             Map<String, ObjectDefinition> resources,
             Map<String, TagHeader> resourceMapping);
 
-    List<MetadataWriteRequest> buildResultMetadata(String tenant, JobConfig jobConfig, RuntimeJobResult jobResult);
+    RuntimeJobResult processResult(JobConfig jobConfig, RuntimeJobResult runtimeResult);
 }

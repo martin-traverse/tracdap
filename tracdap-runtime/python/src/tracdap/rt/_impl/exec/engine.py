@@ -286,26 +286,14 @@ class TracEngine(_actors.Actor):
         job_state = self._jobs[job_key]
         job_state.log.error(f"Recording job as failed: {job_key}")
 
+        result_id = job_state.job_config.resultId
+        result_def = _meta.ResultDefinition()
+        result_def.jobId = _util.selector_for(job_state.job_id)
+        result_def.statusCode = _meta.JobStatusCode.FAILED
+        result_def.statusMessage = str(error)
+
+        job_state.job_result = _cfg.JobResult(result_id, result_def)
         job_state.job_error = error
-
-        # Create a failed result so there is something to report
-        result_id = job_state.job_config.resultMapping.get("trac_job_result")
-
-        if result_id is not None:
-
-            job_state.job_result = _cfg.JobResult(
-                jobId=job_state.job_id,
-                statusCode=_meta.JobStatusCode.FAILED,
-                statusMessage=str(error))
-
-            result_def = _meta.ResultDefinition()
-            result_def.jobId = _util.selector_for(job_state.job_id)
-            result_def.statusCode = _meta.JobStatusCode.FAILED
-
-            result_key = _util.object_key(result_id)
-            result_obj = _meta.ObjectDefinition(objectType=_meta.ObjectType.RESULT, result=result_def)
-
-            job_state.job_result.results[result_key] = result_obj
 
         for monitor_id in job_state.monitors:
             self.actors().send(monitor_id, "job_failed", error)
@@ -323,10 +311,7 @@ class TracEngine(_actors.Actor):
 
         # Record output metadata if required (not needed for local runs or when using API server)
         if job_state.parent_key is None and job_state.result_spec.save_result:
-
-            if "trac_job_log_file" in job_state.job_config.resultMapping:
-                self._save_job_log_file(job_key, job_state)
-
+            self._save_job_log_file(job_key, job_state)
             self._save_job_result(job_key, job_state)
 
         # Stop any monitors that were created directly by the engine
@@ -347,13 +332,20 @@ class TracEngine(_actors.Actor):
 
         # Saving log files could go into a separate actor, perhaps a job monitor along with _save_job_result()
 
-        file_id = job_state.job_config.resultMapping["trac_job_log_file"]
-        storage_id = job_state.job_config.resultMapping["trac_job_log_file:STORAGE"]
+        # TODO: Use preallocated IDs from the job config
+        file_id = _util.new_object_id(_meta.ObjectType.FILE)
+        storage_id = _util.new_object_id(_meta.ObjectType.STORAGE)
 
+        file_name = "trac_job_log_file"
         file_type = _meta.FileType("TXT", "text/plain")
-        file_def, storage_def = _graph.GraphBuilder.build_output_file_and_storage(
-            "trac_job_log_file", file_type,
-            self._sys_config, job_state.job_config)
+
+        file_spec = _data.build_file_spec(
+            file_id, storage_id,
+            file_name, file_type,
+            self._sys_config.storage)
+
+        file_def = file_spec.primary_def
+        storage_def = file_spec.storage_def
 
         storage_item = storage_def.dataItems[file_def.dataItem].incarnations[0].copies[0]
         storage = self._storage.get_file_storage(storage_item.storageKey)
@@ -362,15 +354,16 @@ class TracEngine(_actors.Actor):
             stream.write(job_state.log_buffer.getbuffer())
             file_def.size = stream.tell()
 
-        result_id = job_state.job_config.resultMapping["trac_job_result"]
-        result_def = job_state.job_result.results[_util.object_key(result_id)].result
+        result_def = job_state.job_result.result
         result_def.logFileId = _util.selector_for(file_id)
 
         file_obj = _meta.ObjectDefinition(objectType=_meta.ObjectType.FILE, file=file_def)
         storage_obj = _meta.ObjectDefinition(objectType=_meta.ObjectType.STORAGE, storage=storage_def)
 
-        job_state.job_result.results[_util.object_key(file_id)] = file_obj
-        job_state.job_result.results[_util.object_key(storage_id)] = storage_obj
+        job_state.job_result.objectIds.append(file_id)
+        job_state.job_result.objectIds.append(storage_id)
+        job_state.job_result.objects[_util.object_key(file_id)] = file_obj
+        job_state.job_result.objects[_util.object_key(storage_id)] = storage_obj
 
     def _save_job_result(self, job_key: str, job_state: _JobState):
 
@@ -397,25 +390,28 @@ class TracEngine(_actors.Actor):
             return None
 
         job_result = _cfg.JobResult()
-        job_result.jobId = job_state.job_id
+        job_result.resultId = job_state.job_config.resultId
+        job_result.result = _meta.ResultDefinition()
+        job_result.result.jobId = _util.selector_for(job_state.job_id)
 
         if job_state.actor_id is not None:
-            job_result.statusCode = _meta.JobStatusCode.RUNNING
+            job_result.result.statusCode = _meta.JobStatusCode.RUNNING
 
         elif job_state.job_result is not None:
-            job_result.statusCode = job_state.job_result.statusCode
-            job_result.statusMessage = job_state.job_result.statusMessage
+            job_result.result.statusCode = job_state.job_result.result.statusCode
+            job_result.result.statusMessage = job_state.job_result.result.statusMessage
             if details:
-                job_result.results = job_state.job_result.results or dict()
+                job_result.objectIds = job_state.job_result.objectIds or list()
+                job_result.objects = job_state.job_result.objects or dict()
 
         elif job_state.job_error is not None:
-            job_result.statusCode = _meta.JobStatusCode.FAILED
-            job_result.statusMessage = str(job_state.job_error.args[0])
+            job_result.result.statusCode = _meta.JobStatusCode.FAILED
+            job_result.result.statusMessage = str(job_state.job_error.args[0])
 
         else:
             # Alternatively return UNKNOWN status or throw an error here
-            job_result.statusCode = _meta.JobStatusCode.FAILED
-            job_result.statusMessage = "No details available"
+            job_result.result.statusCode = _meta.JobStatusCode.FAILED
+            job_result.result.statusMessage = "No details available"
 
         return job_result
 
@@ -524,6 +520,7 @@ class JobProcessor(_actors.Actor):
         graph.pending_nodes.update(graph.nodes.keys())
 
         self.actors().spawn(FunctionResolver(self._resolver, self._log_provider, graph))
+
         if self.actors().sender != self.actors().id and self.actors().sender != self.actors().parent:
             self.actors().stop(self.actors().sender)
 
@@ -531,6 +528,7 @@ class JobProcessor(_actors.Actor):
     def resolve_functions_succeeded(self, graph: _EngineContext):
 
         self.actors().spawn(GraphProcessor(graph, self._resolver, self._log_provider))
+
         if self.actors().sender != self.actors().id and self.actors().sender != self.actors().parent:
             self.actors().stop(self.actors().sender)
 
@@ -704,23 +702,21 @@ class GraphProcessor(_actors.Actor):
         self.check_job_status(do_submit=False)
 
     @_actors.Message
-    def update_graph(
-            self, requestor_id: NodeId,
-            new_nodes: tp.Dict[NodeId, _graph.Node],
-            new_deps: tp.Dict[NodeId, tp.List[_graph.Dependency]]):
+    def update_graph(self, requestor_id: NodeId, update: _graph.GraphUpdate):
 
         new_graph = cp.copy(self.graph)
         new_graph.nodes = cp.copy(new_graph.nodes)
 
         # Attempt to insert a duplicate node is always an error
-        node_collision = list(filter(lambda nid: nid in self.graph.nodes, new_nodes))
+        node_collision = list(filter(lambda nid: nid in self.graph.nodes, update.nodes))
 
         # Only allow adding deps to pending nodes for now (adding deps to active nodes will require more work)
-        dep_collision = list(filter(lambda nid: nid not in self.graph.pending_nodes, new_deps))
+        dep_collision = list(filter(lambda nid: nid not in self.graph.pending_nodes, update.dependencies))
 
+        # Only allow adding deps to new nodes (deps to existing nodes should not be part of an update)
         dep_invalid = list(filter(
-            lambda dds: any(filter(lambda dd: dd.node_id not in new_nodes, dds)),
-            new_deps.values()))
+            lambda ds: any(filter(lambda d: d.node_id not in update.nodes, ds)),
+            update.dependencies.values()))
 
         if any(node_collision) or any(dep_collision) or any(dep_invalid):
 
@@ -736,18 +732,20 @@ class GraphProcessor(_actors.Actor):
             requestor.error = _ex.ETracInternal("Node collision during graph update")
             new_graph.nodes[requestor_id] = requestor
 
+            self.graph = new_graph
+
             return
 
         new_graph.pending_nodes = cp.copy(new_graph.pending_nodes)
 
-        for node_id, node in new_nodes.items():
+        for node_id, node in update.nodes.items():
             self._graph_logger.log_node_add(node)
             node_func = self._resolver.resolve_node(node)
             new_node = _EngineNode(node, node_func)
             new_graph.nodes[node_id] = new_node
             new_graph.pending_nodes.add(node_id)
 
-        for node_id, deps in new_deps.items():
+        for node_id, deps in update.dependencies.items():
             engine_node = cp.copy(new_graph.nodes[node_id])
             engine_node.dependencies = cp.copy(engine_node.dependencies)
             for dep in deps:
@@ -1302,8 +1300,5 @@ class NodeCallbackImpl(_func.NodeCallback):
         self.__actor_ctx = actor_ctx
         self.__node_id = node_id
 
-    def send_graph_updates(
-            self, new_nodes: tp.Dict[NodeId, _graph.Node],
-            new_deps: tp.Dict[NodeId, tp.List[_graph.Dependency]]):
-
-        self.__actor_ctx.send_parent("update_graph", self.__node_id, new_nodes, new_deps)
+    def send_graph_update(self, update: _graph.GraphUpdate):
+        self.__actor_ctx.send_parent("update_graph", self.__node_id, update)

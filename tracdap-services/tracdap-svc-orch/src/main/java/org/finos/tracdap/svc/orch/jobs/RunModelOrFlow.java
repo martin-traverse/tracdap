@@ -17,45 +17,51 @@
 
 package org.finos.tracdap.svc.orch.jobs;
 
-
 import org.finos.tracdap.api.MetadataWriteRequest;
 import org.finos.tracdap.api.internal.RuntimeJobResult;
+import org.finos.tracdap.api.internal.RuntimeJobResultAttrs;
 import org.finos.tracdap.common.exception.EConsistencyValidation;
 import org.finos.tracdap.common.exception.EUnexpected;
-import org.finos.tracdap.config.JobConfig;
 import org.finos.tracdap.metadata.*;
 import org.finos.tracdap.common.metadata.MetadataCodec;
 import org.finos.tracdap.common.metadata.MetadataConstants;
 import org.finos.tracdap.common.metadata.MetadataUtil;
 
 import java.util.*;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 
 public abstract class RunModelOrFlow {
 
-    public List<TagSelector> requiredMetadata(Map<String, ObjectDefinition> newResources) {
 
-        var resources = new ArrayList<TagSelector>();
+    protected Map<ObjectType, Integer> preallocateIds(
+            Map<String, ModelOutputSchema> outputs,
+            Map<String, TagSelector> priorOutputs) {
 
-        for (var obj : newResources.values()) {
+        var requiredIds = new HashMap<ObjectType, Integer>();
 
-            if (obj.getObjectType() == ObjectType.DATA) {
+        for (var output : outputs.entrySet()) {
 
-                var dataDef = obj.getData();
-                resources.add(dataDef.getStorageId());
+            if (priorOutputs.containsKey(output.getKey()))
+                continue;
 
-                if (dataDef.hasSchemaId())
-                    resources.add(dataDef.getSchemaId());
+            var outputType = output.getValue().getObjectType();
+
+            if (outputType == ObjectType.DATA) {
+                requiredIds.compute(ObjectType.DATA, (key, value) -> value == null ? 1 : value + 1);
+                requiredIds.compute(ObjectType.STORAGE, (key, value) -> value == null ? 1 : value + 1);
             }
-
-            else if (obj.getObjectType() == ObjectType.FILE) {
-
-                var fileDef = obj.getFile();
-                resources.add(fileDef.getStorageId());
+            else if (outputType == ObjectType.FILE) {
+                requiredIds.compute(ObjectType.FILE, (key, value) -> value == null ? 1 : value + 1);
+                requiredIds.compute(ObjectType.STORAGE, (key, value) -> value == null ? 1 : value + 1);
+            }
+            else {
+                throw new EUnexpected();  // TODO
             }
         }
 
-        return resources;
+        return requiredIds;
     }
 
     public Map<String, MetadataWriteRequest> newResultIds(
@@ -143,12 +149,117 @@ public abstract class RunModelOrFlow {
         return outputSelectors;
     }
 
+
+    protected RuntimeJobResult processResult(
+            RuntimeJobResult jobResult, Map<String, ModelOutputSchema> expectedOutputs,
+            List<TagUpdate> jobAttrs, Map<String, List<TagUpdate>> perNodeAttrs) {
+
+        var resultBuilder = RuntimeJobResult.newBuilder();
+
+        var objectLookup = jobResult.getObjectIdsList().stream()
+                .collect(Collectors.toMap(TagHeader::getObjectId, Function.identity(), (id1, id2) -> id1));
+
+        if (objectLookup.size() != jobResult.getObjectIdsCount())
+            // TODO Check message
+            throw new EConsistencyValidation("Result contains multiple entries for the same object");
+
+        for (var output: expectedOutputs.entrySet()) {
+
+            var outputName = output.getKey();
+            var modelOutput = output.getValue();
+
+            // Ignore optional outputs that were not produced
+            if (modelOutput.getOptional() & !jobResult.getResult().containsOutputs(outputName))
+                continue;
+
+            processOutput(
+                    outputName, jobResult, objectLookup,
+                    jobAttrs, perNodeAttrs,
+                    resultBuilder);
+        }
+
+        return resultBuilder.build();
+    }
+
+    private void processOutput(
+            String outputName, RuntimeJobResult jobResult, Map<String, TagHeader> objectLookup,
+            List<TagUpdate> jobAttrs, Map<String, List<TagUpdate>> perNodeAttrs,
+            RuntimeJobResult.Builder resultBuilder) {
+
+        var result = jobResult.getResult();
+
+        if (!result.containsOutputs(outputName))
+            throw new EConsistencyValidation(String.format("Missing required output [%s]", outputName));
+
+        var outputSelector = result.getOutputsOrThrow(outputName);
+        var outputId = objectLookup.get(outputName);
+        var outputKey = MetadataUtil.objectKey(outputSelector);
+
+        if (!jobResult.containsObjects(outputKey)) {
+            throw new EConsistencyValidation(String.format("Missing definition for required output [%s]", outputName));
+        }
+
+        var outputDef = jobResult.getObjectsOrThrow(outputKey);
+        var outputAttrs = jobResult.getAttrsOrDefault(outputKey, RuntimeJobResultAttrs.getDefaultInstance()).getAttrsList();
+
+        var storageSelector = getStorageKey(outputDef);
+        var storageId = objectLookup.get(storageSelector.getObjectId());
+        var storageKey = MetadataUtil.objectKey(storageId);
+
+        if (!jobResult.containsObjects(storageKey)) {
+            throw new EConsistencyValidation(String.format("Missing storage definition for required output [%s]", outputName));
+        }
+
+        var storageDef = jobResult.getObjectsOrThrow(storageKey);
+        var storageAttrs = jobResult.getAttrsOrDefault(outputKey, RuntimeJobResultAttrs.getDefaultInstance()).getAttrsList();
+
+
+        outputAttrs.addAll(jobAttrs);
+
+        if (perNodeAttrs.containsKey(outputKey))
+            outputAttrs.addAll(perNodeAttrs.get(outputKey));
+
+        // Controlled attrs
+
+        outputAttrs.add(TagUpdate.newBuilder()
+                .setAttrName("trac_job_output")
+                .setValue(MetadataCodec.encodeValue(outputName))
+                .build());
+
+        storageAttrs.add(TagUpdate.newBuilder()
+                .setAttrName(MetadataConstants.TRAC_STORAGE_OBJECT_ATTR)
+                .setValue(MetadataCodec.encodeValue(outputKey))
+                .build());
+
+        resultBuilder.addObjectIds(outputId);
+        resultBuilder.putObjects(outputKey, outputDef);
+        resultBuilder.putAttrs(outputKey, RuntimeJobResultAttrs.newBuilder().addAllAttrs(outputAttrs).build());
+
+        resultBuilder.addObjectIds(storageId);
+        resultBuilder.putObjects(storageKey, storageDef);
+        resultBuilder.putAttrs(outputKey, RuntimeJobResultAttrs.newBuilder().addAllAttrs(storageAttrs).build());
+    }
+
+    private TagSelector getStorageKey(ObjectDefinition outputDef) {
+
+        if (outputDef.getObjectType() == ObjectType.DATA)
+            return outputDef.getData().getStorageId();
+
+        if (outputDef.getObjectType() == ObjectType.FILE)
+            return outputDef.getFile().getStorageId();
+
+        throw new EUnexpected();  // TODO
+    }
+
+    /*
+
     public List<MetadataWriteRequest> buildResultMetadata(
             String tenant, JobConfig jobConfig, RuntimeJobResult jobResult,
             Map<String, ModelOutputSchema> expectedOutputs,
             Map<String, TagSelector> outputs, Map<String, TagSelector> priorOutputs,
             List<TagUpdate> outputAttrs, Map<String, List<TagUpdate>> perNodeOutputAttrs) {
 
+        var result = jobResult.getResult();
         var updates = new ArrayList<MetadataWriteRequest>();
 
         for (var output: expectedOutputs.entrySet()) {
@@ -156,15 +267,25 @@ public abstract class RunModelOrFlow {
             var outputName = output.getKey();
             var outputDef = output.getValue();
 
-            var outputId = jobConfig.getResultMappingOrThrow(outputName);
-            var outputKey = MetadataUtil.objectKey(outputId);
-
-            if (!jobResult.containsResults(outputKey)) {
+            if (!result.containsOutputs(outputName)) {
                 if (outputDef.getOptional())
                     continue;
                 else
+                    // TODO Missing output
                     throw new EConsistencyValidation(String.format("Missing required output [%s]", outputName));
             }
+
+            var outputSelector = result.getOutputsOrThrow(outputName);
+            var outputKey = MetadataUtil.objectKey(outputSelector);
+
+            if (!jobResult.containsObjects(outputKey)) {
+                // TODO: Error
+                throw new EConsistencyValidation(String.format("Missing required output [%s]", outputName));
+            }
+
+            var definition = jobResult.getObjectsOrThrow(outputKey);
+
+
 
             // TODO: Preallocated IDs for storage outputs
 
@@ -272,4 +393,5 @@ public abstract class RunModelOrFlow {
         else
             throw new EUnexpected();
     }
+     */
 }

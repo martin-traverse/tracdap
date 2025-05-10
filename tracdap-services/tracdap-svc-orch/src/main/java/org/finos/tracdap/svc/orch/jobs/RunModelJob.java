@@ -27,24 +27,12 @@ import org.finos.tracdap.config.JobConfig;
 import org.finos.tracdap.metadata.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 
 public class RunModelJob extends RunModelOrFlow implements IJobLogic {
-
-    @Override
-    public JobDefinition applyTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources) {
-
-        // No transformations currently required
-        return job;
-    }
-
-    @Override
-    public MetadataBundle applyMetadataTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources) {
-
-        return metadata;
-    }
 
     @Override
     public List<TagSelector> requiredMetadata(JobDefinition job) {
@@ -60,6 +48,30 @@ public class RunModelJob extends RunModelOrFlow implements IJobLogic {
         resources.addAll(runModel.getPriorOutputsMap().values());
 
         return resources;
+    }
+
+    @Override
+    public JobDefinition applyTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources) {
+
+        // No transformations currently required
+        return job;
+    }
+
+    @Override
+    public MetadataBundle applyMetadataTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources) {
+
+        return metadata;
+    }
+
+    @Override
+    public Map<ObjectType, Integer> preallocateIds(JobDefinition job, MetadataBundle metadata) {
+
+        var runModelJob = job.getRunModel();
+
+        var modelObj = metadata.getObject(runModelJob.getModel());
+        var model = modelObj.getModel();
+
+        return preallocateIds(model.getOutputsMap(), runModelJob.getPriorOutputsMap());
     }
 
     @Override
@@ -117,8 +129,7 @@ public class RunModelJob extends RunModelOrFlow implements IJobLogic {
                 .build();
     }
 
-    @Override
-    public List<MetadataWriteRequest> buildResultMetadata(String tenant, JobConfig jobConfig, RuntimeJobResult jobResult) {
+    public RuntimeJobResult processResult(JobConfig jobConfig, RuntimeJobResult runtimeResult) {
 
         var runModel = jobConfig.getJob().getRunModel();
 
@@ -126,11 +137,9 @@ public class RunModelJob extends RunModelOrFlow implements IJobLogic {
         var modelId = jobConfig.getObjectMappingMap().get(modelKey);
         var modelDef = jobConfig.getObjectsMap().get(MetadataUtil.objectKey(modelId)).getModel();
 
-        return buildResultMetadata(
-                tenant, jobConfig, jobResult,
+        return processResult(
+                runtimeResult,
                 modelDef.getOutputsMap(),
-                runModel.getOutputsMap(),
-                runModel.getPriorOutputsMap(),
                 runModel.getOutputAttrsList(),
                 Map.of());
     }

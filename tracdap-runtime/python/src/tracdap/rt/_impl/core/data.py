@@ -20,6 +20,7 @@ import typing as tp
 import datetime as dt
 import decimal
 import platform
+import random
 
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -36,8 +37,25 @@ except ModuleNotFoundError:
 
 import tracdap.rt.api.experimental as _api
 import tracdap.rt.metadata as _meta
+import tracdap.rt.config as _cfg
 import tracdap.rt.exceptions as _ex
 import tracdap.rt._impl.core.logging as _log
+import tracdap.rt._impl.core.util as _util
+
+__DATA_ITEM_TEMPLATE = "data/{}/{}/{}/snap-{:d}/delta-{:d}"
+__STORAGE_PATH_TEMPLATE = "data/{}/{}/{}/snap-{:d}/delta-{:d}-x{:0>6x}"
+__RANDOM = random.Random()
+__RANDOM.seed()
+
+
+@dc.dataclass(frozen=True)
+class DataPartKey:
+
+    @classmethod
+    def for_root(cls) -> "DataPartKey":
+        return DataPartKey(opaque_key='part_root')
+
+    opaque_key: str
 
 
 @dc.dataclass(frozen=True)
@@ -47,10 +65,13 @@ class DataSpec:
     schema_type: _meta.SchemaType
     data_item: str
 
-    data_def: _meta.DataDefinition
-    file_def: _meta.FileDefinition
+    primary_def: tp.Union[_meta.DataDefinition, _meta.FileDefinition]
     storage_def: _meta.StorageDefinition
-    schema_def: tp.Optional[_meta.SchemaDefinition]
+    schema_def: tp.Optional[_meta.SchemaDefinition] = None
+
+    primary_id: _meta.TagHeader = None
+    storage_id: _meta.TagHeader = None
+    schema_id: tp.Optional[_meta.TagHeader] = None
 
     @staticmethod
     def create_data_spec(
@@ -68,10 +89,7 @@ class DataSpec:
 
         return DataSpec(
             _meta.ObjectType.DATA, schema_type, data_item,
-            data_def,
-            storage_def=storage_def,
-            schema_def=schema_def,
-            file_def=None)
+            data_def, storage_def, schema_def)
 
     @staticmethod
     def create_file_spec(
@@ -81,10 +99,7 @@ class DataSpec:
 
         return DataSpec(
             _meta.ObjectType.FILE, _meta.SchemaType.SCHEMA_TYPE_NOT_SET, data_item,
-            file_def=file_def,
-            storage_def=storage_def,
-            data_def=None,
-            schema_def=None)
+            file_def, storage_def)
 
     @staticmethod
     def create_empty_spec(object_type: _meta.ObjectType, schema_type: _meta.SchemaType):
@@ -94,14 +109,114 @@ class DataSpec:
         return self.data_item is None or len(self.data_item) == 0
 
 
-@dc.dataclass(frozen=True)
-class DataPartKey:
+def build_data_spec(
+        data_id: _meta.TagHeader, storage_id: _meta.TagHeader,
+        trac_schema: _meta.SchemaDefinition,
+        storage_config: _cfg.StorageConfig,
+        prior_data_spec: tp.Optional[DataSpec] = None) \
+        -> DataSpec:
 
-    @classmethod
-    def for_root(cls) -> "DataPartKey":
-        return DataPartKey(opaque_key='part_root')
+    # When data def for an output was not supplied in the job, this function creates a dynamic data spec
 
-    opaque_key: str
+    if prior_data_spec is not None:
+        raise _ex.ETracInternal("Data updates not supported yet")
+
+    part_key = _meta.PartKey("part-root", _meta.PartType.PART_ROOT)
+    snap_index = 0
+    delta_index = 0
+
+    data_type = trac_schema.schemaType.name.lower()
+
+    data_item = __DATA_ITEM_TEMPLATE.format(
+        data_type, data_id.objectId,
+        part_key.opaqueKey, snap_index, delta_index)
+
+    delta = _meta.DataDefinition.Delta(delta_index, data_item)
+    snap = _meta.DataDefinition.Snap(snap_index, [delta])
+    part = _meta.DataDefinition.Part(part_key, snap)
+
+    data_def = _meta.DataDefinition()
+    data_def.storageId = _util.selector_for_latest(storage_id)
+    data_def.schema = trac_schema
+    data_def.parts[part_key.opaqueKey] = part
+
+    # Using default location and format
+    storage_key = storage_config.defaultBucket
+    storage_format = storage_config.defaultFormat
+
+    storage_suffix_bytes = random.randint(0, 1 << 24)
+
+    storage_path = __DATA_ITEM_TEMPLATE.format(
+        data_type, data_id.objectId,
+        part_key.opaqueKey, snap_index, delta_index,
+        storage_suffix_bytes)
+
+    storage_copy = _meta.StorageCopy(
+        storage_key, storage_path, storage_format,
+        copyStatus=_meta.CopyStatus.COPY_AVAILABLE,
+        copyTimestamp=data_id.objectTimestamp)
+
+    storage_incarnation = _meta.StorageIncarnation(
+        [storage_copy],
+        incarnationIndex=0,
+        incarnationTimestamp=data_id.objectTimestamp,
+        incarnationStatus=_meta.IncarnationStatus.INCARNATION_AVAILABLE)
+
+    storage_item = _meta.StorageItem([storage_incarnation])
+
+    storage_def = _meta.StorageDefinition()
+    storage_def.dataItems[data_item] = storage_item
+
+    # Dynamic data def will always use an embedded schema (this is no ID for an external schema)
+
+    spec = DataSpec.create_data_spec(data_item, data_def, storage_def, schema_def=None)
+    spec.primary_id = data_id
+    spec.storage_id = storage_id
+
+    return spec
+
+
+def build_file_spec(
+        file_id: _meta.TagHeader, storage_id: _meta.TagHeader,
+        file_name: str, file_type: _meta.FileType,
+        storage_config: _cfg.StorageConfig,
+        prior_file_spec: tp.Optional[DataSpec] = None) \
+        -> DataSpec:
+
+    if prior_file_spec is not None:
+        raise _ex.ETracInternal("File updates not supported yet")
+
+    data_item = f"file/{file_id.objectId}/version-{file_id.objectVersion}"
+
+    storage_key = storage_config.defaultBucket
+    storage_path = f"file/FILE-{file_id.objectId}/version-{file_id.objectVersion}/{file_name}.{file_type.extension}"
+
+
+    file_def = _meta.FileDefinition()
+    file_def.name = f"{file_name}.{file_type.extension}"
+    file_def.extension = file_type.extension
+    file_def.mimeType = file_type.mimeType
+    file_def.storageId = _util.selector_for_latest(storage_id)
+    file_def.dataItem = data_item
+    file_def.size = 0
+
+    storage_copy = _meta.StorageCopy(
+        storage_key, storage_path, file_type.mimeType,
+        copyStatus=_meta.CopyStatus.COPY_AVAILABLE,
+        copyTimestamp=file_id.objectTimestamp)
+
+    storage_incarnation = _meta.StorageIncarnation(
+        [storage_copy],
+        incarnationIndex=0,
+        incarnationTimestamp=file_id.objectTimestamp,
+        incarnationStatus=_meta.IncarnationStatus.INCARNATION_AVAILABLE)
+
+    storage_item = _meta.StorageItem([storage_incarnation])
+
+    storage_def = _meta.StorageDefinition()
+    storage_def.dataItems[data_item] = storage_item
+
+    return DataSpec.create_file_spec(data_item, file_def, storage_def)
 
 
 @dc.dataclass(frozen=True)

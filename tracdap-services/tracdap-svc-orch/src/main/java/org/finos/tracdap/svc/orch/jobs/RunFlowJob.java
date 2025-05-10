@@ -35,6 +35,23 @@ import java.util.stream.Collectors;
 public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
 
     @Override
+    public List<TagSelector> requiredMetadata(JobDefinition job) {
+
+        if (job.getJobType() != JobType.RUN_FLOW)
+            throw new EUnexpected();
+
+        var runFlow = job.getRunFlow();
+
+        var resources = new ArrayList<TagSelector>(runFlow.getInputsCount() + runFlow.getModelsCount() + 1);
+        resources.add(runFlow.getFlow());
+        resources.addAll(runFlow.getInputsMap().values());
+        resources.addAll(runFlow.getModelsMap().values());
+        resources.addAll(runFlow.getPriorOutputsMap().values());
+
+        return resources;
+    }
+
+    @Override
     public JobDefinition applyTransform(JobDefinition job, MetadataBundle metadata, IDynamicResources resources) {
 
         // No transformations currently required
@@ -64,20 +81,14 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
     }
 
     @Override
-    public List<TagSelector> requiredMetadata(JobDefinition job) {
+    public Map<ObjectType, Integer> preallocateIds(JobDefinition job, MetadataBundle metadata) {
 
-        if (job.getJobType() != JobType.RUN_FLOW)
-            throw new EUnexpected();
+        var runFlowJob = job.getRunFlow();
 
-        var runFlow = job.getRunFlow();
+        var flowObj = metadata.getObject(runFlowJob.getFlow());
+        var flow = flowObj.getFlow();
 
-        var resources = new ArrayList<TagSelector>(runFlow.getInputsCount() + runFlow.getModelsCount() + 1);
-        resources.add(runFlow.getFlow());
-        resources.addAll(runFlow.getInputsMap().values());
-        resources.addAll(runFlow.getModelsMap().values());
-        resources.addAll(runFlow.getPriorOutputsMap().values());
-
-        return resources;
+        return preallocateIds(flow.getOutputsMap(), runFlowJob.getPriorOutputsMap());
     }
 
     @Override
@@ -155,8 +166,7 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
                 .build();
     }
 
-    @Override
-    public List<MetadataWriteRequest> buildResultMetadata(String tenant, JobConfig jobConfig, RuntimeJobResult jobResult) {
+    public RuntimeJobResult processResult(JobConfig jobConfig, RuntimeJobResult runtimeResult) {
 
         var runFlow = jobConfig.getJob().getRunFlow();
 
@@ -164,21 +174,14 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
         var flowId = jobConfig.getObjectMappingMap().get(flowKey);
         var flowDef = jobConfig.getObjectsMap().get(MetadataUtil.objectKey(flowId)).getFlow();
 
-        var outputFlowNodes = getFlowOutputNodes(
-                jobConfig.getJob().getRunFlow().getFlow(),
-                jobConfig.getObjectsMap(),
-                jobConfig.getObjectMappingMap()
-        );
+        var perNodeAttrs = flowDef.getNodesMap().entrySet().stream()
+                .filter(entry -> entry.getValue().getNodeType() == FlowNodeType.OUTPUT_NODE)
+                .collect(Collectors.toMap(Map.Entry::getKey, entry -> entry.getValue().getNodeAttrsList()));
 
-        var perNodeOutputAttrs = outputFlowNodes.entrySet().stream()
-                .collect(Collectors.toMap(Map.Entry::getKey, e -> e.getValue().getNodeAttrsList()));
-
-        return buildResultMetadata(
-                tenant, jobConfig, jobResult,
+        return processResult(
+                runtimeResult,
                 flowDef.getOutputsMap(),
-                runFlow.getOutputsMap(),
-                runFlow.getPriorOutputsMap(),
                 runFlow.getOutputAttrsList(),
-                perNodeOutputAttrs);
+                perNodeAttrs);
     }
 }
