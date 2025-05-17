@@ -95,6 +95,18 @@ public class JdbcJobCache <TValue extends Serializable> extends JdbcBaseDal impl
 
             stmt.executeUpdate();
         }
+        catch (SQLException error) {
+
+            var code = dialect.mapErrorCode(error);
+
+            if (code == JdbcErrorCode.INSERT_DUPLICATE)
+                return CacheTicket.supersededTicket(key, revision, grantTime);
+
+            if (code == JdbcErrorCode.INSERT_MISSING_FK)
+                return CacheTicket.missingEntryTicket(key, revision, grantTime);
+
+            throw CacheErrors.catchAll(error, dialect);
+        }
 
         return ticket;
     }
@@ -137,8 +149,17 @@ public class JdbcJobCache <TValue extends Serializable> extends JdbcBaseDal impl
     }
 
     @Override
-    public int createEntry(CacheTicket ticket, String status, TValue tValue) {
-        return 0;
+    public int createEntry(CacheTicket ticket, String status, TValue value) {
+
+        var commitTime = Instant.now();
+
+        CacheHelpers.checkValidTicket(ticket, "create", commitTime);
+        CacheHelpers.checkValidStatus(ticket, status);
+        CacheHelpers.checkValidValue(ticket, value);
+
+        return wrapTransaction(conn -> {
+            return createEntry();
+        });
     }
 
     private void createBlankEntry(String entry, Connection conn) throws SQLException {
@@ -158,10 +179,50 @@ public class JdbcJobCache <TValue extends Serializable> extends JdbcBaseDal impl
 
             stmt.executeUpdate();
         }
+        catch (SQLException error) {
+
+            var code = dialect.mapErrorCode(error);
+
+            if (code == JdbcErrorCode.INSERT_DUPLICATE)
+                return;
+
+            throw CacheErrors.catchAll(error, dialect);
+        }
     }
 
-    private void createEntry() {
+    private int createEntry(CacheTicket ticket, String status, TValue value, Instant commitTime, Connection conn) throws SQLException {
 
+        var encodedValue = CacheHelpers.encodeValue(value);
+
+        var query = "update cache_entry (\n" +
+                "  revision\n" +
+                "  status\n" +
+                "  encoded_value\n" +
+                ")\n" +
+                "values (?, ?, ?) \n" +
+                "where cache_name = ?\n" +
+                "and entry = ?";
+
+        try (var stmt = prepareStatement(conn, query, "entry_pk")) {
+
+            stmt.setInt(1, ticket.revision());
+            stmt.setString(2, status);
+            stmt.setBytes(3, encodedValue);
+
+            stmt.setString(4, cacheName);
+            stmt.setString(5, ticket.key());
+
+            stmt.executeUpdate();
+        }
+        catch (SQLException error) {
+
+            var code = dialect.mapErrorCode(error);
+
+            if (code == JdbcErrorCode.INSERT_DUPLICATE)
+                return;
+
+            throw CacheErrors.catchAll(error, dialect);
+        }
     }
 
     @Override
