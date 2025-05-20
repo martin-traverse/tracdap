@@ -259,6 +259,11 @@ public class JobExecutor<TBatchState extends Serializable> implements IJobExecut
             log.error("Error getting job status for [{}]: {}", jobState.batchKey, grpcError.getMessage());
             throw mapRuntimeApiError(grpcError);
         }
+        catch (Exception generalError) {
+
+            log.error("Unexpected error getting job status for [{}]: {}", jobState.batchKey, generalError.getMessage());
+            throw new ETracInternal(generalError.getMessage(), generalError);
+        }
         finally {
             if (runtimeChannel != null)
                 runtimeChannel.shutdown();
