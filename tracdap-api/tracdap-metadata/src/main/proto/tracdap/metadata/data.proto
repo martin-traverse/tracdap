@@ -63,6 +63,8 @@ message FieldSchema {
     optional bool notNull = 8;
 
     optional string formatCode = 7;
+
+    TypeDescriptor typeDescriptor
 }
 
 
@@ -92,7 +94,7 @@ message StructField {
 
     optional string formatCode = 7;
 
-    Value defaultValue = 9;
+    optional Value defaultValue = 9;
 
     optional string structType = 10;
 }
