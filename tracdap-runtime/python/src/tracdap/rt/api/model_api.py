@@ -14,6 +14,7 @@
 #  limitations under the License.
 
 import abc as _abc
+import dataclasses as _dc
 import typing as _tp
 import logging as _logging
 
@@ -21,18 +22,75 @@ import logging as _logging
 # This significantly improves type hinting, inline documentation and auto-complete in JetBrains IDEs
 from tracdap.rt.metadata import *  # DOCGEN_REMOVE
 
+# For type hinting, bring in available data framework APIs at module scope
+# if _tp.TYPE_CHECKING:
 
-if _tp.TYPE_CHECKING:
+try:
+    import pandas
+except ModuleNotFoundError:
+    pass
 
+try:
+    import polars
+except ModuleNotFoundError:
+    pass
+
+
+_PROTOCOL = _tp.TypeVar('_PROTOCOL')
+
+@_dc.dataclass(frozen=True)
+class _Protocol(_tp.Generic[_PROTOCOL]):
+
+    protocol_name: str
+    api_type: _tp.Type[_PROTOCOL]
+
+    def __str__(self):
+        return self.protocol_name
+
+
+# Define a protocol for supported data frameworks
+
+def __pandas_api_type() -> "_tp.Type[pandas.DataFrame]":
     try:
         import pandas
+        return pandas.DataFrame
     except ModuleNotFoundError:
-        pass
+        return None  # noqa
 
+def __polars_api_type() -> "_tp.Type[polars.DataFrame]":
     try:
         import polars
+        return polars.DataFrame
     except ModuleNotFoundError:
-        pass
+        return None  # noqa
+
+DATA_API = _tp.TypeVar('DATA_API', __pandas_api_type(), __polars_api_type())
+"""A generic type that can represent any supported data framework"""
+
+
+class DataFramework(_Protocol[_PROTOCOL]):
+
+    """
+    Protocol type for supported data frameworks
+    """
+
+    def __init__(self, protocol_name: str, api_type: _tp.Type[DATA_API]):
+        super().__init__(protocol_name, api_type)
+
+    @classmethod
+    def pandas(cls) -> "DataFramework[pandas.DataFrame]":
+        return DataFramework("pandas", DATA_API.__constraints__[0])
+
+    @classmethod
+    def polars(cls) -> "DataFramework[polars.DataFrame]":
+        return DataFramework("polars", DATA_API.__constraints__[1])
+
+PANDAS = DataFramework.pandas()
+"""Data framework constant for the Pandas data library"""
+
+POLARS = DataFramework.polars()
+"""Data framework constant for the Polars data library"""
+
 
 
 class TracContext(metaclass=_abc.ABCMeta):
@@ -141,11 +199,21 @@ class TracContext(metaclass=_abc.ABCMeta):
 
         pass
 
-    def get_pandas_table(self, dataset_name: str, use_temporal_objects: _tp.Optional[bool] = None) \
-            -> "pandas.DataFrame":
+    @_tp.overload
+    def get_table(self, dataset_name: str, framework: _Protocol[pandas.DataFrame]) -> pandas.DataFrame:
+        pass
+
+    @_tp.overload
+    def get_table(self, dataset_name: str, framework: _Protocol[polars.DataFrame]) -> polars.DataFrame:
+        pass
+
+    def get_table(self, dataset_name: str, framework: _Protocol[DATA_API]) -> DATA_API:
 
         """
-        Get the data for a model input or output as a Pandas dataframe.
+        Get the data for a model input or output using any supported data framework.
+
+        Currently supported data frameworks are :py:data:`PANDAS <tracdap.rt.api.PANDAS>`
+        and :py:data:`POLARS <tracdap.rt.api.POLARS>`.
 
         Model inputs can be accessed as Pandas dataframes using this method.
         The TRAC runtime will handle fetching data from storage and apply any necessary
@@ -168,13 +236,34 @@ class TracContext(metaclass=_abc.ABCMeta):
         an output before it has been saved will also cause a validation error.
 
         :param dataset_name: The name of the model input or output to get data for
+        :param framework: The data framework being requested
+        :return: A dataframe containing the data for the named dataset
+        :type dataset_name: str
+        :type framework: _Protocol[:py:class:`_PROTOCOL <tracdap.rt.api._PROTOCOL>`]
+        :rtype: :py:class:`_PROTOCOL`
+        :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`
+        """
+
+        pass
+
+    def get_pandas_table(self, dataset_name: str, use_temporal_objects: _tp.Optional[bool] = None) \
+            -> "pandas.DataFrame":
+
+        """
+        Get the data for a model input or output as a Pandas dataframe.
+
+        This method has the same semantics as :py:meth:`get_table`,
+        except that the table is always provided as a Pandas dataframe.
+
+        :param dataset_name: The name of the model input or output to get data for
         :param use_temporal_objects: Use Python objects for date/time fields instead of the NumPy *datetime64* type
-        :return: A pandas dataframe containing the data for the named dataset
+        :return: A Pandas dataframe containing the data for the named dataset
         :type dataset_name: str
         :type use_temporal_objects: bool | None
         :rtype: :py:class:`pandas.DataFrame`
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`
         """
+
         pass
 
     def get_polars_table(self, dataset_name: str) -> "polars.DataFrame":
@@ -182,11 +271,11 @@ class TracContext(metaclass=_abc.ABCMeta):
         """
         Get the data for a model input or output as a Polars dataframe.
 
-        This method has equivalent semantics to :py:meth:`get_pandas_table`, but returns
-        a Polars dataframe.
+        This method has the same semantics as :py:meth:`get_table`,
+        except that the table is always provided as a Polars dataframe.
 
         :param dataset_name: The name of the model input or output to get data for
-        :return: A polars dataframe containing the data for the named dataset
+        :return: A Polars dataframe containing the data for the named dataset
         :type dataset_name: str
         :rtype: :py:class:`polars.DataFrame`
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`
@@ -238,18 +327,19 @@ class TracContext(metaclass=_abc.ABCMeta):
 
         pass
 
-    def put_pandas_table(self, dataset_name: str, dataset: "pandas.DataFrame"):
+    def put_table(self, dataset_name: str, dataset: DATA_API):
 
         """
-        Save the data for a model output as a Pandas dataframe.
+        Save the data for a model output as a tabular dataframe.
 
         Model outputs can then be saved as Pandas dataframes using this method.
+
         The TRAC runtime will validate the supplied data and send it to storage,
         applying any necessary format conversions. Only defined outputs can be
         saved, use :py:meth:`define_outputs() <tracdap.rt.api.TracModel.define_outputs>`
         to define the outputs of a model. Output names are case-sensitive. Once
         an output has been saved it can be retrieved by calling
-        :py:meth:`get_pandas_table() <tracdap.rt.api.TracContext.get_pandas_table>`
+        :py:meth:`get_table() <tracdap.rt.api.TracContext.get_table>`
         (or another get method).
 
         Each model output can only be saved once and the supplied data must match the schema of
@@ -264,9 +354,27 @@ class TracContext(metaclass=_abc.ABCMeta):
         schema is set will also cause a validation error.
 
         :param dataset_name: The name of the model output to save data for
-        :param dataset: A pandas dataframe containing the data for the named dataset
+        :param dataset: A dataframe containing the data for the named dataset
         :type dataset_name: str
-        :type dataset: :py:class:`pandas.Dataframe`
+        :type dataset: :py:class:`DATA_API`
+        :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`,
+                 :py:class:`EDataConformance <tracdap.rt.exceptions.EDataConformance>`
+        """
+
+        pass
+
+    def put_pandas_table(self, dataset_name: str, dataset: "pandas.DataFrame"):
+
+        """
+        Save the data for a model output as a Pandas dataframe.
+
+        This method has the same semantics as :py:meth:`put_table`,
+        except that the table must be supplied as a Pandas dataframe.
+
+        :param dataset_name: The name of the model output to save data for
+        :param dataset: A Pandas dataframe containing the data for the named dataset
+        :type dataset_name: str
+        :type dataset: :py:class:`pandas.DataFrame`
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`,
                  :py:class:`EDataConformance <tracdap.rt.exceptions.EDataConformance>`
         """
@@ -278,11 +386,11 @@ class TracContext(metaclass=_abc.ABCMeta):
         """
         Save the data for a model output as a Polars dataframe.
 
-        This method has equivalent semantics to :py:meth:`put_pandas_table`, but accepts
-        a Polars dataframe.
+        This method has the same semantics as :py:meth:`put_table`,
+        except that the table must be supplied as a Polars dataframe.
 
         :param dataset_name: The name of the model output to save data for
-        :param dataset: A polars dataframe containing the data for the named dataset
+        :param dataset: A Polars dataframe containing the data for the named dataset
         :type dataset_name: str
         :type dataset: :py:class:`polars.DataFrame`
         :raises: :py:class:`ERuntimeValidation <tracdap.rt.exceptions.ERuntimeValidation>`,

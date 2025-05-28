@@ -12,6 +12,7 @@
 #  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
+import pandas
 
 import tracdap.rt.api as trac
 import tracdap.rt._impl.static_api as api_hook  # noqa
@@ -19,6 +20,8 @@ import tracdap.rt._impl.static_api as api_hook  # noqa
 import typing as tp
 
 import unittest
+
+from tracdap.rt.api import DataFramework
 
 
 class SampleModel(trac.TracModel):
@@ -45,6 +48,8 @@ class SampleModel(trac.TracModel):
         return {"output1": output1}
 
     def run_model(self, ctx: trac.TracContext):
+
+        ctx.get_table("moo", trac.POLARS).
 
         pass
 

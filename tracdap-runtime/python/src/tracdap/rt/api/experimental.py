@@ -23,67 +23,10 @@ from tracdap.rt.api import *
 from .hook import _StaticApiHook
 
 
-_PROTOCOL = _tp.TypeVar('_PROTOCOL')
-
-@_dc.dataclass(frozen=True)
-class _Protocol(_tp.Generic[_PROTOCOL]):
-
-    protocol_name: str
-    api_type: _tp.Type[_PROTOCOL]
-
-    def __str__(self):
-        return self.protocol_name
-
-
-def __pandas_api_type() -> "_tp.Type[pandas.DataFrame]":
-    try:
-        import pandas
-        return pandas.DataFrame
-    except ModuleNotFoundError:
-        return None  # noqa
-
-def __polars_api_type() -> "_tp.Type[polars.DataFrame]":
-    try:
-        import polars
-        return polars.DataFrame
-    except ModuleNotFoundError:
-        return None  # noqa
-
-DATA_API = _tp.TypeVar('DATA_API', __pandas_api_type(), __polars_api_type())
-
-class DataFramework(_Protocol[DATA_API]):
-
-    def __init__(self, protocol_name: str, api_type: _tp.Type[DATA_API]):
-        super().__init__(protocol_name, api_type)
-
-    @classmethod
-    def pandas(cls) -> "DataFramework[pandas.DataFrame]":
-        return DataFramework("pandas", DATA_API.__constraints__[0])
-
-    @classmethod
-    def polars(cls) -> "DataFramework[polars.DataFrame]":
-        return DataFramework("polars", DATA_API.__constraints__[1])
-
-PANDAS = DataFramework.pandas()
-"""Data framework constant for the Pandas data library"""
-
-POLARS = DataFramework.polars()
-"""Data framework constant for the Polars data library"""
-
 STRUCT_TYPE = _tp.TypeVar('STRUCT_TYPE')
 
 
 class TracContext(TracContext):
-
-    @_abc.abstractmethod
-    def get_table(self, dataset_name: str, framework: DataFramework[DATA_API]) -> DATA_API:
-
-        pass
-
-    @_abc.abstractmethod
-    def put_table(self, dataset_name: str, dataset: DATA_API):
-
-        pass
 
     def get_struct(self, struct_name: str, python_class: _tp.Type[STRUCT_TYPE]) -> STRUCT_TYPE:
 
