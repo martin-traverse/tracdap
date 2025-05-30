@@ -23,8 +23,6 @@ import typing as _tp
 import uuid as _uuid
 
 import yaml as _yaml
-from numpy.ma.core import default_fill_value
-from pygments.lexer import default
 
 try:
     import pydantic as _pyd  # noqa
