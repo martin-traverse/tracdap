@@ -561,7 +561,7 @@ class DataItem:
     def for_table(table: pa.Table, schema: pa.Schema, trac_schema: _meta.SchemaDefinition) -> "DataItem":
 
         return DataItem(
-            _meta.ObjectType.DATA, _meta.SchemaType.TABLE,
+            _meta.ObjectType.DATA, _meta.SchemaType.TABLE_SCHEMA,
             content=table, content_type=pa.Table,
             trac_schema=trac_schema, native_schema=schema,
             table=table, schema=schema)
@@ -570,7 +570,7 @@ class DataItem:
     def for_struct(content: tp.Any):
 
         return DataItem(
-            _meta.ObjectType.DATA, _meta.SchemaType.STRUCT,
+            _meta.ObjectType.DATA, _meta.SchemaType.STRUCT_SCHEMA,
             content=content, content_type=type(content))
 
     @staticmethod
