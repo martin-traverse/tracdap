@@ -23,6 +23,8 @@ import typing as _tp
 import uuid as _uuid
 
 import yaml as _yaml
+from numpy.ma.core import default_fill_value
+from pygments.lexer import default
 
 try:
     import pydantic as _pyd  # noqa
@@ -262,28 +264,28 @@ class StructProcessor:
             dc_field: _dc.Field = None, pyd_field: "_pyd.fields.FieldInfo" = None) \
             -> _meta.FieldSchema:
 
-        trac_field = _meta.FieldSchema()
-        trac_field.fieldName = name
-        trac_field.fieldOrder = index
-        trac_field.fieldType = cls.__primitive_types[python_type]
-        trac_field.typeInfo = _meta.TypeDescriptor(basicType=cls.__primitive_types[python_type])
-        trac_field.notNull = not optional
+        default_value = None
 
         if dc_field is not None:
             if dc_field.default not in [_dc.MISSING, None]:
-                trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(dc_field.default)
+                default_value = _meta_types.MetadataCodec.encode_value(dc_field.default)
             elif dc_field.default_factory not in [_dc.MISSING, None]:
-                default_value = dc_field.default_factory()
-                trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(default_value)
+                native_value = dc_field.default_factory()
+                default_value = _meta_types.MetadataCodec.encode_value(native_value)
 
-        if pyd_field is not None:
+        elif pyd_field is not None:
             if pyd_field.default not in [_pyd.fields.PydanticUndefined, None]:
-                trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(pyd_field.default)
+                default_value = _meta_types.MetadataCodec.encode_value(pyd_field.default)
             elif pyd_field.default_factory not in [_pyd.fields.PydanticUndefined, None]:
-                default_value = pyd_field.default_factory()
-                trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(default_value)
+                native_value = pyd_field.default_factory()
+                default_value = _meta_types.MetadataCodec.encode_value(native_value)
 
-        return trac_field
+        return _meta.FieldSchema(
+            fieldName=name,
+            fieldOrder=index,
+            fieldType=cls.__primitive_types[python_type],
+            notNull=not optional,
+            defaultValue=default_value)
 
     @classmethod
     def _define_enum_field(
@@ -291,22 +293,22 @@ class StructProcessor:
             dc_field: _dc.Field = None, pyd_field: "_pyd.fields.FieldInfo" = None) \
             -> _meta.FieldSchema:
 
-        trac_field = _meta.FieldSchema()
-        trac_field.fieldName = name
-        trac_field.fieldOrder = index
-        trac_field.fieldType = _meta.BasicType.STRING
-        trac_field.categorical = True
-        trac_field.notNull = not optional
-
-        trac_field.typeName = cls._qualified_type_name(enum_type)
+        default_value = None
 
         if dc_field is not None and  dc_field.default not in [_dc.MISSING, None]:
-            trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(dc_field.default.name)
+            default_value = _meta_types.MetadataCodec.encode_value(dc_field.default.name)
 
         if pyd_field is not None and pyd_field.default not in [_pyd.fields.PydanticUndefined, None]:
-            trac_field.defaultValue = _meta_types.MetadataCodec.encode_value(pyd_field.default.name)
+            default_value = _meta_types.MetadataCodec.encode_value(pyd_field.default.name)
 
-        return trac_field
+        return _meta.FieldSchema(
+            fieldName=name,
+            fieldOrder=index,
+            fieldType=_meta.BasicType.STRING,
+            categorical=True,
+            notNull=not optional,
+            typeName=cls._qualified_type_name(enum_type),
+            defaultValue=default_value)
 
     @classmethod
     def _define_generic_field(
