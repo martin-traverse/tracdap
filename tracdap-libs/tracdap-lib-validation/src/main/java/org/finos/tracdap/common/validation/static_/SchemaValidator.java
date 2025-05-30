@@ -24,6 +24,7 @@ import org.finos.tracdap.common.validation.core.ValidatorUtils;
 import org.finos.tracdap.metadata.*;
 import com.google.protobuf.Descriptors;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -33,12 +34,15 @@ import java.util.stream.Collectors;
 public class SchemaValidator {
 
     private static final Map<SchemaDefinition.SchemaDetailsCase, SchemaType> SCHEMA_TYPE_CASE_MAPPING = Map.ofEntries(
-            Map.entry(SchemaDefinition.SchemaDetailsCase.TABLE, SchemaType.TABLE));
+            Map.entry(SchemaDefinition.SchemaDetailsCase.TABLE, SchemaType.TABLE_SCHEMA),
+            Map.entry(SchemaDefinition.SchemaDetailsCase.STRUCT, SchemaType.STRUCT_SCHEMA));
 
     private static final List<BasicType> ALLOWED_BUSINESS_KEY_TYPES = List.of(
             BasicType.STRING, BasicType.INTEGER, BasicType.DATE);
 
     private static final List<BasicType> ALLOWED_CATEGORICAL_TYPES = List.of(BasicType.STRING);
+
+    private static final Map<String, StructSchema> NO_NAMED_TYPES = Map.of();
 
     private static final Descriptors.Descriptor SCHEMA_DEFINITION;
     private static final Descriptors.FieldDescriptor SD_SCHEMA_TYPE;
@@ -48,11 +52,18 @@ public class SchemaValidator {
     private static final Descriptors.Descriptor TABLE_SCHEMA;
     private static final Descriptors.FieldDescriptor TS_FIELDS;
 
+    private static final Descriptors.Descriptor STRUCT_SCHEMA;
+    private static final Descriptors.FieldDescriptor SS_FIELDS;
+    private static final Descriptors.FieldDescriptor SS_NAMED_TYPES;
+
     private static final Descriptors.Descriptor FIELD_SCHEMA;
     private static final Descriptors.FieldDescriptor FS_FIELD_NAME;
     private static final Descriptors.FieldDescriptor FS_FIELD_ORDER;
     private static final Descriptors.FieldDescriptor FS_FIELD_TYPE;
     private static final Descriptors.FieldDescriptor FS_LABEL;
+    private static final Descriptors.FieldDescriptor FS_TYPE_NAME;
+    private static final Descriptors.FieldDescriptor FS_DEFAULT_VALUE;
+    private static final Descriptors.FieldDescriptor FS_CHILDREN;
 
     static {
 
@@ -64,11 +75,18 @@ public class SchemaValidator {
         TABLE_SCHEMA = TableSchema.getDescriptor();
         TS_FIELDS = ValidatorUtils.field(TABLE_SCHEMA, TableSchema.FIELDS_FIELD_NUMBER);
 
+        STRUCT_SCHEMA = StructSchema.getDescriptor();
+        SS_FIELDS = ValidatorUtils.field(STRUCT_SCHEMA, StructSchema.FIELDS_FIELD_NUMBER);
+        SS_NAMED_TYPES = ValidatorUtils.field(STRUCT_SCHEMA, StructSchema.NAMEDTYPES_FIELD_NUMBER);
+
         FIELD_SCHEMA = FieldSchema.getDescriptor();
         FS_FIELD_NAME = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.FIELDNAME_FIELD_NUMBER);
         FS_FIELD_ORDER = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.FIELDORDER_FIELD_NUMBER);
         FS_FIELD_TYPE = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.FIELDTYPE_FIELD_NUMBER);
         FS_LABEL = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.LABEL_FIELD_NUMBER);
+        FS_TYPE_NAME = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.TYPENAME_FIELD_NUMBER);
+        FS_DEFAULT_VALUE = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.DEFAULTVALUE_FIELD_NUMBER);
+        FS_CHILDREN = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.CHILDREN_FIELD_NUMBER);
     }
 
 
@@ -139,14 +157,37 @@ public class SchemaValidator {
                 .applyRepeated(SchemaValidator::fieldSchema, FieldSchema.class)
                 .pop();
 
+        return fieldNamesAndOrdering(table.getFieldsList(), ctx);
+    }
+
+    @Validator
+    public static ValidationContext structSchema(StructSchema struct, ValidationContext ctx) {
+
+        ctx = ctx.pushMap(SS_NAMED_TYPES)
+                .apply(CommonValidators::optional)
+                .applyMapValues(SchemaValidator::structSchema, StructSchema.class)
+                .pop();
+
+        ctx = ctx.pushMap(SS_FIELDS)
+                .apply(CommonValidators::mapNotEmpty)
+                .applyMapValues(SchemaValidator::fieldSchema, FieldSchema.class, struct.getNamedTypesMap())
+                .pop();
+
+        var fields = new ArrayList<>(struct.getFieldsMap().values());
+
+        return fieldNamesAndOrdering(fields, ctx);
+    }
+
+    private static ValidationContext fieldNamesAndOrdering(List<FieldSchema> fields, ValidationContext ctx) {
+
         // Check for duplicate field names, including duplicates with different case
 
-        var names = table.getFieldsList().stream()
+        var names = fields.stream()
                 .map(FieldSchema::getFieldName)
                 .map(String::toLowerCase)
                 .collect(Collectors.toSet());
 
-        if (names.size() != table.getFieldsCount()) {
+        if (names.size() != fields.size()) {
 
             var err = "Table schema contains duplicate field names";
             ctx = ctx.error(err);
@@ -154,7 +195,7 @@ public class SchemaValidator {
 
         // If fields orders are all zero, ordering will be inferred from the list order
 
-        var allZeroOrder = table.getFieldsList().stream()
+        var allZeroOrder = fields.stream()
                 .map(FieldSchema::getFieldOrder)
                 .allMatch(order -> order == 0);
 
@@ -164,11 +205,11 @@ public class SchemaValidator {
             // Fields may be specified out-of-order, so long as the entire set forms a contiguous range
             // I.e. 0, 1, 3, 4, 2 is allowed, but 0, 1, 3, 4, 5 is not
 
-            var orders = table.getFieldsList().stream()
+            var orders = fields.stream()
                     .map(FieldSchema::getFieldOrder)
                     .collect(Collectors.toSet());
 
-            for (var fieldOrder = 0; fieldOrder < table.getFieldsCount(); fieldOrder++) {
+            for (var fieldOrder = 0; fieldOrder < fields.size(); fieldOrder++) {
 
                 if (!orders.contains(fieldOrder)) {
                     var err = "Field orders must form a contiguous set of indices starting at zero";
@@ -182,6 +223,11 @@ public class SchemaValidator {
 
     @Validator
     public static ValidationContext fieldSchema(FieldSchema field, ValidationContext ctx) {
+
+        return fieldSchema(field, NO_NAMED_TYPES, ctx);
+    }
+
+    public static ValidationContext fieldSchema(FieldSchema field, Map<String, StructSchema> namedTypes, ValidationContext ctx) {
 
         ctx = ctx.push(FS_FIELD_NAME)
                 .apply(CommonValidators::required)
