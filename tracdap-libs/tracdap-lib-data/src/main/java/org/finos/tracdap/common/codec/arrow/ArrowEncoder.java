@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.common.codec.arrow;
 
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.finos.tracdap.common.codec.StreamingEncoder;
 import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -43,25 +44,25 @@ public abstract class ArrowEncoder extends StreamingEncoder implements DataPipel
 
     private final BufferAllocator allocator;
 
-    private VectorSchemaRoot root;
+    private DataPipeline.ArrowContext context;
     private ArrowWriter writer;
 
-    protected abstract ArrowWriter createWriter(VectorSchemaRoot root, BufferAllocator allocator);
+    protected abstract ArrowWriter createWriter(DataPipeline.ArrowContext context);
 
     public ArrowEncoder(BufferAllocator allocator) {
         this.allocator = allocator;
     }
 
     @Override
-    public void onStart(VectorSchemaRoot root) {
+    public void onStart(DataPipeline.ArrowContext context) {
 
         try {
 
             if (log.isTraceEnabled())
                 log.trace("ARROW ENCODER: onStart()");
 
-            this.root = root;
-            this.writer = createWriter(root, allocator);
+            this.context = context;
+            this.writer = createWriter(context);
 
             writer.start();
             consumer().onStart();
@@ -145,9 +146,9 @@ public abstract class ArrowEncoder extends StreamingEncoder implements DataPipel
             writer = null;
         }
 
-        if (root != null) {
-            // Do not close root, we do not own it
-            root = null;
+        if (context != null) {
+            context.close();
+            context = null;
         }
     }
 }

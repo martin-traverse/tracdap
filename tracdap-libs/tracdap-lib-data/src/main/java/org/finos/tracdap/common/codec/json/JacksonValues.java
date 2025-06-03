@@ -18,6 +18,11 @@
 package org.finos.tracdap.common.codec.json;
 
 
+import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
+import org.apache.arrow.vector.dictionary.Dictionary;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.finos.tracdap.common.data.ArrowContext;
+import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.common.exception.EDataTypeNotSupported;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.metadata.MetadataCodec;
@@ -62,6 +67,7 @@ public class JacksonValues {
 
     public static void parseAndSet(
             FieldVector vector, int row,
+            ArrowContext context,
             JsonParser parser, JsonToken token)
             throws IOException {
 
@@ -79,6 +85,34 @@ public class JacksonValues {
             var msg = "Parsing failed: Got a null value for not-null field [" + vector.getField().getName() + "]";
             throw new JsonParseException(parser, msg, parser.currentLocation());
         }
+
+        if (vector.getField().getDictionary() != null) {
+
+            var dictWriteVector = (FieldVector) vector.getField().getDictionary();
+
+            dictionaryBuilder.getDictionary()
+
+            dictionaryBuilder.addValue()
+
+            var obj = parser.currentValue();
+
+            var dictionary = dictionaries.lookup(dictionaryEncoding.getId());
+            if (dictionary == null) {
+                dictionary = new Dictionary();
+            }
+
+            var dictionaryVector = dictionary.getVector();
+
+            for (int i = 0; i < dictionaryVector.getValueCount(); i++) {
+
+            }
+
+            dictionary.getVector().;
+
+            vector = dictionary.getVector();
+            row = (int) index;
+        }
+
 
 
         var minorType = vector.getMinorType();
@@ -278,7 +312,7 @@ public class JacksonValues {
         }
         else {
 
-                throw new EUnexpected();
+            throw new EUnexpected();
         }
     }
 
@@ -410,13 +444,34 @@ public class JacksonValues {
         }
     }
 
-    public static void getAndGenerate(FieldVector vector, int row, JsonGenerator generator) throws IOException {
+    public static void getAndGenerate(
+            FieldVector vector, int row,
+            DictionaryProvider dictionaries,
+            JsonGenerator generator) throws IOException {
 
         boolean isNull = vector.isNull(row);
 
         if (isNull) {
             generator.writeNull();
             return;
+        }
+
+        var dictionaryEncoding = vector.getField().getDictionary();
+
+        // If this is a dictionary-encoded field, dereference the dictionary
+        if (dictionaryEncoding != null) {
+
+            var dictionary = dictionaries != null ? dictionaries.lookup(dictionaryEncoding.getId()) : null;
+            var indexVector = (BaseIntVector) vector;
+            var index = indexVector.getValueAsLong(row);
+
+            if (dictionary == null || index < 0 || index >= dictionary.getVector().getValueCount()) {
+                var message = String.format("Could not decode dictionary-encoded data, field = %s, row = %d", vector.getField().getName(), row);
+                throw new EDataCorruption(message);
+            }
+
+            vector = dictionary.getVector();
+            row = (int) index;
         }
 
         var minorType = vector.getMinorType();

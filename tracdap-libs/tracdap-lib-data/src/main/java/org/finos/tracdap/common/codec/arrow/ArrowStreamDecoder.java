@@ -123,7 +123,7 @@ public class ArrowStreamDecoder extends StreamingDecoder implements DataPipeline
 
             if (messageReader.hasMessage()) {
                 root = arrowReader.getVectorSchemaRoot();
-                consumer().onStart(root);
+                consumer().onStart(null);  // TODO
             }
             else if (messageReader.hasEos()) {
                 var error = new EDataCorruption("Arrow decoding failed, data stream is empty");

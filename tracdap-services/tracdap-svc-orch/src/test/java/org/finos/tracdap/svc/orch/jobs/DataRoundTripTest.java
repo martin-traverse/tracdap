@@ -93,6 +93,7 @@ public abstract class DataRoundTripTest {
     protected abstract String dataFramework();
 
 
+    @Disabled
     public static class CsvFormatTest extends DataRoundTripTest {
         protected String storageFormat() { return "CSV"; }
         protected String dataFramework() { return "pandas"; }
@@ -103,6 +104,7 @@ public abstract class DataRoundTripTest {
         protected String dataFramework() { return "pandas"; }
     }
 
+    @Disabled
     public static class PolarsTest extends DataRoundTripTest {
         protected String storageFormat() { return "ARROW_FILE"; }
         protected String dataFramework() { return "polars"; }

@@ -19,8 +19,8 @@ package org.finos.tracdap.common.codec.json;
 
 import org.finos.tracdap.common.codec.ICodec;
 
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.memory.BufferAllocator;
+import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 
 import java.util.List;
@@ -43,13 +43,13 @@ public class JsonCodec implements ICodec {
 
     @Override
     public Encoder<DataPipeline.StreamApi>
-    getEncoder(BufferAllocator arrowAllocator, Schema schema, Map<String, String> options) {
+    getEncoder(BufferAllocator arrowAllocator, ArrowSchema schema, Map<String, String> options) {
         return new JsonEncoder(arrowAllocator);
     }
 
     @Override
     public Decoder<DataPipeline.StreamApi>
-    getDecoder(BufferAllocator arrowAllocator, Schema schema, Map<String, String> options) {
+    getDecoder(BufferAllocator arrowAllocator, ArrowSchema schema, Map<String, String> options) {
         return new JsonDecoder(arrowAllocator, schema);
     }
 }

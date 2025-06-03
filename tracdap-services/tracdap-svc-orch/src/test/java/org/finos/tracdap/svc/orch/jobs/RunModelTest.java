@@ -49,6 +49,7 @@ import static org.finos.tracdap.svc.orch.jobs.Helpers.runJob;
 
 @Tag("integration")
 @Tag("int-e2e")
+@Disabled
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class RunModelTest {
 

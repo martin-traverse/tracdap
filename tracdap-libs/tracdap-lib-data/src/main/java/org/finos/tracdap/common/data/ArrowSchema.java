@@ -21,9 +21,6 @@ import org.finos.tracdap.common.exception.EDataTypeNotSupported;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.metadata.*;
 
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.FieldVector;
-import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
@@ -70,8 +67,67 @@ public class ArrowSchema {
             Map.entry(ArrowType.ArrowTypeID.Date, BasicType.DATE),
             Map.entry(ArrowType.ArrowTypeID.Timestamp, BasicType.DATETIME));
 
+    private final Schema primarySchema;
+    private final Schema concreteSchema;
+    private final Field[] dictionaryFields;
 
-    public static Schema tracToArrow(SchemaDefinition tracSchema) {
+    private ArrowSchema(Schema primarySchema) {
+        this.primarySchema = primarySchema;
+        this.concreteSchema = null;
+        this.dictionaryFields = null;
+    }
+
+    private ArrowSchema(Schema primarySchema, Schema concreteSchema, Field[] dictionaryFields) {
+        this.primarySchema = primarySchema;
+        this.concreteSchema = concreteSchema;
+        this.dictionaryFields = dictionaryFields;
+    }
+
+    public Schema primarySchema() {
+        return primarySchema;
+    }
+
+    public Schema concreteSchema() {
+        return concreteSchema != null ? concreteSchema : primarySchema;
+    }
+
+    public static ArrowSchema tracToArrow(SchemaDefinition tracSchema) {
+
+        var concreteSchema = tracToArrowConcrete(tracSchema);
+
+        var tracTableSchema = tracSchema.getTable();
+        var arrowFields = new ArrayList<Field>(tracTableSchema.getFieldsCount());
+        var dictionaryFields = new Field[tracTableSchema.getFieldsCount()];
+
+        for (int fieldIndex = 0; fieldIndex < tracTableSchema.getFieldsCount(); fieldIndex++) {
+
+            var tracField = tracTableSchema.getFields(fieldIndex);
+
+            if (tracField.getCategorical()) {
+
+                var indexType = new ArrowType.Int(32, true);
+                var encoding = new DictionaryEncoding(fieldIndex, false, indexType);
+                var notNull = tracField.getBusinessKey() || tracField.getNotNull();
+                var nullable = !notNull;
+
+                var indexField = new Field(
+                        tracField.getFieldName(),
+                        new FieldType(nullable, indexType, encoding),
+                        /* children = */ null);
+
+                arrowFields.add(indexField);
+                dictionaryFields[fieldIndex] = concreteSchema.getFields().get(fieldIndex);
+            }
+            else {
+
+                arrowFields.add(concreteSchema.getFields().get(fieldIndex));
+            }
+        }
+
+        return new ArrowSchema(new Schema(arrowFields), concreteSchema, dictionaryFields);
+    }
+
+    public static Schema tracToArrowConcrete(SchemaDefinition tracSchema) {
 
         // Unexpected error - TABLE is the only TRAC schema type currently available
         if (tracSchema.getSchemaType() != SchemaType.TABLE)
@@ -136,28 +192,5 @@ public class ArrowSchema {
                 .setSchemaType(SchemaType.TABLE)
                 .setTable(tracTableSchema)
                 .build();
-    }
-
-    public static VectorSchemaRoot createRoot(Schema arrowSchema, BufferAllocator arrowAllocator) {
-
-        return createRoot(arrowSchema, arrowAllocator, 0);
-    }
-
-    public static VectorSchemaRoot createRoot(Schema arrowSchema, BufferAllocator arrowAllocator, int initialCapacity) {
-
-        var fields = arrowSchema.getFields();
-        var vectors = new ArrayList<FieldVector>(fields.size());
-
-        for (var field : fields) {
-
-            var vector = field.createVector(arrowAllocator);
-
-            if (initialCapacity > 0)
-                vector.setInitialCapacity(initialCapacity);
-
-            vectors.add(vector);
-        }
-
-        return new VectorSchemaRoot(fields, vectors);
     }
 }

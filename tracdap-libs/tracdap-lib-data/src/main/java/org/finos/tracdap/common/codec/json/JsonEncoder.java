@@ -18,12 +18,11 @@
 package org.finos.tracdap.common.codec.json;
 
 import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.data.ArrowContext;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
+import org.finos.tracdap.common.exception.EUnexpected;
 
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.VectorSchemaRoot;
-import org.apache.arrow.vector.types.pojo.Schema;
 
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
@@ -39,20 +38,17 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final BufferAllocator allocator;
-
-    private VectorSchemaRoot root;
-    private Schema arrowSchema;
+    private ArrowContext context;
 
     private OutputStream out;
     private JsonGenerator generator;
 
     public JsonEncoder(BufferAllocator allocator) {
-        this.allocator = allocator;
+
     }
 
     @Override
-    public void onStart(VectorSchemaRoot root) {
+    public void onStart(ArrowContext context) {
 
         try {
 
@@ -61,10 +57,9 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
             consumer().onStart();
 
-            this.root = root;
-            this.arrowSchema = root.getSchema();
+            this.context = context;
 
-            out = new ByteOutputStream(allocator, consumer()::onNext);
+            out = new ByteOutputStream(context.allocator(), consumer()::onNext);
 
             var factory = new JsonFactory();
             generator = factory.createGenerator(out, JsonEncoding.UTF8);
@@ -91,8 +86,12 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
             if (log.isTraceEnabled())
                 log.trace("JSON ENCODER: onNext()");
 
-            var nRows = root.getRowCount();
-            var nCols = arrowSchema.getFields().size();
+            var dictionaries = context.dictionaries();
+            var schema = context.arrowSchema();
+            var batch = context.getFront();
+
+            var nRows = batch.getRowCount();
+            var nCols = schema.getFields().size();
 
             for (var row = 0; row < nRows; row++) {
 
@@ -100,11 +99,11 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
                 for (var col = 0; col < nCols; col++) {
 
-                    var vector = root.getVector(col);
+                    var vector = batch.getVector(col);
                     var fieldName = vector.getName();
 
                     generator.writeFieldName(fieldName);
-                    JacksonValues.getAndGenerate(vector, row, generator);
+                    JacksonValues.getAndGenerate(vector, row, dictionaries, generator);
                 }
 
                 generator.writeEndObject();
@@ -188,8 +187,9 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
             // Encoder does not own root, do not close it
 
-            if (root != null) {
-                root = null;
+            if (context != null) {
+                context.close();
+                context = null;
             }
         }
         catch (IOException e) {

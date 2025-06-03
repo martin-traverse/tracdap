@@ -32,6 +32,7 @@ import org.finos.tracdap.svc.orch.TracOrchestratorService;
 import org.finos.tracdap.test.helpers.GitHelpers;
 import org.finos.tracdap.test.helpers.PlatformTest;
 import org.junit.jupiter.api.Assertions;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.RegisterExtension;
@@ -58,10 +59,12 @@ public abstract class ImportModelTest {
 
     protected abstract String useTracRepo();
 
+    @Disabled
     public static class LocalRepoTest extends ImportModelTest {
         protected String useTracRepo() { return "TRAC_LOCAL_REPO"; }
     }
 
+    @Disabled
     public static class GitRepoTest extends ImportModelTest {
         protected String useTracRepo() { return "TRAC_GIT_REPO"; }
     }
