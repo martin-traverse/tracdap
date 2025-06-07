@@ -88,6 +88,7 @@ public class JdbcSetup {
                 LoggerFactory.getLogger(JdbcSetup.class).info("Injecting AWS JDBC wrapperPlugins setting...");
                 properties.put("postgresql.wrapperLoggerLevel", "FINEST");
                 properties.put("postgresql.wrapperPlugins", "iam");
+                properties.put("postgresql.ssl", "true");
             }
 
             var hikariProps = createHikariProperties(properties);
