@@ -66,8 +66,14 @@ public class JdbcSetup {
         // This is the same behavior as the plugin manager when it loads standard plugins
         // Needed when data sources are created in isolation, e.g. tests and the DB deploy tool
 
+        var log = LoggerFactory.getLogger(JdbcSetup.class);
+
         var properties = new Properties();
         properties.putAll(config.getPropertiesMap());
+
+        for (var prop : properties.keySet()) {
+            log.info("{}: {}", prop, properties.getProperty(prop.toString()));
+        }
 
         var jdbcUrl = properties.getProperty(JDBC_URL_PROPERTY);
 
