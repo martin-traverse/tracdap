@@ -86,6 +86,7 @@ public class JdbcSetup {
 
             if (jdbcUrl != null && jdbcUrl.contains("aws")) {
                 LoggerFactory.getLogger(JdbcSetup.class).info("Injecting AWS JDBC wrapperPlugins setting...");
+                properties.put("postgresql.wrapperLoggerLevel", "FINEST");
                 properties.put("postgresql.wrapperPlugins", "iam");
             }
 
