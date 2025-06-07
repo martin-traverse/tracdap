@@ -72,7 +72,7 @@ public class JdbcSetup {
         var jdbcUrl = properties.getProperty(JDBC_URL_PROPERTY);
 
         if (jdbcUrl != null && jdbcUrl.contains("aws"))
-            properties.put("wrapperPlugins", "iam");
+            properties.put("postgresql.wrapperPlugins", "iam");
 
         for (var secret : config.getSecretsMap().entrySet()) {
             var secretKey = secret.getKey();
