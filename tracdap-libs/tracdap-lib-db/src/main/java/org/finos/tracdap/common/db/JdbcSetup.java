@@ -100,7 +100,6 @@ public class JdbcSetup {
             var config = new HikariConfig(hikariProps);
             var source = new HikariDataSource(config);
 
-            var log = LoggerFactory.getLogger(JdbcSetup.class);
             log.info("Database connection pool has " + source.getMaximumPoolSize() + " connections");
 
             return source;
