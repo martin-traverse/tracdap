@@ -91,6 +91,12 @@ public class JdbcSetup {
 
             var hikariProps = createHikariProperties(properties);
 
+            var log = LoggerFactory.getLogger(JdbcSetup.class);
+
+            for (var key : hikariProps.keySet()) {
+                log.info("{}: {}", key, hikariProps.get(key));
+            }
+
             var config = new HikariConfig(hikariProps);
             var source = new HikariDataSource(config);
 
