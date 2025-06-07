@@ -89,6 +89,7 @@ public class JdbcSetup {
                 properties.put("postgresql.wrapperLoggerLevel", "FINEST");
                 properties.put("postgresql.wrapperPlugins", "iam");
                 properties.put("postgresql.ssl", "true");
+                properties.put("postgresql.sslrootcert", "/etc/ssl/cert.pem");
             }
 
             var hikariProps = createHikariProperties(properties);
