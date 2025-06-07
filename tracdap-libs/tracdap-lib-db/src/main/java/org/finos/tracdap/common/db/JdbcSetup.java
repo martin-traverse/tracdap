@@ -66,21 +66,8 @@ public class JdbcSetup {
         // This is the same behavior as the plugin manager when it loads standard plugins
         // Needed when data sources are created in isolation, e.g. tests and the DB deploy tool
 
-        var log = LoggerFactory.getLogger(JdbcSetup.class);
-
         var properties = new Properties();
         properties.putAll(config.getPropertiesMap());
-
-        for (var prop : properties.keySet()) {
-            log.info("{}: {}", prop, properties.getProperty(prop.toString()));
-        }
-
-        var jdbcUrl = properties.getProperty(JDBC_URL_PROPERTY);
-
-        if (jdbcUrl != null && jdbcUrl.contains("aws")) {
-            LoggerFactory.getLogger(JdbcSetup.class).info("Injecting AWS JDBC wrapperPlugins setting...");
-            properties.put("postgresql.wrapperPlugins", "iam");
-        }
 
         for (var secret : config.getSecretsMap().entrySet()) {
             var secretKey = secret.getKey();
@@ -94,6 +81,14 @@ public class JdbcSetup {
     public static DataSource createDatasource(Properties properties) {
 
         try {
+
+            var jdbcUrl = properties.getProperty(JDBC_URL_PROPERTY);
+
+            if (jdbcUrl != null && jdbcUrl.contains("aws")) {
+                LoggerFactory.getLogger(JdbcSetup.class).info("Injecting AWS JDBC wrapperPlugins setting...");
+                properties.put("postgresql.wrapperPlugins", "iam");
+            }
+
             var hikariProps = createHikariProperties(properties);
 
             var config = new HikariConfig(hikariProps);
