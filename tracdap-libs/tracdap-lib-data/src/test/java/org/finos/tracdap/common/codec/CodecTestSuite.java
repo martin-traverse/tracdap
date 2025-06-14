@@ -18,6 +18,7 @@
 package org.finos.tracdap.common.codec;
 
 import org.finos.tracdap.common.codec.arrow.ArrowFileCodec;
+import org.finos.tracdap.common.data.ArrowContext;
 import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.codec.arrow.ArrowStreamCodec;
 import org.finos.tracdap.common.codec.csv.CsvCodec;
@@ -95,24 +96,25 @@ public abstract class CodecTestSuite {
     void roundTrip_basic() {
 
         var allocator = new RootAllocator();
-        var root = generateBasicData(allocator);
+        var inputData = generateBasicData(allocator);
+        inputData.flip();
 
-        roundTrip_impl(root, allocator);
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
     void roundTrip_nulls() {
 
         var allocator = new RootAllocator();
-        var root = generateBasicData(allocator);
+        var inputData = generateBasicData(allocator);
 
         // With the basic test data, we'll get one null value for each data type
 
-        var limit = Math.min(root.getRowCount(), root.getFieldVectors().size());
+        var limit = Math.min(inputData.getBackBuffer().getRowCount(), inputData.getBackBuffer().getFieldVectors().size());
 
         for (var i = 0; i < limit; i++) {
 
-            var vector = root.getVector(i);
+            var vector = inputData.getBackBuffer().getVector(i);
 
             if (BaseFixedWidthVector.class.isAssignableFrom(vector.getClass())) {
 
@@ -128,10 +130,11 @@ public abstract class CodecTestSuite {
 
                 throw new EUnexpected();
             }
-
         }
 
-        roundTrip_impl(root, allocator);
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -151,9 +154,13 @@ public abstract class CodecTestSuite {
         intVec.set(3, Long.MIN_VALUE);
 
         var root = new VectorSchemaRoot(List.of(field), List.of(intVec));
-        root.setRowCount(4);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(4);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -181,9 +188,13 @@ public abstract class CodecTestSuite {
         floatVec.set(8, Double.NaN);
 
         var root = new VectorSchemaRoot(List.of(field), List.of(floatVec));
-        root.setRowCount(8);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(9);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -211,9 +222,13 @@ public abstract class CodecTestSuite {
         decimalVec.set(5, d4);
 
         var root = new VectorSchemaRoot(List.of(field), List.of(decimalVec));
-        root.setRowCount(6);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(6);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -239,9 +254,13 @@ public abstract class CodecTestSuite {
         stringVec.set(9, "\0".getBytes(StandardCharsets.UTF_8));
 
         var root = new VectorSchemaRoot(List.of(field), List.of(stringVec));
-        root.setRowCount(10);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(10);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -270,9 +289,13 @@ public abstract class CodecTestSuite {
         Assertions.assertEquals(maxDate, LocalDate.ofEpochDay(dateVec.get(5)));
 
         var root = new VectorSchemaRoot(List.of(field), List.of(dateVec));
-        root.setRowCount(6);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(6);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     @Test
@@ -284,7 +307,7 @@ public abstract class CodecTestSuite {
         var field = new Field("datetime_field", fieldType, null);
 
         var datetimeVec = new TimeStampMilliVector("datetime_field", allocator);
-        datetimeVec.allocateNew(6);
+        datetimeVec.allocateNew(8);
 
         datetimeVec.set(0, toEpochMillis(LocalDateTime.ofEpochSecond(0, 0, ZoneOffset.UTC)));
         datetimeVec.setNull(1);
@@ -293,22 +316,26 @@ public abstract class CodecTestSuite {
 
         // Fractional seconds before and after the epoch
         // Test fractions for both positive and negative encoded values
-        datetimeVec.set(3, toEpochMillis(LocalDateTime.of(1972, 1, 1, 0, 0, 0, 500000000)));
-        datetimeVec.set(3, toEpochMillis(LocalDateTime.of(1968, 1, 1, 23, 59, 59, 500000000)));
+        datetimeVec.set(4, toEpochMillis(LocalDateTime.of(1972, 1, 1, 0, 0, 0, 500000000)));
+        datetimeVec.set(5, toEpochMillis(LocalDateTime.of(1968, 1, 1, 23, 59, 59, 500000000)));
 
         var minDatetime = fromEpochMillis(Integer.MIN_VALUE);
         var maxDatetime = fromEpochMillis(Integer.MAX_VALUE);
 
-        datetimeVec.set(4, toEpochMillis(minDatetime));
-        datetimeVec.set(5, toEpochMillis(maxDatetime));
+        datetimeVec.set(6, toEpochMillis(minDatetime));
+        datetimeVec.set(7, toEpochMillis(maxDatetime));
 
         Assertions.assertEquals(minDatetime, fromEpochMillis(datetimeVec.get(4)));
         Assertions.assertEquals(maxDatetime, fromEpochMillis(datetimeVec.get(5)));
 
         var root = new VectorSchemaRoot(List.of(field), List.of(datetimeVec));
-        root.setRowCount(6);
 
-        roundTrip_impl(root, allocator);
+        var inputData = ArrowContext.forSource(root, null, allocator);
+        inputData.setRowCount(8);
+        inputData.setLoaded();
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
     }
 
     private long toEpochMillis(LocalDateTime localDateTime) {
@@ -329,17 +356,17 @@ public abstract class CodecTestSuite {
         return LocalDateTime.ofEpochSecond(epochSeconds, (int) nanos, ZoneOffset.UTC);
     }
 
-    void roundTrip_impl(VectorSchemaRoot root, RootAllocator allocator) {
+    void roundTrip_impl(ArrowContext inputData, RootAllocator allocator) {
 
         var ctx = new DataContext(new DefaultEventExecutor(), allocator);
 
-        var dataSrc = new SingleBatchDataSource(root);
+        var dataSrc = new SingleBatchDataSource(inputData);
         var pipeline = DataPipeline.forSource(dataSrc, ctx);
 
-        pipeline.addStage(codec.getEncoder(allocator, root.getSchema(), Map.of()));
-        pipeline.addStage(codec.getDecoder(allocator, root.getSchema(), Map.of()));
+        pipeline.addStage(codec.getEncoder(allocator, Map.of()));
+        pipeline.addStage(codec.getDecoder(allocator, inputData.getArrowSchema(), Map.of()));
 
-        var dataSink = new SingleBatchDataSink(pipeline, batch -> compareBatches(root, batch));
+        var dataSink = new SingleBatchDataSink(pipeline, batch -> compareBatches(inputData, batch));
         pipeline.addSink(dataSink);
 
         var exec = pipeline.execute();
@@ -349,10 +376,10 @@ public abstract class CodecTestSuite {
         var rtRowCount = dataSink.getRowCount();
 
         Assertions.assertEquals(1, dataSink.getBatchCount());
-        Assertions.assertEquals(root.getSchema(), rtSchema);
-        Assertions.assertEquals(root.getRowCount(), rtRowCount);
+        Assertions.assertEquals(inputData.getArrowSchema(), rtSchema);
+        Assertions.assertEquals(inputData.getFrontBuffer().getRowCount(), rtRowCount);
 
-        root.close();
+        inputData.close();
     }
 
     @Test
@@ -360,7 +387,7 @@ public abstract class CodecTestSuite {
     void decode_basic() {
 
         var allocator = new RootAllocator();
-        var root = generateBasicData(allocator);
+        var inputData = generateBasicData(allocator);
 
         var testData = ResourceHelpers.loadResourceAsBytes(basicData);
         var testDataBuf = Bytes.copyToBuffer(testData, allocator);
@@ -369,10 +396,10 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, root.getSchema(), Map.of());
+        var decoder = codec.getDecoder(allocator, inputData.getArrowSchema(), Map.of());
         pipeline.addStage(decoder);
 
-        var dataSink = new SingleBatchDataSink(pipeline, batch -> compareBatches(root, batch));
+        var dataSink = new SingleBatchDataSink(pipeline, batch -> compareBatches(inputData, batch));
         pipeline.addSink(dataSink);
 
         var exec = pipeline.execute();
@@ -382,10 +409,10 @@ public abstract class CodecTestSuite {
         var rtRowCount = dataSink.getRowCount();
 
         Assertions.assertEquals(1, dataSink.getBatchCount());
-        Assertions.assertEquals(root.getSchema(), rtSchema);
-        Assertions.assertEquals(root.getRowCount(), rtRowCount);
+        Assertions.assertEquals(inputData.getArrowSchema(), rtSchema);
+        Assertions.assertEquals(inputData.getFrontBuffer().getRowCount(), rtRowCount);
 
-        root.close();
+        inputData.close();
     }
 
     @Test
@@ -517,7 +544,12 @@ public abstract class CodecTestSuite {
     }
 
 
-    private void compareBatches(VectorSchemaRoot original, VectorSchemaRoot roundTrip) {
+    private void compareBatches(ArrowContext originalContext, ArrowContext roundTripContext) {
+
+        // Compare front (presenting) buffers of original and RT data
+
+        var original = originalContext.getFrontBuffer();
+        var roundTrip = roundTripContext.getFrontBuffer();
 
         // Data pipeline cleans up round trip root after the pipeline completes
         // To do this comparison, SingleBatchDataSink should convert root -> java array / maps

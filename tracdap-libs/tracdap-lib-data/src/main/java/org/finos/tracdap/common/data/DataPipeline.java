@@ -17,6 +17,16 @@
 
 package org.finos.tracdap.common.data;
 
+import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
+import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
+import org.apache.arrow.algorithm.dictionary.SearchTreeBasedDictionaryBuilder;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.FixedWidthVector;
+import org.apache.arrow.vector.dictionary.DictionaryEncoder;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.types.pojo.Schema;
+import org.apache.arrow.vector.util.TransferPair;
 import org.finos.tracdap.common.data.pipeline.DataPipelineImpl;
 
 import org.apache.arrow.memory.ArrowBuf;
@@ -88,7 +98,6 @@ public interface DataPipeline {
     // PIPELINE STAGE INTERFACES
     // -----------------------------------------------------------------------------------------------------------------
 
-
     interface DataInterface <API_T>  {
 
         API_T dataInterface();
@@ -96,7 +105,7 @@ public interface DataPipeline {
 
     interface ArrowApi extends DataInterface<ArrowApi> {
 
-        void onStart(VectorSchemaRoot root);
+        void onStart(ArrowContext context);
         void onBatch();
         void onComplete();
         void onError(Throwable error);

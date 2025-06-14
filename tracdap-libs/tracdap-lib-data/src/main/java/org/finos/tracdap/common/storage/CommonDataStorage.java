@@ -21,6 +21,7 @@ import io.netty.channel.EventLoopGroup;
 import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.codec.ICodecManager;
 import org.finos.tracdap.common.async.Flows;
+import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.IDataContext;
 import org.finos.tracdap.common.data.pipeline.RangeSelector;
@@ -76,7 +77,7 @@ public class CommonDataStorage implements IDataStorage {
 
     @Override
     public DataPipeline pipelineReader(
-            StorageCopy storageCopy, Schema requiredSchema, IDataContext dataContext,
+            StorageCopy storageCopy, ArrowSchema requiredSchema, IDataContext dataContext,
             long offset, long limit) {
 
         var codec = formats.getCodec(storageCopy.getStorageFormat());
@@ -101,13 +102,13 @@ public class CommonDataStorage implements IDataStorage {
 
     @Override
     public DataPipeline pipelineWriter(
-            StorageCopy storageCopy, Schema requiredSchema,
+            StorageCopy storageCopy, ArrowSchema requiredSchema,
             IDataContext dataContext, DataPipeline pipeline,
             CompletableFuture<Long> signal) {
 
         var codec = formats.getCodec(storageCopy.getStorageFormat());
         var options = Map.<String, String>of();
-        var encoder = codec.getEncoder(dataContext.arrowAllocator(), requiredSchema, options);
+        var encoder = codec.getEncoder(dataContext.arrowAllocator(), options);
 
         pipeline = pipeline.addStage(encoder);
 

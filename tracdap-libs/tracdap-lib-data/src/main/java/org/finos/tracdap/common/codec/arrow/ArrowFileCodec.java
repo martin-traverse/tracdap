@@ -21,6 +21,7 @@ import org.finos.tracdap.common.codec.ICodec;
 
 import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.memory.BufferAllocator;
+import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 
 import java.util.List;
@@ -43,13 +44,13 @@ public class ArrowFileCodec implements ICodec {
 
     @Override
     public Encoder<DataPipeline.StreamApi>
-    getEncoder(BufferAllocator arrowAllocator, Schema schema, Map<String, String> options) {
+    getEncoder(BufferAllocator arrowAllocator, Map<String, String> options) {
         return new ArrowFileEncoder(arrowAllocator);
     }
 
     @Override
     public Decoder<DataPipeline.BufferApi>
-    getDecoder(BufferAllocator arrowAllocator, Schema schema, Map<String, String> options) {
+    getDecoder(BufferAllocator arrowAllocator, ArrowSchema arrowSchema, Map<String, String> options) {
         return new ArrowFileDecoder(arrowAllocator);
     }
 }

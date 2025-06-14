@@ -17,9 +17,9 @@
 
 package org.finos.tracdap.common.codec;
 
+import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 
-import org.apache.arrow.vector.types.pojo.Schema;
 import org.apache.arrow.memory.BufferAllocator;
 
 import java.util.List;
@@ -43,11 +43,10 @@ public interface ICodec {
 
     Encoder<?> getEncoder(
             BufferAllocator arrowAllocator,
-            Schema schema,
             Map<String, String> options);
 
     Decoder<?> getDecoder(
             BufferAllocator arrowAllocator,
-            Schema schema,
+            ArrowSchema arrowSchema,
             Map<String, String> options);
 }

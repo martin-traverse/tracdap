@@ -17,6 +17,8 @@
 
 package org.finos.tracdap.test.data;
 
+import org.finos.tracdap.common.data.ArrowContext;
+import org.finos.tracdap.common.data.ArrowSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.pipeline.BaseDataSink;
 
@@ -30,10 +32,10 @@ public class SingleBatchDataSink
         extends BaseDataSink <DataPipeline.ArrowApi>
         implements DataPipeline.ArrowApi {
 
-    private final Consumer<VectorSchemaRoot> callback;
+    private final Consumer<ArrowContext> callback;
 
-    private VectorSchemaRoot root;
-    private Schema schema;
+    private ArrowContext root;
+    private ArrowSchema schema;
     private long rowCount;
     private int batchCount;
 
@@ -41,7 +43,7 @@ public class SingleBatchDataSink
         this(pipeline, batch -> {});
     }
 
-    public SingleBatchDataSink(DataPipeline pipeline, Consumer<VectorSchemaRoot> callback) {
+    public SingleBatchDataSink(DataPipeline pipeline, Consumer<ArrowContext> callback) {
 
         super(pipeline);
 
@@ -54,7 +56,7 @@ public class SingleBatchDataSink
         return this;
     }
 
-    public Schema getSchema() {
+    public ArrowSchema getSchema() {
         return schema;
     }
 
@@ -86,18 +88,20 @@ public class SingleBatchDataSink
     }
 
     @Override
-    public void onStart(VectorSchemaRoot root) {
+    public void onStart(ArrowContext root) {
         this.root = root;
-        this.schema = root.getSchema();
+        this.schema = root.getArrowSchema();
     }
 
     @Override
     public void onBatch() {
 
         batchCount += 1;
-        rowCount += root.getRowCount();
+        rowCount += root.getFrontBuffer().getRowCount();
 
         callback.accept(root);
+
+        root.setUnloaded();
     }
 
     @Override
