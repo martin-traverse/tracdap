@@ -329,12 +329,12 @@ abstract class DataRoundTripTest {
 
         Assertions.assertEquals(SampleData.BASIC_TABLE_SCHEMA, roundTripSchema);
 
-        for (int i = 0; i < roundTripSchema.getTable().getFieldsCount(); i++) {
+        for (int col = 0; col < roundTripSchema.getTable().getFieldsCount(); col++) {
 
             for (var row = 0; row < DataRoundTripTest.BASIC_TEST_DATA.size(); row++) {
 
-                var expectedVal = DataRoundTripTest.BASIC_TEST_DATA.get(i).get(row);
-                var roundTripVal = roundTripData.get(i).get(row);
+                var expectedVal = DataRoundTripTest.BASIC_TEST_DATA.get(col).get(row);
+                var roundTripVal = roundTripData.get(col).get(row);
 
                 // Allow comparing big decimals with different scales
                 if (expectedVal instanceof BigDecimal)

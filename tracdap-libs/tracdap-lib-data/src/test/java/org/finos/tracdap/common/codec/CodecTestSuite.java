@@ -134,6 +134,11 @@ public abstract class CodecTestSuite {
     }
 
     @Test
+    void roundTrip_struct() {
+
+    }
+
+    @Test
     void edgeCaseIntegers() {
 
         var allocator = new RootAllocator();

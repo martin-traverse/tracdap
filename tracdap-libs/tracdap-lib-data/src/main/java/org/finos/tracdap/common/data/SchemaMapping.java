@@ -48,6 +48,10 @@ public class SchemaMapping {
     public static final ArrowType ARROW_BASIC_DATE = new ArrowType.Date(DateUnit.DAY);
     public static final ArrowType ARROW_BASIC_DATETIME = new ArrowType.Timestamp(TIMESTAMP_PRECISION, NO_ZONE);  // Using type without timezone
 
+    public static final ArrowType ARROW_LIST = new ArrowType.List();
+    public static final ArrowType ARROW_MAP = new ArrowType.Map(/* keysSorted = */ false);
+    public static final ArrowType ARROW_STRUCT = new ArrowType.Struct();
+
     private static final Map<BasicType, ArrowType> TRAC_ARROW_TYPE_MAPPING = Map.ofEntries(
             Map.entry(BasicType.BOOLEAN, ARROW_BASIC_BOOLEAN),
             Map.entry(BasicType.INTEGER, ARROW_BASIC_INTEGER),
@@ -55,7 +59,10 @@ public class SchemaMapping {
             Map.entry(BasicType.DECIMAL, ARROW_BASIC_DECIMAL),
             Map.entry(BasicType.STRING, ARROW_BASIC_STRING),
             Map.entry(BasicType.DATE, ARROW_BASIC_DATE),
-            Map.entry(BasicType.DATETIME, ARROW_BASIC_DATETIME));
+            Map.entry(BasicType.DATETIME, ARROW_BASIC_DATETIME),
+            Map.entry(BasicType.ARRAY, ARROW_LIST),
+            Map.entry(BasicType.MAP, ARROW_MAP),
+            Map.entry(BasicType.STRUCT, ARROW_STRUCT));
 
     private static final Map<ArrowType.ArrowTypeID, BasicType> ARROW_TRAC_TYPE_MAPPING = Map.ofEntries(
             Map.entry(ArrowType.ArrowTypeID.Bool, BasicType.BOOLEAN),
@@ -70,12 +77,15 @@ public class SchemaMapping {
 
         var decodedSchema = tracToArrowDecoded(tracSchema);
 
-        var tracTableSchema = tracSchema.getTable();
-        var arrowFields = new ArrayList<Field>(tracTableSchema.getFieldsCount());
+        var tracFields = tracSchema.getSchemaType() == SchemaType.TABLE_SCHEMA && tracSchema.getFieldsCount() == 0
+                ? tracSchema.getTable().getFieldsList()
+                : tracSchema.getFieldsList();
 
-        for (int fieldIndex = 0; fieldIndex < tracTableSchema.getFieldsCount(); fieldIndex++) {
+        var arrowFields = new ArrayList<Field>(decodedSchema.getFields().size());
 
-            var tracField = tracTableSchema.getFields(fieldIndex);
+        for (int fieldIndex = 0; fieldIndex < tracFields.size(); fieldIndex++) {
+
+            var tracField = tracFields.get(fieldIndex);
 
             if (tracField.getCategorical()) {
 
@@ -102,14 +112,13 @@ public class SchemaMapping {
 
     public static Schema tracToArrowDecoded(SchemaDefinition tracSchema) {
 
-        // Unexpected error - TABLE is the only TRAC schema type currently available
-        if (tracSchema.getSchemaType() != SchemaType.TABLE)
-            throw new EUnexpected();
+        var tracFields = tracSchema.getSchemaType() == SchemaType.TABLE_SCHEMA && tracSchema.getFieldsCount() == 0
+                ? tracSchema.getTable().getFieldsList()
+                : tracSchema.getFieldsList();
 
-        var tracTableSchema = tracSchema.getTable();
-        var arrowFields = new ArrayList<Field>(tracTableSchema.getFieldsCount());
+        var arrowFields = new ArrayList<Field>(tracFields.size());
 
-        for (var tracField : tracTableSchema.getFieldsList()) {
+        for (var tracField : tracFields) {
 
             var fieldName = tracField.getFieldName();
             var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType());

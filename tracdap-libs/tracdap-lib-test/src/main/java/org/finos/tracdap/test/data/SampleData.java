@@ -22,6 +22,7 @@ import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.ETracInternal;
 import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.metadata.TypeSystem;
 import org.finos.tracdap.metadata.*;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
@@ -129,6 +130,127 @@ public class SampleData {
                     .setFieldType(BasicType.BOOLEAN)))
             .build();
 
+    public static final SchemaDefinition BASIC_STRUCT_SCHEMA
+            = SchemaDefinition.newBuilder()
+            .setSchemaType(SchemaType.STRUCT_SCHEMA)
+            .setPartType(PartType.NOT_PARTITIONED)
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("boolField")
+                    .setFieldType(BasicType.BOOLEAN)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("intField")
+                    .setFieldType(BasicType.INTEGER)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("floatField")
+                    .setFieldType(BasicType.FLOAT)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("decimalField")
+                    .setFieldType(BasicType.DECIMAL)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("strField")
+                    .setFieldType(BasicType.STRING)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("dateField")
+                    .setFieldType(BasicType.DATE)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("datetimeField")
+                    .setFieldType(BasicType.DATETIME)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("enumField")
+                    .setFieldType(BasicType.STRING)
+                    .setCategorical(true)
+                    .setNotNull(true)
+                    .setNamedEnum("ExampleEnum"))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("quotedField")
+                    .setFieldType(BasicType.STRING)
+                    .setNotNull(true))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("optionalField")
+                    .setFieldType(BasicType.STRING)
+                    .setNotNull(false))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("optionalQuotedField")
+                    .setFieldType(BasicType.STRING)
+                    .setNotNull(false))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("listField")
+                    .setFieldType(BasicType.ARRAY)
+                    .setNotNull(true)
+                    .setChildren(FieldChildren.newBuilder()
+                    .setArrayItems(FieldSchema.newBuilder()
+                            .setFieldType(BasicType.INTEGER)
+                            .setNotNull(true))))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("dictField")
+                    .setFieldType(BasicType.MAP)
+                    .setNotNull(true)
+                    .setChildren(FieldChildren.newBuilder()
+                            .setMapValues(FieldSchema.newBuilder()
+                                    .setFieldType(BasicType.DATETIME)
+                                    .setNotNull(true))))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("anonymousStructField")
+                    .setFieldType(BasicType.STRUCT)
+                    .setChildren(FieldChildren.newBuilder()
+                    .addStructFields(FieldSchema.newBuilder()
+                            .setFieldName("field1")
+                            .setFieldType(BasicType.STRING)
+                            .setNotNull(true))
+                    .addStructFields(FieldSchema.newBuilder()
+                            .setFieldName("field2")
+                            .setFieldType(BasicType.INTEGER)
+                            .setNotNull(true))
+                    .addStructFields(FieldSchema.newBuilder()
+                            .setFieldName("enumField")
+                            .setFieldType(BasicType.STRING)
+                            .setCategorical(true)
+                            .setNotNull(true)
+                            .setNamedEnum("ExampleEnum"))))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("structField")
+                    .setFieldType(BasicType.STRUCT)
+                    .setNamedType("DataClassSubStruct"))
+            .addFields(FieldSchema.newBuilder()
+                    .setFieldName("nestedStructField")
+                    .setFieldType(BasicType.MAP)
+                    .setChildren(FieldChildren.newBuilder()
+                    .setMapValues(FieldSchema.newBuilder()
+                            .setFieldType(BasicType.STRUCT)
+                            .setNamedType("DataClassSubStruct")
+                            .setNotNull(true))))
+            .putNamedTypes("DataClassSubStruct", SchemaDefinition.newBuilder()
+                    .setSchemaType(SchemaType.STRUCT_SCHEMA)
+                    .setPartType(PartType.NOT_PARTITIONED)
+                    .addFields(FieldSchema.newBuilder()
+                            .setFieldName("field1")
+                            .setFieldType(BasicType.STRING)
+                            .setNotNull(true))
+                    .addFields(FieldSchema.newBuilder()
+                            .setFieldName("field2")
+                            .setFieldType(BasicType.INTEGER)
+                            .setNotNull(true))
+                    .addFields(FieldSchema.newBuilder()
+                            .setFieldName("enumField")
+                            .setFieldType(BasicType.STRING)
+                            .setCategorical(true)
+                            .setNotNull(true)
+                            .setNamedEnum("ExampleEnum"))
+                    .build())
+            .putNamedEnums("ExampleEnum", CategoricalValues.newBuilder()
+                    .addValues(Value.newBuilder().setStringValue("VALUE1").build())
+                    .addValues(Value.newBuilder().setStringValue("VALUE2").build())
+                    .addValues(Value.newBuilder().setStringValue("VALUE3").build())
+                    .build())
+            .build();
+
 
     public static final FlowDefinition SAMPLE_FLOW = FlowDefinition.newBuilder()
             .putNodes("basic_data_input", FlowNode.newBuilder()
@@ -201,6 +323,28 @@ public class SampleData {
         }
 
         return convertData(BASIC_TABLE_SCHEMA, javaData, 10, arrowAllocator);
+    }
+
+    public static ArrowVsrContext generateStructData(BufferAllocator arrowAllocator) {
+
+        var javaData = new HashMap<String, List<Object>>();
+
+        for (var field : BASIC_TABLE_SCHEMA.getFieldsList()) {
+
+            var javaValues = generateJavaValues(field.getFieldType(), field.getCategorical(), 10);
+            javaData.put(field.getFieldName(), javaValues);
+        }
+
+        return convertData(BASIC_TABLE_SCHEMA, javaData, 1, arrowAllocator);
+    }
+
+    public static List<Object> generateJavaValues(FieldSchema field, int n) {
+
+        if (TypeSystem.isPrimitive(field.getFieldType())) {
+            return generateJavaValues(field.getFieldType(), field.getCategorical(), n);
+        }
+
+        return List.of();
     }
 
     public static List<Object> generateJavaValues(BasicType basicType, boolean categorical, int n) {
