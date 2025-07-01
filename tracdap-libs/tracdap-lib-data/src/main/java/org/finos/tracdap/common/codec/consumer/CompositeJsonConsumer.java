@@ -15,15 +15,41 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.data.core.consumer;
+package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.ValueVector;
+import com.fasterxml.jackson.core.JsonToken;
 
 import java.io.IOException;
+import java.util.List;
 
+public class CompositeJsonConsumer {
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+    private final List<IJsonConsumer<?>> consumers;
+    private int currentIndex;
+    private int currentElement;
 
-    boolean consumeElement(JsonParser parser) throws IOException;
+    public CompositeJsonConsumer(List<IJsonConsumer<?>> consumers) {
+        this.consumers = consumers;
+        this.currentIndex = 0;
+        this.currentElement = 0;
+    }
+
+    public boolean consumeRecord(JsonParser parser) throws IOException {
+
+        while (currentElement < consumers.size() && parser.currentToken() != JsonToken.NOT_AVAILABLE) {
+
+            var consumer = consumers.get(currentElement);
+
+            if (!consumer.consumeElement(parser))
+                return false;
+
+            currentElement++;
+        }
+
+        currentIndex++;
+        currentElement = 0;
+
+        return true;
+    }
 }
