@@ -15,18 +15,15 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.data.core.consumer;
+package org.finos.tracdap.common.codec.consumer;
 
+import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.vector.ValueVector;
 
+import java.io.IOException;
 
-public abstract class BaseJsonConsumer<TVector extends ValueVector> implements IJsonConsumer<TVector> {
 
-    protected TVector vector;
-    protected int currentIndex;
+public interface IJsonConsumer<TVector extends ValueVector> {
 
-    protected BaseJsonConsumer(TVector vector) {
-        this.vector = vector;
-        this.currentIndex = 0;
-    }
+    boolean consumeElement(JsonParser parser) throws IOException;
 }

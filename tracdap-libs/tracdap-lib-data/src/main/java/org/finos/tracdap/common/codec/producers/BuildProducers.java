@@ -19,9 +19,7 @@ package org.finos.tracdap.common.codec.producers;
 
 import org.apache.arrow.vector.*;
 import org.apache.arrow.vector.complex.*;
-import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
-import org.apache.arrow.vector.types.Types;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -36,38 +34,40 @@ public class BuildProducers {
                 .collect(Collectors.toList());
     }
 
-    @SuppressWarnings("unchecked")
     public static IJsonProducer<?>
     createProducer(FieldVector vector, boolean nullable, DictionaryProvider dictionaries) {
 
-        Types.MinorType minorType = vector.getMinorType();
-
+        // Wrap nullable fields with an outer producer to handle nulls
         if (nullable && vector.getField().isNullable()) {
-            var innerProducer = createProducer(vector, false, dictionaries);
+            var innerProducer = createProducer(vector, /* nullable = */ false, dictionaries);
             return new JsonNullableProducer<>(innerProducer);
         }
 
+        // Wrap dictionary encoded fields with a producer that decodes dictionary values
+        // No text format (currently) supports dictionaries, so they are always decoded
         if (vector.getField().getDictionary() != null) {
+
             if (dictionaries == null) {
-                throw new IllegalArgumentException(
-                        "Field references a dictionary but no dictionaries were provided: "
-                                + vector.getField().getName());
+                var message = "Field references a dictionary but no dictionaries were provided: %s";
+                var error = String.format(message, vector.getField().getName());
+                throw new IllegalArgumentException(error);
             }
-            Dictionary dictionary = dictionaries.lookup(vector.getField().getDictionary().getId());
+
+            var dictionary = dictionaries.lookup(vector.getField().getDictionary().getId());
+
             if (dictionary == null) {
-                throw new IllegalArgumentException(
-                        "Field references a dictionary that does not exist: "
-                                + vector.getField().getName()
-                                + ", dictionary ID = "
-                                + vector.getField().getDictionary().getId());
+                var message = "Field references a dictionary that does not exist: %s, dictionary ID = %d";
+                var error = String.format(message, vector.getField().getName(), vector.getField().getDictionary().getId());
+                throw new IllegalArgumentException(error);
             }
 
-            var dictProducer = createProducer(dictionary.getVector(), false, null);
-            return new JsonDictionaryProducer((BaseIntVector) vector, dictProducer);
-
+            var innerNullable = vector.getField().isNullable();
+            var innerProducer = createProducer(dictionary.getVector(), innerNullable, /* dictionaries = */ null);
+            return new JsonDictionaryProducer((BaseIntVector) vector, innerProducer);
         }
 
-        switch (minorType) {
+        // Create a producer for the specific vector type
+        switch (vector.getMinorType()) {
 
             // Null type
 
@@ -117,18 +117,18 @@ public class BuildProducers {
             case TIMESTAMPMILLI:
                 return new JsonTimestampMilliProducer((TimeStampMilliVector) vector);
 
-            // Complex types
+            // Composite types
 
             case LIST:
-                ListVector listVector = (ListVector) vector;
-                FieldVector itemVector = listVector.getDataVector();
-                IJsonProducer<?> itemProducer = createProducer(itemVector, itemVector.getField().isNullable(), dictionaries);
+                var listVector = (ListVector) vector;
+                var itemVector = listVector.getDataVector();
+                var itemProducer = createProducer(itemVector, itemVector.getField().isNullable(), dictionaries);
                 return new JsonListProducer(listVector, itemProducer);
 
             case FIXED_SIZE_LIST:
-                FixedSizeListVector fixedListVector = (FixedSizeListVector) vector;
-                FieldVector fixedItemVector = fixedListVector.getDataVector();
-                IJsonProducer<?> fixedItemProducer = createProducer(fixedItemVector, fixedItemVector.getField().isNullable(), dictionaries);
+                var fixedListVector = (FixedSizeListVector) vector;
+                var fixedItemVector = fixedListVector.getDataVector();
+                var fixedItemProducer = createProducer(fixedItemVector, fixedItemVector.getField().isNullable(), dictionaries);
                 return new JsonFixedSizeListProducer(fixedListVector, fixedItemProducer);
 //
 //            case MAP:
@@ -163,10 +163,12 @@ public class BuildProducers {
             // https://github.com/apache/arrow-java/issues/108
 
             default:
+
                 // Not all Arrow types are supported for encoding (yet)!
-                String error =
-                        String.format(
-                                "Encoding Arrow type %s to Avro is not currently supported", minorType.name());
+                var error = String.format(
+                        "Encoding Arrow type %s is not currently supported",
+                        vector.getMinorType().name());
+
                 throw new UnsupportedOperationException(error);
         }
     }
