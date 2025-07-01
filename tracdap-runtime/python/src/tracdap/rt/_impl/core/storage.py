@@ -61,6 +61,19 @@ class FormatManager:
         codec = cls.get_data_format(format_code, format_options={})
         return codec.format_code()
 
+    def define_external_apis(self):
+
+        return trac.define_exernal_apis(
+            trac.external_api("openai", openai.OpenAI))
+
+    def run_model(self, ctx: trac.TracContext):
+
+        openai = ctx.get_external_api("openai", openai.OpenAI)
+
+        response = openai.responses.create(
+            model="gpt-4o",
+            input="...")
+
 
 class StorageManager:
 
@@ -752,6 +765,13 @@ class CommonDataStorage(IDataStorage):
         self.__file_storage = file_storage
         self.__pushdown_pandas = pushdown_pandas
         self.__pushdown_spark = pushdown_spark
+
+    def convert_struct(self, table: pa.Table) -> pa.StructScalar:
+
+        if len(table) != 1:
+            raise RuntimeError()
+
+        struct: pa.StructScalar = table.to_struct_array(1)[0]
 
     def read_table(
             self, storage_path: str, storage_format: str,

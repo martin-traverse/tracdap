@@ -18,6 +18,8 @@
 package org.finos.tracdap.common.codec.json;
 
 import org.finos.tracdap.common.codec.StreamingEncoder;
+import org.finos.tracdap.common.codec.producers.BuildProducers;
+import org.finos.tracdap.common.codec.producers.CompositeObjectProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -42,6 +44,8 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
     private ArrowVsrContext context;
     private OutputStream out;
+
+    private CompositeObjectProducer producer;
     private JsonGenerator generator;
 
     public JsonEncoder(BufferAllocator allocator) {
@@ -64,6 +68,12 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
 
             var factory = new JsonFactory();
             generator = factory.createGenerator(out, JsonEncoding.UTF8);
+
+            var producers = BuildProducers.createProducers(
+                    context.getFrontBuffer().getFieldVectors(),
+                    context.getDictionaries());
+
+            producer = new CompositeObjectProducer(producers);
 
             // Tell Jackson to start the main array of records
             generator.writeStartArray();
@@ -88,26 +98,12 @@ public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
                 log.trace("JSON ENCODER: onNext()");
 
             var batch = context.getFrontBuffer();
-            var dictionaries = context.getDictionaries();
-
             var nRows = batch.getRowCount();
-            var nCols = batch.getFieldVectors().size();
 
-            for (var row = 0; row < nRows; row++) {
+            producer.resetVectors(batch.getFieldVectors());
 
-                generator.writeStartObject();
-
-                for (var col = 0; col < nCols; col++) {
-
-                    var vector = batch.getVector(col);
-                    var fieldName = vector.getName();
-
-                    generator.writeFieldName(fieldName);
-                    JacksonValues.getAndGenerate(vector, row, dictionaries, generator);
-                }
-
-                generator.writeEndObject();
-            }
+            for (var row = 0; row < nRows; row++)
+                producer.produceElement(generator);
 
             context.setUnloaded();
         }

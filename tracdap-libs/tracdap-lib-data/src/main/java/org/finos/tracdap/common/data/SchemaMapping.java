@@ -21,12 +21,15 @@ import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.*;
-import org.finos.tracdap.common.exception.EDataTypeNotSupported;
 import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.exception.EValidationGap;
 import org.finos.tracdap.metadata.*;
 
 import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 
 public class SchemaMapping {
@@ -48,6 +51,10 @@ public class SchemaMapping {
     public static final ArrowType ARROW_BASIC_DATE = new ArrowType.Date(DateUnit.DAY);
     public static final ArrowType ARROW_BASIC_DATETIME = new ArrowType.Timestamp(TIMESTAMP_PRECISION, NO_ZONE);  // Using type without timezone
 
+    public static final ArrowType ARROW_LIST = new ArrowType.List();
+    public static final ArrowType ARROW_MAP = new ArrowType.Map(/* keysSorted = */ false);
+    public static final ArrowType ARROW_STRUCT = new ArrowType.Struct();
+
     private static final Map<BasicType, ArrowType> TRAC_ARROW_TYPE_MAPPING = Map.ofEntries(
             Map.entry(BasicType.BOOLEAN, ARROW_BASIC_BOOLEAN),
             Map.entry(BasicType.INTEGER, ARROW_BASIC_INTEGER),
@@ -55,7 +62,10 @@ public class SchemaMapping {
             Map.entry(BasicType.DECIMAL, ARROW_BASIC_DECIMAL),
             Map.entry(BasicType.STRING, ARROW_BASIC_STRING),
             Map.entry(BasicType.DATE, ARROW_BASIC_DATE),
-            Map.entry(BasicType.DATETIME, ARROW_BASIC_DATETIME));
+            Map.entry(BasicType.DATETIME, ARROW_BASIC_DATETIME),
+            Map.entry(BasicType.ARRAY, ARROW_LIST),
+            Map.entry(BasicType.MAP, ARROW_MAP),
+            Map.entry(BasicType.STRUCT, ARROW_STRUCT));
 
     private static final Map<ArrowType.ArrowTypeID, BasicType> ARROW_TRAC_TYPE_MAPPING = Map.ofEntries(
             Map.entry(ArrowType.ArrowTypeID.Bool, BasicType.BOOLEAN),
@@ -66,104 +76,208 @@ public class SchemaMapping {
             Map.entry(ArrowType.ArrowTypeID.Date, BasicType.DATE),
             Map.entry(ArrowType.ArrowTypeID.Timestamp, BasicType.DATETIME));
 
+    public static final FieldSchema DEFAULT_MAP_KEY_FIELD = FieldSchema.newBuilder()
+            .setFieldName("key")  // Match Arrow's MapVector.KEY_NAME
+            .setFieldType(BasicType.STRING)
+            .setNotNull(true)
+            .build();
+
+    private final SchemaDefinition tracSchema;
+    private final AtomicInteger nextDictionaryId;
+
     public static ArrowVsrSchema tracToArrow(SchemaDefinition tracSchema) {
 
-        var decodedSchema = tracToArrowDecoded(tracSchema);
+        var mapping = new SchemaMapping(tracSchema);
+        return mapping.tracToArrowSchema(tracSchema);
+    }
 
-        var tracTableSchema = tracSchema.getTable();
-        var arrowFields = new ArrayList<Field>(tracTableSchema.getFieldsCount());
+    private SchemaMapping(SchemaDefinition tracSchema) {
+        this.tracSchema = tracSchema;
+        this.nextDictionaryId = new AtomicInteger(0);
+    }
 
-        for (int fieldIndex = 0; fieldIndex < tracTableSchema.getFieldsCount(); fieldIndex++) {
+    private ArrowVsrSchema tracToArrowSchema(SchemaDefinition tracSchema) {
 
-            var tracField = tracTableSchema.getFields(fieldIndex);
+        var tracFields = tracSchema.getSchemaType() == SchemaType.TABLE_SCHEMA && tracSchema.getFieldsCount() == 0
+                ? tracSchema.getTable().getFieldsList()
+                : tracSchema.getFieldsList();
 
-            if (tracField.getCategorical()) {
+        var logicalFields = new ArrayList<Field>(tracFields.size());
+        var physicalFields = new ArrayList<Field>(tracFields.size());
 
-                var indexType = new ArrowType.Int(32, true);
-                var encoding = new DictionaryEncoding(fieldIndex, false, indexType);
-                var notNull = tracField.getBusinessKey() || tracField.getNotNull();
-                var nullable = !notNull;
+        for (var tracField : tracFields) {
 
-                var indexField = new Field(
-                        tracField.getFieldName(),
-                        new FieldType(nullable, indexType, encoding),
-                        /* children = */ null);
+            var logicalField = tracToArrowField(tracField);
+            var physicalField = tracToArrowPhysicalField(tracField, logicalField);
 
-                arrowFields.add(indexField);
+            logicalFields.add(logicalField);
+            physicalFields.add(physicalField);
+        }
+
+        return new ArrowVsrSchema(new Schema(physicalFields), new Schema(logicalFields));
+    }
+
+    private Field tracToArrowField(FieldSchema tracField) {
+
+        return tracToArrowField(tracField, tracField.getFieldName());
+    }
+
+    private Field tracToArrowField(FieldSchema tracField, String fieldName) {
+
+        var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType());
+        var notNull = tracField.getBusinessKey() || tracField.getNotNull();
+        var nullable = !notNull;
+
+        // Unexpected error - All TRAC primitive types are mapped
+        if (arrowType == null)
+            throw new EUnexpected();
+
+        var arrowFieldType = new FieldType(nullable, arrowType, /* dictionary = */ null);
+
+        var children = tracField.hasChildren() || (tracField.getFieldType() == BasicType.STRUCT && tracField.hasNamedType())
+                ? tracToArrowChildren(tracField)
+                : null;
+
+        return new Field(fieldName, arrowFieldType, children);
+    }
+
+    private List<Field> tracToArrowChildren(FieldSchema tracField) {
+
+        var tracChildren = tracField.getChildren();
+
+        if (tracField.getFieldType() == BasicType.ARRAY) {
+
+            var tracItems = tracChildren.getArrayItems();
+            var arrowItems = tracToArrowField(tracItems, "$data$");
+
+            return List.of(arrowItems);
+        }
+
+        if (tracField.getFieldType() == BasicType.MAP) {
+
+            var tracKeys = tracChildren.hasMapKeys()
+                    ? tracChildren.getMapKeys()
+                    : DEFAULT_MAP_KEY_FIELD;
+
+            var tracValues = tracChildren.getMapValues();
+            var arrowKeys = tracToArrowField(tracKeys, "key");
+            var arrowValues = tracToArrowField(tracValues, "value");
+
+            // Arrow maps are a list of entries, where the entry has keys and values as children
+            var entriesType = new FieldType(false, new ArrowType.Struct(), null);
+            var entriesField = new Field("entries", entriesType, List.of(arrowKeys, arrowValues));
+
+            return List.of(entriesField);
+        }
+
+        if (tracField.getFieldType() == BasicType.STRUCT) {
+
+            if (tracField.hasNamedType()) {
+
+                if (!tracSchema.containsNamedTypes(tracField.getNamedType())) {
+
+                    // TODO: Error
+                    var error = String.format("Named type is missing in the schema: [%s]",  tracField.getNamedType());
+                    throw new EValidationGap(error);
+                }
+
+                var namedType = tracSchema.getNamedTypesOrThrow(tracField.getNamedType());
+
+                return namedType.getFieldsList().stream()
+                        .map(this::tracToArrowField)
+                        .collect(Collectors.toList());
             }
-            else {
 
-                arrowFields.add(decodedSchema.getFields().get(fieldIndex));
+            if (tracChildren.getStructFieldsCount() > 0) {
+
+                return tracChildren.getStructFieldsList().stream()
+                        .map(this::tracToArrowField)
+                        .collect(Collectors.toList());
             }
         }
 
-        return new ArrowVsrSchema(new Schema(arrowFields), decodedSchema);
+        throw new EUnexpected();
     }
 
-    public static Schema tracToArrowDecoded(SchemaDefinition tracSchema) {
 
-        // Unexpected error - TABLE is the only TRAC schema type currently available
-        if (tracSchema.getSchemaType() != SchemaType.TABLE)
+    private Field tracToArrowPhysicalField(FieldSchema tracField, Field logicalField) {
+
+        if (logicalField.getChildren() != null && !logicalField.getChildren().isEmpty()) {
+
+            if (tracField.getChildren().hasArrayItems()) {
+
+                var physicalChild = tracToArrowPhysicalField(
+                        tracField.getChildren().getArrayItems(),
+                        logicalField.getChildren().get(0));
+
+                return new Field(
+                        logicalField.getName(),
+                        logicalField.getFieldType(),
+                        List.of(physicalChild));
+            }
+
+            if (tracField.getChildren().hasMapValues()) {
+
+                var logicalEntries = logicalField.getChildren().get(0);
+                var logicalKey = logicalEntries.getChildren().get(0);
+                var logicalValue = logicalEntries.getChildren().get(1);
+
+                var physicalKey = tracToArrowPhysicalField(tracField.getChildren().getMapKeys(), logicalKey);
+                var physicalValue = tracToArrowPhysicalField(tracField.getChildren().getMapValues(), logicalValue);
+
+                var physicalEntries = new Field(
+                        logicalEntries.getName(),
+                        logicalEntries.getFieldType(),
+                        List.of(physicalKey, physicalValue));
+
+                return new Field(
+                        logicalField.getName(),
+                        logicalField.getFieldType(),
+                        List.of(physicalEntries));
+            }
+
+            if (tracField.hasNamedType() || tracField.getChildren().getStructFieldsCount() > 0) {
+
+                var tracChildren = tracField.hasNamedType()
+                        ? tracSchema.getNamedTypesOrThrow(tracField.getNamedType()).getFieldsList()
+                        : tracField.getChildren().getStructFieldsList();
+
+                var physicalChildren = new ArrayList<Field>(tracField.getChildren().getStructFieldsCount());
+
+                for (int i = 0; i < logicalField.getChildren().size(); i++) {
+
+                    var tracChild = tracChildren.get(i);
+                    var logicalChild = logicalField.getChildren().get(i);
+                    var physicalChild = tracToArrowPhysicalField(tracChild, logicalChild);
+
+                    physicalChildren.add(physicalChild);
+                }
+
+                return new Field(
+                        logicalField.getName(),
+                        logicalField.getFieldType(),
+                        physicalChildren);
+            }
+
+            // Children exist but no mapping logic available
             throw new EUnexpected();
+        }
 
-        var tracTableSchema = tracSchema.getTable();
-        var arrowFields = new ArrayList<Field>(tracTableSchema.getFieldsCount());
+        if (tracField.getCategorical()) {
 
-        for (var tracField : tracTableSchema.getFieldsList()) {
-
-            var fieldName = tracField.getFieldName();
-            var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType());
+            var indexType = new ArrowType.Int(32, true);
+            var encoding = new DictionaryEncoding(nextDictionaryId.getAndIncrement(), false, indexType);
             var notNull = tracField.getBusinessKey() || tracField.getNotNull();
             var nullable = !notNull;
 
-            // Unexpected error - All TRAC primitive types are mapped
-            if (arrowType == null)
-                throw new EUnexpected();
-
-            var arrowFieldType = new FieldType(nullable, arrowType, /* dictionary = */ null);
-            var arrowField = new Field(fieldName, arrowFieldType, /* children = */ null);
-
-            arrowFields.add(arrowField);
+            return new Field(
+                    tracField.getFieldName(),
+                    new FieldType(nullable, indexType, encoding),
+                    /* children = */ null);
         }
+        else {
 
-        return new Schema(arrowFields);
-    }
-
-    public static SchemaDefinition arrowToTrac(Schema arrowSchema) {
-
-        var tracTableSchema = TableSchema.newBuilder();
-
-        for (var arrowField : arrowSchema.getFields()) {
-
-            var fieldName = arrowField.getName();
-            var fieldIndex = tracTableSchema.getFieldsCount();
-
-            var arrowTypeId = arrowField.getType().getTypeID();
-            var tracType = ARROW_TRAC_TYPE_MAPPING.get(arrowTypeId);
-            var notNull = ! arrowField.isNullable();
-
-            if (tracType == null) {
-                var arrowTypeName = arrowField.getType().getTypeID().name();
-                var error = String.format("TRAC type mapping not available for arrow type [%s]", arrowTypeName);
-                throw new EDataTypeNotSupported(error);
-            }
-
-            tracTableSchema.addFields(FieldSchema.newBuilder()
-                    .setFieldName(fieldName)
-                    .setFieldOrder(fieldIndex)
-                    .setFieldType(tracType)
-                    .setNotNull(notNull));
-
-            // Not attempting to set business key, categorical flag, format code or label
-            // Categorical *could* be inferred for Arrow dictionary vectors
-            // Other flags could be set in Arrow metadata
-            // But since arrow -> trac normally implies an external source,
-            // Thought would be needed on how to interpret any metadata that is present
+            return logicalField;
         }
-
-        return SchemaDefinition.newBuilder()
-                .setSchemaType(SchemaType.TABLE)
-                .setTable(tracTableSchema)
-                .build();
     }
 }

@@ -18,7 +18,9 @@
 package org.finos.tracdap.common.codec.csv;
 
 import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.codec.json.JacksonValues;
+import org.finos.tracdap.common.codec.producers.BuildProducers;
+import org.finos.tracdap.common.codec.producers.CompositeArrayProducer;
+import org.finos.tracdap.common.codec.producers.ICompositeProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
@@ -43,6 +45,8 @@ public class CsvEncoder extends StreamingEncoder implements AutoCloseable {
 
     private ArrowVsrContext context;
     private OutputStream out;
+
+    private ICompositeProducer producer;
     private CsvGenerator generator;
 
 
@@ -76,6 +80,12 @@ public class CsvEncoder extends StreamingEncoder implements AutoCloseable {
             generator = factory.createGenerator(out, JsonEncoding.UTF8);
             generator.setSchema(csvSchema);
 
+            var producers = BuildProducers.createProducers(
+                    context.getFrontBuffer().getFieldVectors(),
+                    context.getDictionaries());
+
+            producer = new CompositeArrayProducer(producers);
+
             // Tell Jackson to start the main array of records
             generator.writeStartArray();
         }
@@ -99,23 +109,11 @@ public class CsvEncoder extends StreamingEncoder implements AutoCloseable {
                 log.trace("CSV ENCODER: onNext()");
 
             var batch = context.getFrontBuffer();
+            var nRows = batch.getRowCount();
             var dictionaries = context.getDictionaries();
 
-            var nRows = batch.getRowCount();
-            var nCols = batch.getFieldVectors().size();
-
-            for (var row = 0; row < nRows; row++) {
-
-                generator.writeStartArray();
-
-                for (var col = 0; col < nCols; col++) {
-
-                    var vector = batch.getVector(col);
-                    JacksonValues.getAndGenerate(vector, row, dictionaries, generator);
-                }
-
-                generator.writeEndArray();
-            }
+            for (var row = 0; row < nRows; row++)
+                producer.produceElement(generator);
 
             context.setUnloaded();
         }

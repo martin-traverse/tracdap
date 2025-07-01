@@ -34,13 +34,16 @@ import "tracdap/metadata/object_id.proto";
  */
 enum SchemaType {
 
+    option allow_alias = true;
+
     SCHEMA_TYPE_NOT_SET = 0;
 
     /// Tabular data
     TABLE = 1;
+    TABLE_SCHEMA = 1;
 
     /// Structured objects
-    STRUCT = 2;
+    STRUCT_SCHEMA = 2;
 }
 
 /**
@@ -54,17 +57,34 @@ message FieldSchema {
     sint32 fieldOrder = 2;
     BasicType fieldType = 3;
 
-    string label = 4;
-
     bool businessKey = 5;
     bool categorical = 6;
+    optional bool notNull = 8;  // This could become mandatory with the next metadata update
 
-    // This could become mandatory with the next metadata update
-    optional bool notNull = 8;
-
+    string label = 4;
     optional string formatCode = 7;
+
+    optional Value defaultValue = 9;
+    optional string namedType = 10;
+    optional string namedEnum = 11;
+
+    optional FieldChildren children = 12;
 }
 
+message FieldChildren {
+
+    FieldSchema arrayItems = 1;
+
+    FieldSchema mapKeys = 2;
+    FieldSchema mapValues = 3;
+
+    repeated FieldSchema structFields = 4;
+}
+
+message CategoricalValues {
+
+    repeated Value values = 1;
+}
 
 /**
  * Schema for a tabular dataset
@@ -74,39 +94,20 @@ message TableSchema {
     repeated FieldSchema fields = 1;
 }
 
-
-/**
- * Schema for an individual field in a structured object dataset
- */
-message StructField {
-
-    TypeDescriptor fieldType = 3;
-
-    string label = 4;
-
-    bool businessKey = 5;
-    bool categorical = 6;
-
-    // This could become mandatory with the next metadata update
-    optional bool notNull = 8;
-
-    optional string formatCode = 7;
-
-    Value defaultValue = 9;
-
-    optional string structType = 10;
-}
-
-
 /**
   * Schema for a structured object dataset
   */
 message StructSchema {
 
-    map<string, StructField> fields = 1;
+    map<string, FieldSchema> fields = 1;
 
     map<string, StructSchema> namedTypes = 2;
+
+    map<string, CategoricalValues> namedEnums = 6;
 }
+
+
+
 
 
 /**
@@ -131,6 +132,12 @@ message SchemaDefinition {
         TableSchema table = 3;
         StructSchema struct = 4;
     }
+
+    repeated FieldSchema fields = 5;
+
+    map<string, SchemaDefinition> namedTypes = 6;
+
+    map<string, CategoricalValues> namedEnums = 7;
 }
 
 
@@ -139,8 +146,11 @@ message SchemaDefinition {
  */
 enum PartType {
 
+    option allow_alias = true;
+
     /// Dataset has a single partition called the root partition (this is the default)
     PART_ROOT = 0;
+    NOT_PARTITIONED = 0;
 
     /// Partition by range over an ordered variable (not available yet)
     PART_BY_RANGE = 1;

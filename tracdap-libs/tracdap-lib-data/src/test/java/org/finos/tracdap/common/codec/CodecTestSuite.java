@@ -55,6 +55,7 @@ import java.util.stream.Collectors;
 import static org.finos.tracdap.test.concurrent.ConcurrentTestHelpers.getResultOf;
 import static org.finos.tracdap.test.concurrent.ConcurrentTestHelpers.waitFor;
 import static org.finos.tracdap.test.data.SampleData.generateBasicData;
+import static org.finos.tracdap.test.data.SampleData.generateStructData;
 
 
 public abstract class CodecTestSuite {
@@ -64,30 +65,39 @@ public abstract class CodecTestSuite {
     static class ArrowStreamTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new ArrowStreamCodec();
         basicData = null;
+        structData = null;
     } }
 
     static class ArrowFileTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new ArrowFileCodec();
         basicData = null;
+        structData = null;
     } }
 
     static class CSVTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new CsvCodec();
         basicData = SampleData.BASIC_CSV_DATA_RESOURCE;
+        structData = null;
     } }
 
     static class JSONTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new JsonCodec();
         basicData = SampleData.BASIC_JSON_DATA_RESOURCE;
+        structData = SampleData.STRUCT_JSON_DATA_RESOURCE;
     } }
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(20);
 
     static ICodec codec;
     static String basicData;
+    static String structData;
 
     private boolean basicDataAvailable() {
         return basicData != null;
+    }
+
+    private boolean structDataAvailable() {
+        return structData != null;
     }
 
     @Test
@@ -128,6 +138,16 @@ public abstract class CodecTestSuite {
             }
         }
 
+        inputData.flip();
+
+        roundTrip_impl(inputData, allocator);
+    }
+
+    @Test
+    void roundTrip_struct() {
+
+        var allocator = new RootAllocator();
+        var inputData = generateStructData(allocator);
         inputData.flip();
 
         roundTrip_impl(inputData, allocator);
@@ -411,6 +431,39 @@ public abstract class CodecTestSuite {
         Assertions.assertEquals(inputData.getFrontBuffer().getRowCount(), rtRowCount);
 
         inputData.close();
+    }
+
+    @Test
+    @EnabledIf(value = "structDataAvailable", disabledReason = "Pre-saved struct data not available for this format")
+    void decode_struct() {
+
+        var structSchema = SchemaMapping.tracToArrow(SampleData.BASIC_STRUCT_SCHEMA);
+
+        var allocator = new RootAllocator();
+
+        var testData = ResourceHelpers.loadResourceAsBytes(structData);
+        var testDataBuf = Bytes.copyToBuffer(testData, allocator);
+        var testDataStream = Flows.publish(List.of(testDataBuf));
+
+        var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
+        var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
+
+        var decoder = codec.getDecoder(allocator, structSchema, Map.of());
+        pipeline.addStage(decoder);
+
+        var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(null, batch));
+        pipeline.addSink(dataSink);
+
+        var exec = pipeline.execute();
+        waitFor(TEST_TIMEOUT, exec);
+
+        var rtSchema = dataSink.getSchema();
+        var rtRowCount = dataSink.getRowCount();
+
+        DataComparison.compareSchemas(structSchema, rtSchema);
+
+        Assertions.assertEquals(1, dataSink.getBatchCount());
+        Assertions.assertEquals(1, rtRowCount);
     }
 
     @Test
