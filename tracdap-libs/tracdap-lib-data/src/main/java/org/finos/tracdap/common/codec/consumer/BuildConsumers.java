@@ -18,15 +18,11 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import org.apache.arrow.vector.*;
-import org.apache.arrow.vector.dictionary.DictionaryProvider;
-import org.finos.tracdap.common.codec.producers.*;
 
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class BuildConsumers {
-
-
 
     public static List<IJsonConsumer<?>> createConsumers(List<FieldVector> vectors) {
 
@@ -34,7 +30,6 @@ public class BuildConsumers {
                 .map(BuildConsumers::createConsumer)
                 .collect(Collectors.toList());
     }
-
 
     public static IJsonConsumer<?>
     createConsumer(FieldVector vector) {
@@ -86,9 +81,9 @@ public class BuildConsumers {
             // Temporal types
 
             case DATEDAY:
-                return new JsonDateDayProducer((DateDayVector) vector);
+                return new JsonScalarConsumer<>(new JsonDateDayConsumer((DateDayVector) vector));
             case TIMESTAMPMILLI:
-                return new JsonTimestampMilliProducer((TimeStampMilliVector) vector);
+                return new JsonScalarConsumer<>(new JsonTimestampMilliConsumer((TimeStampMilliVector) vector));
 
         }
 

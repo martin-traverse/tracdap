@@ -18,24 +18,29 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.BigIntVector;
-import org.finos.tracdap.common.exception.EDataCorruption;
+import org.apache.arrow.vector.DateDayVector;
 
 import java.io.IOException;
+import java.time.LocalDate;
 
 
-public class JsonBigIntConsumer extends BaseJsonConsumer<BigIntVector> {
+public class JsonDateDayConsumer extends BaseJsonConsumer<DateDayVector> {
 
-    public JsonBigIntConsumer(BigIntVector vector) {
+    public JsonDateDayConsumer(DateDayVector vector) {
         super(vector);
     }
 
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        long value = parser.getLongValue();
-        vector.set(currentIndex++, value);
+        LocalDate dateVal = JsonParsing.parseLocalDate(parser);
+        long unixEpochDay = dateVal.toEpochDay();
+
+        if (unixEpochDay < Integer.MIN_VALUE || unixEpochDay > Integer.MAX_VALUE)
+            throw new IllegalArgumentException();  // todo
+
+        vector.set(currentIndex++, (int) unixEpochDay);
+
         return true;
     }
 }

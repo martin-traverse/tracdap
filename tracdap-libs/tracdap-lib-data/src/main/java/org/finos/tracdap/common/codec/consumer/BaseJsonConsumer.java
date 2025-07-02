@@ -17,11 +17,10 @@
 
 package org.finos.tracdap.common.codec.consumer;
 
-import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.exception.EDataCorruption;
+import org.apache.arrow.vector.FieldVector;
 
 
-public abstract class BaseJsonConsumer<TVector extends ValueVector> implements IJsonConsumer<TVector> {
+public abstract class BaseJsonConsumer<TVector extends FieldVector> implements IJsonConsumer<TVector> {
 
     protected TVector vector;
     protected int currentIndex;
@@ -33,7 +32,11 @@ public abstract class BaseJsonConsumer<TVector extends ValueVector> implements I
 
     @Override
     public void setNull() {
-        throw new EDataCorruption("Null values not allowed for [" + vector.getName()+ "]");
+
+        if (!vector.getField().isNullable())
+            throw new IllegalArgumentException("Field is not nullable");  // TODO
+
+        vector.setNull(currentIndex++);
     }
 
     @Override

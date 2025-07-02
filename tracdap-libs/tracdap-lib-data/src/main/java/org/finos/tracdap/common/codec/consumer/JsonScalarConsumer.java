@@ -20,12 +20,12 @@ package org.finos.tracdap.common.codec.consumer;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.FieldVector;
 
 import java.io.IOException;
 
 
-public class JsonScalarConsumer<TVector extends ValueVector> extends BaseJsonConsumer<TVector> {
+public class JsonScalarConsumer<TVector extends FieldVector> extends BaseJsonConsumer<TVector> {
 
     private final IJsonConsumer<TVector> delegate;
 
@@ -37,7 +37,7 @@ public class JsonScalarConsumer<TVector extends ValueVector> extends BaseJsonCon
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        if (parser.currentToken() == null || parser.currentToken() != JsonToken.NOT_AVAILABLE)
+        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
             return false;
 
         if (parser.currentToken() == JsonToken.VALUE_NULL) {

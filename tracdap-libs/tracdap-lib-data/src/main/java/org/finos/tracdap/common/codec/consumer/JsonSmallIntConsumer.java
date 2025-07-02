@@ -34,19 +34,8 @@ public class JsonSmallIntConsumer extends BaseJsonConsumer<SmallIntVector> {
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        // Token is the expected value
-        if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            short value = parser.getShortValue();
-            vector.set(currentIndex++, value);
-            return true;
-        }
-
-        // No data available (EOF or wait for more)
-        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
-            return false;
-
-        // Unexpected token - input data is corrupt
-        var error = String.format("Unexpected token %s", parser.getCurrentToken().name());
-        throw new EDataCorruption(error);
+        short value = parser.getShortValue();
+        vector.set(currentIndex++, value);
+        return true;
     }
 }
