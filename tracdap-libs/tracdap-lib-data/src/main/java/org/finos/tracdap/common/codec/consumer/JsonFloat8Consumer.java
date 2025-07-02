@@ -18,16 +18,24 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.ValueVector;
+import com.fasterxml.jackson.core.JsonToken;
+import org.apache.arrow.vector.Float8Vector;
+import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+public class JsonFloat8Consumer extends BaseJsonConsumer<Float8Vector> {
 
-    boolean consumeElement(JsonParser parser) throws IOException;
+    public JsonFloat8Consumer(Float8Vector vector) {
+        super(vector);
+    }
 
-    void setNull();
+    @Override
+    public boolean consumeElement(JsonParser parser) throws IOException {
 
-    TVector getVector();
+        double value = JsonParsing.parseFloat8(parser);
+        vector.set(currentIndex++, value);
+        return true;
+    }
 }

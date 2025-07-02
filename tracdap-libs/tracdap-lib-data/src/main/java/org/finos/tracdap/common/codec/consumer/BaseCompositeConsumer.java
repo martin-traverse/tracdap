@@ -17,27 +17,40 @@
 
 package org.finos.tracdap.common.codec.consumer;
 
+import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.exception.EDataCorruption;
+import org.finos.tracdap.common.codec.producers.IJsonProducer;
 
+import java.util.List;
 
-public abstract class BaseJsonConsumer<TVector extends ValueVector> implements IJsonConsumer<TVector> {
+abstract class BaseCompositeConsumer implements ICompositeConsumer {
 
-    protected TVector vector;
+    protected final List<IJsonConsumer<?>> delegates;
     protected int currentIndex;
 
-    protected BaseJsonConsumer(TVector vector) {
-        this.vector = vector;
+    public BaseCompositeConsumer(List<IJsonConsumer<?>> delegates) {
+        this.delegates = delegates;
         this.currentIndex = 0;
     }
 
     @Override
-    public void setNull() {
-        throw new EDataCorruption("Null values not allowed for [" + vector.getName()+ "]");
+    @SuppressWarnings("unchecked")
+    public void resetVectors(List<FieldVector> vectors) {
+
+        for (int i = 0; i < vectors.size(); i++) {
+
+            var delegate = (IJsonProducer<FieldVector>) delegates.get(i);
+            var vector = vectors.get(i);
+
+            resetDelegateVector(delegate, vector);
+        }
     }
 
-    @Override
-    public TVector getVector() {
-        return vector;
+    private <TVector extends ValueVector> void resetDelegateVector(IJsonProducer<TVector> delegate, TVector vector) {
+
+        if (vector.getMinorType() != delegate.getVector().getMinorType())
+            throw new IllegalArgumentException();
+
+        delegate.resetVector(vector);
     }
 }

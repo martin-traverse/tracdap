@@ -48,7 +48,7 @@ abstract class BaseCompositeProducer implements ICompositeProducer {
     private <TVector extends ValueVector> void resetDelegateVector(IJsonProducer<TVector> delegate, TVector vector) {
 
         if (vector.getMinorType() != delegate.getVector().getMinorType())
-            throw new IllegalStateException();
+            throw new IllegalArgumentException();
 
         delegate.resetVector(vector);
     }

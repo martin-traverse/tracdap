@@ -19,15 +19,15 @@ package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.UInt4Vector;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 
 
-public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
+public class JsonUInt4Consumer extends BaseJsonConsumer<UInt4Vector> {
 
-    public JsonIntConsumer(IntVector vector) {
+    public JsonUInt4Consumer(UInt4Vector vector) {
         super(vector);
     }
 
@@ -36,13 +36,20 @@ public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
 
         // Token is the expected value
         if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            int value =  parser.getIntValue();
-            vector.set(currentIndex++, value);
+            long value = parser.getLongValue();
+            if (value < 0 || value > 0xFFFFFFFFL) {
+                throw new EDataCorruption("Value out of range for UINT4: " + value);
+            }
+            vector.set(currentIndex++, (int) value);
             return true;
         }
 
+        // No data available (EOF or wait for more)
+        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
+            return false;
+
         // Unexpected token - input data is corrupt
-        var error = String.format("Unexpected token %s", parser.getCurrentToken().name());
+        var error = String.format("Unexpected token %s", parser.currentToken().name());
         throw new EDataCorruption(error);
     }
 }
