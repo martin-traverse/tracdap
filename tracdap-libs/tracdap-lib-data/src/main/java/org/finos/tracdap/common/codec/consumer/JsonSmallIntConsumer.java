@@ -19,15 +19,15 @@ package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.SmallIntVector;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 
 
-public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
+public class JsonSmallIntConsumer extends BaseJsonConsumer<SmallIntVector> {
 
-    public JsonIntConsumer(IntVector vector) {
+    public JsonSmallIntConsumer(SmallIntVector vector) {
         super(vector);
     }
 
@@ -36,10 +36,14 @@ public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
 
         // Token is the expected value
         if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            int value =  parser.getIntValue();
+            short value = parser.getShortValue();
             vector.set(currentIndex++, value);
             return true;
         }
+
+        // No data available (EOF or wait for more)
+        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
+            return false;
 
         // Unexpected token - input data is corrupt
         var error = String.format("Unexpected token %s", parser.getCurrentToken().name());

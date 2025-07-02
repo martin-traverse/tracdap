@@ -19,15 +19,19 @@ package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.IntVector;
+import org.apache.arrow.vector.UInt8Vector;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
+import java.math.BigInteger;
 
 
-public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
+public class JsonUInt8Consumer extends BaseJsonConsumer<UInt8Vector> {
 
-    public JsonIntConsumer(IntVector vector) {
+    private static final BigInteger MAX_UINT64 = BigInteger.valueOf(0xFFFFFFFFFFFFFFFFL); // 2^64 - 1
+    private static final BigInteger MIN_VALUE = BigInteger.ZERO;
+
+    public JsonUInt8Consumer(UInt8Vector vector) {
         super(vector);
     }
 
@@ -36,13 +40,20 @@ public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
 
         // Token is the expected value
         if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            int value =  parser.getIntValue();
-            vector.set(currentIndex++, value);
+            BigInteger value = parser.getBigIntegerValue();
+            if (value.compareTo(MIN_VALUE) < 0 || value.compareTo(MAX_UINT64) > 0) {
+                throw new EDataCorruption("Value out of range for UINT8: " + value);
+            }
+            vector.set(currentIndex++, value.longValue());
             return true;
         }
 
+        // No data available (EOF or wait for more)
+        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
+            return false;
+
         // Unexpected token - input data is corrupt
-        var error = String.format("Unexpected token %s", parser.getCurrentToken().name());
+        var error = String.format("Unexpected token %s", parser.currentToken().name());
         throw new EDataCorruption(error);
     }
 }

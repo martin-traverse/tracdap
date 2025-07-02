@@ -19,37 +19,34 @@ package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
+import org.apache.arrow.vector.TinyIntVector;
+import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
-import java.util.List;
 
-public class CompositeJsonConsumer {
 
-    private final List<IJsonConsumer<?>> consumers;
-    private int currentIndex;
-    private int currentElement;
+public class JsonTinyIntConsumer extends BaseJsonConsumer<TinyIntVector> {
 
-    public CompositeJsonConsumer(List<IJsonConsumer<?>> consumers) {
-        this.consumers = consumers;
-        this.currentIndex = 0;
-        this.currentElement = 0;
+    public JsonTinyIntConsumer(TinyIntVector vector) {
+        super(vector);
     }
 
-    public boolean consumeRecord(JsonParser parser) throws IOException {
+    @Override
+    public boolean consumeElement(JsonParser parser) throws IOException {
 
-        while (currentElement < consumers.size() && parser.currentToken() != JsonToken.NOT_AVAILABLE) {
-
-            var consumer = consumers.get(currentElement);
-
-            if (!consumer.consumeElement(parser))
-                return false;
-
-            currentElement++;
+        // Token is the expected value
+        if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
+            byte value = parser.getByteValue();
+            vector.set(currentIndex++, value);
+            return true;
         }
 
-        currentIndex++;
-        currentElement = 0;
+        // No data available (EOF or wait for more)
+        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
+            return false;
 
-        return true;
+        // Unexpected token - input data is corrupt
+        var error = String.format("Unexpected token %s", parser.getCurrentToken().name());
+        throw new EDataCorruption(error);
     }
 }

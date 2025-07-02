@@ -18,16 +18,27 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.VarCharVector;
 
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 
+public class JsonVarCharConsumer extends BaseJsonConsumer<VarCharVector> {
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+    public JsonVarCharConsumer(VarCharVector vector) {
+        super(vector);
+    }
 
-    boolean consumeElement(JsonParser parser) throws IOException;
+    @Override
+    public boolean consumeElement(JsonParser parser) throws IOException {
 
-    void setNull();
+        String value = parser.getValueAsString();
 
-    TVector getVector();
+        // For variable width vectors, the required size of the content buffer is not known up front
+        // Arrow makes an initial guess, but sometimes it will need to reallocate on write
+        // So, we need to call setSafe() instead of set(), to avoid a buffer overflow
+
+        vector.setSafe(currentIndex++, value.getBytes(StandardCharsets.UTF_8));
+        return true;
+    }
 }

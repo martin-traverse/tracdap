@@ -17,17 +17,40 @@
 
 package org.finos.tracdap.common.codec.consumer;
 
+import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.ValueVector;
 
 import java.io.IOException;
 
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+public class JsonScalarConsumer<TVector extends ValueVector> extends BaseJsonConsumer<TVector> {
 
-    boolean consumeElement(JsonParser parser) throws IOException;
+    private final IJsonConsumer<TVector> delegate;
 
-    void setNull();
+    public JsonScalarConsumer(IJsonConsumer<TVector> delegate) {
+        super(delegate.getVector());
+        this.delegate = delegate;
+    }
 
-    TVector getVector();
+    @Override
+    public boolean consumeElement(JsonParser parser) throws IOException {
+
+        if (parser.currentToken() == null || parser.currentToken() != JsonToken.NOT_AVAILABLE)
+            return false;
+
+        if (parser.currentToken() == JsonToken.VALUE_NULL) {
+
+            if (vector.getField().isNullable()) {
+                delegate.setNull();
+                return true;
+            }
+            else {
+                throw new JsonParseException(parser, "Null value not allowed");  // TODO
+            }
+        }
+
+        return delegate.consumeElement(parser);
+    }
 }

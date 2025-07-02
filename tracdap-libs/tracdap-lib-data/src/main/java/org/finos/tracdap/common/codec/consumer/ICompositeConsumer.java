@@ -18,16 +18,15 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.FieldVector;
 
 import java.io.IOException;
+import java.util.List;
 
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+public interface ICompositeConsumer {
 
     boolean consumeElement(JsonParser parser) throws IOException;
 
-    void setNull();
-
-    TVector getVector();
+    void resetVectors(List<FieldVector> vectors);
 }

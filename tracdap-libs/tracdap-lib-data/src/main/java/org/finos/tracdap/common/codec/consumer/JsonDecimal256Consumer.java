@@ -18,16 +18,27 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.Decimal256Vector;
+import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
+import java.math.BigDecimal;
+import java.math.BigInteger;
 
+public class JsonDecimal256Consumer extends BaseJsonConsumer<Decimal256Vector> {
 
-public interface IJsonConsumer<TVector extends ValueVector> {
+    private final int scale;
 
-    boolean consumeElement(JsonParser parser) throws IOException;
+    public JsonDecimal256Consumer(Decimal256Vector vector) {
+        super(vector);
+        this.scale = vector.getScale();
+    }
 
-    void setNull();
+    @Override
+    public boolean consumeElement(JsonParser parser) throws IOException {
 
-    TVector getVector();
+        var value = JsonParsing.parseBigDecimal(parser, scale);
+        vector.set(currentIndex++, value);
+        return true;
+    }
 }
