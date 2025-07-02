@@ -38,22 +38,13 @@ public class JsonUInt8Consumer extends BaseJsonConsumer<UInt8Vector> {
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        // Token is the expected value
-        if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            BigInteger value = parser.getBigIntegerValue();
-            if (value.compareTo(MIN_VALUE) < 0 || value.compareTo(MAX_UINT64) > 0) {
-                throw new EDataCorruption("Value out of range for UINT8: " + value);
-            }
-            vector.set(currentIndex++, value.longValue());
-            return true;
+        BigInteger value = parser.getBigIntegerValue();
+
+        if (value.compareTo(MIN_VALUE) < 0 || value.compareTo(MAX_UINT64) > 0) {
+            throw new EDataCorruption("Value out of range for UINT8: " + value);
         }
 
-        // No data available (EOF or wait for more)
-        if (parser.currentToken() == null || parser.currentToken() == JsonToken.NOT_AVAILABLE)
-            return false;
-
-        // Unexpected token - input data is corrupt
-        var error = String.format("Unexpected token %s", parser.currentToken().name());
-        throw new EDataCorruption(error);
+        vector.set(currentIndex++, value.longValue());
+        return true;
     }
 }

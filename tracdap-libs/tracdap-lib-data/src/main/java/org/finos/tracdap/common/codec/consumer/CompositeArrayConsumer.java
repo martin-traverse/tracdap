@@ -44,7 +44,7 @@ public class CompositeArrayConsumer extends BaseCompositeConsumer {
 
         var token = parser.nextValue();
 
-        while (token != JsonToken.END_ARRAY) {
+        while (token != JsonToken.END_OBJECT && token != JsonToken.END_ARRAY) {
 
             // No data = wait for more
             if (token == null || token == JsonToken.NOT_AVAILABLE)

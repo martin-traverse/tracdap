@@ -29,6 +29,8 @@ import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 import java.util.stream.Collectors;
 
 
@@ -184,6 +186,17 @@ public class ArrowVsrContext {
             return staging[col];
         else
             return back.getVector(col);
+    }
+
+    public List<FieldVector> getStagingVectors() {
+
+        var vectors = new ArrayList<FieldVector>(staging.length);
+
+        for (int i = 0; i < staging.length; ++i) {
+            vectors.add(getStagingVector(i));
+        }
+
+        return vectors;
     }
 
     public VectorSchemaRoot getBackBuffer() {

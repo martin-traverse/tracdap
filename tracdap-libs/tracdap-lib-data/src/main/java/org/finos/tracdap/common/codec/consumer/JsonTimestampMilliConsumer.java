@@ -18,24 +18,29 @@
 package org.finos.tracdap.common.codec.consumer;
 
 import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.core.JsonToken;
-import org.apache.arrow.vector.BigIntVector;
-import org.finos.tracdap.common.exception.EDataCorruption;
+import org.apache.arrow.vector.TimeStampMilliVector;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.ZoneOffset;
 
+public class JsonTimestampMilliConsumer extends BaseJsonConsumer<TimeStampMilliVector> {
 
-public class JsonBigIntConsumer extends BaseJsonConsumer<BigIntVector> {
-
-    public JsonBigIntConsumer(BigIntVector vector) {
+    public JsonTimestampMilliConsumer(TimeStampMilliVector vector) {
         super(vector);
     }
 
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        long value = parser.getLongValue();
-        vector.set(currentIndex++, value);
+        LocalDateTime datetimeNoZone = JsonParsing.parseDatetimeNoZone(parser);
+
+        long unixEpochMillis =
+                (datetimeNoZone.toEpochSecond(ZoneOffset.UTC) * 1000) +
+                (datetimeNoZone.getNano() / 1000000);
+
+        vector.set(currentIndex++, unixEpochMillis);
+
         return true;
     }
 }

@@ -18,6 +18,9 @@
 package org.finos.tracdap.common.codec.csv;
 
 import org.finos.tracdap.common.codec.BufferDecoder;
+import org.finos.tracdap.common.codec.consumer.BuildConsumers;
+import org.finos.tracdap.common.codec.consumer.CompositeArrayConsumer;
+import org.finos.tracdap.common.codec.consumer.ICompositeConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.codec.json.JacksonValues;
@@ -59,10 +62,12 @@ public class CsvDecoder extends BufferDecoder {
     private final ArrowVsrSchema arrowSchema;
 
     private List<ArrowBuf> buffer;
+    private ArrowVsrContext context;
+
     private CsvParser csvParser;
     private CsvSchema csvSchema;
+    private ICompositeConsumer csvConsumer;
 
-    private ArrowVsrContext context;
 
     public CsvDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
 
@@ -97,6 +102,7 @@ public class CsvDecoder extends BufferDecoder {
             // Set up all the resources needed for parsing
 
             this.buffer = buffer;
+            this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
 
             var csvFactory = new CsvFactory()
                     // Require strict adherence to the schema
@@ -119,7 +125,9 @@ public class CsvDecoder extends BufferDecoder {
                     : csvSchema.withoutHeader();
             csvParser.setSchema(csvSchema);
 
-            context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
+            var consumes = BuildConsumers.createConsumers(context.getStagingVectors());
+            csvConsumer = new CompositeArrayConsumer(consumes);
+
             consumer().onStart(context);
 
             // Call the parsing function - this may result in a partial parse
@@ -188,100 +196,35 @@ public class CsvDecoder extends BufferDecoder {
         // If the consumer is not ready, leave the parse and come back to it on the next call to pump()
         // The parser are VSR are left with their state intact, row and col will be zero anyway for a new batch
 
-        var row = 0;
-        var col = 0;
+        var batchRow = 0;
 
-        JsonToken token;
+        while (parser.nextToken() != null) {
 
-        while ((token = parser.nextToken()) != null) {
+            var rowConsumed = csvConsumer.consumeElement(parser);
 
-            switch (token) {
+            if (rowConsumed) {
 
-                // For CSV files, a null field name is produced for every field
-                case FIELD_NAME:
-                    continue;
+                batchRow++;
 
-                case VALUE_NULL:
+                if (batchRow == BATCH_SIZE) {
 
-                    // Special handling to differentiate between null and empty strings
+                    context.setRowCount(batchRow);
+                    context.encodeDictionaries();
+                    context.setLoaded();
 
-                    var nullVector = context.getStagingVector(col);
-                    var minorType = nullVector.getMinorType();
+                    consumer().onBatch();
 
-                    if (minorType == Types.MinorType.VARCHAR) {
+                    if (!consumerReady())
+                        return false;
 
-                        // Null strings are encoded with no space between commas (or EOL): some_value,,next_value
-                        // An empty string is encoded as "", i.e. token width = 2 (or more with padding)
-                        // Using token end - token start, a gap between commas -> empty string instead of null
-
-                        // It would be nicer to check the original bytes to see if there are quote chars in there
-                        // But this is not possible with the current Jackson API
-
-                        var tokenStart = parser.currentTokenLocation();
-                        var tokenEnd = parser.currentLocation();
-                        var tokenWidth = tokenEnd.getColumnNr() - tokenStart.getColumnNr();
-
-                        if (tokenWidth > 1) {
-                            JacksonValues.setEmptyString(nullVector, row);
-                            col++;
-                            continue;
-                        }
-                    }
-
-                    // If this value is not an empty string, fall through to the default handling
-
-                case VALUE_TRUE:
-                case VALUE_FALSE:
-                case VALUE_STRING:
-                case VALUE_NUMBER_INT:
-                case VALUE_NUMBER_FLOAT:
-
-                    var vector = context.getStagingVector(col);
-                    JacksonValues.parseAndSet(vector, row, parser, token);
-                    col++;
-
-                    break;
-
-                case START_OBJECT:
-
-                    if (row == 0)
-                        context.getBackBuffer().allocateNew();  // TODO: Is this right?
-
-                    break;
-
-                case END_OBJECT:
-
-                    row++;
-                    col = 0;
-
-                    if (row == BATCH_SIZE) {
-
-                        context.setRowCount(row);
-                        context.encodeDictionaries();
-                        context.setLoaded();
-
-                        consumer().onBatch();
-
-                        if (!consumerReady())
-                            return false;
-
-                        row = 0;
-                    }
-
-                    break;
-
-                default:
-
-                    var msg = String.format("Unexpected token %s", token.name());
-                    throw new CsvReadException(parser, msg, csvSchema);
+                    batchRow = 0;
+                }
             }
         }
 
-        // Check if there is a final batch that needs dispatching
+        if (batchRow > 0) {
 
-        if (row > 0 || col > 0) {
-
-            context.setRowCount(row);
+            context.setRowCount(batchRow);
             context.encodeDictionaries();
             context.setLoaded();
 

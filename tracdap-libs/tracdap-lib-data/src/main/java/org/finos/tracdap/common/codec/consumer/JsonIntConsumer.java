@@ -34,15 +34,8 @@ public class JsonIntConsumer extends BaseJsonConsumer<IntVector> {
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        // Token is the expected value
-        if (parser.currentToken() == JsonToken.VALUE_NUMBER_INT) {
-            int value =  parser.getIntValue();
-            vector.set(currentIndex++, value);
-            return true;
-        }
-
-        // Unexpected token - input data is corrupt
-        var error = String.format("Unexpected token %s", parser.getCurrentToken().name());
-        throw new EDataCorruption(error);
+        int value =  parser.getIntValue();
+        vector.set(currentIndex++, value);
+        return true;
     }
 }
