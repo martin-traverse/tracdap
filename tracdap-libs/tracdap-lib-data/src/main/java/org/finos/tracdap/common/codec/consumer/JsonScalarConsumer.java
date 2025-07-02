@@ -20,6 +20,7 @@ package org.finos.tracdap.common.codec.consumer;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.dataformat.csv.CsvFactory;
 import org.apache.arrow.vector.FieldVector;
 
 import java.io.IOException;
@@ -41,6 +42,12 @@ public class JsonScalarConsumer<TVector extends FieldVector> extends BaseJsonCon
             return false;
 
         if (parser.currentToken() == JsonToken.VALUE_NULL) {
+
+            if (parser.getCodec().getFactory().getFormatName().equals(CsvFactory.FORMAT_NAME_CSV)) {
+
+                // TODO
+                System.out.println("CSV NULL");
+            }
 
             if (vector.getField().isNullable()) {
                 delegate.setNull();
