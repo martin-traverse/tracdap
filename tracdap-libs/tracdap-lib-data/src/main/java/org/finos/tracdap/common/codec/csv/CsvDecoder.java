@@ -23,7 +23,6 @@ import org.finos.tracdap.common.codec.consumer.CompositeArrayConsumer;
 import org.finos.tracdap.common.codec.consumer.ICompositeConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
-import org.finos.tracdap.common.codec.json.JacksonValues;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
 import org.finos.tracdap.common.data.util.Bytes;
 import org.finos.tracdap.common.exception.EDataCorruption;
@@ -33,13 +32,10 @@ import org.finos.tracdap.common.exception.EUnexpected;
 
 import org.apache.arrow.memory.ArrowBuf;
 import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.types.Types;
 
 import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonToken;
 import com.fasterxml.jackson.dataformat.csv.CsvFactory;
 import com.fasterxml.jackson.dataformat.csv.CsvParser;
-import com.fasterxml.jackson.dataformat.csv.CsvReadException;
 import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 
 import org.slf4j.Logger;
