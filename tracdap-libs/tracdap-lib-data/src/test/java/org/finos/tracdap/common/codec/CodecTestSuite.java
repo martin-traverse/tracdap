@@ -388,6 +388,17 @@ public abstract class CodecTestSuite {
         var exec = pipeline.execute();
         waitFor(TEST_TIMEOUT, exec);
 
+        // Ensure errors are reported (pipeline errors or validation failures)
+        try {
+            getResultOf(exec);
+        }
+        catch(Exception e) {
+            if (e instanceof RuntimeException)
+                throw (RuntimeException) e;
+            else
+                throw new RuntimeException(e);
+        }
+
         var rtSchema = dataSink.getSchema();
         var rtRowCount = dataSink.getRowCount();
 

@@ -47,7 +47,7 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
         fieldNameMap = buildFieldNameMap(delegates, isCaseSensitive);
 
         consumedFields = new boolean[delegates.size()];
-        currentFieldIndex = 0;
+        currentFieldIndex = -1;
     }
 
     @Override

@@ -27,5 +27,7 @@ public interface IBatchConsumer {
 
     boolean consumeBatch(JsonParser parser) throws IOException;
 
+    boolean endOfStream();
+
     void resetBatch(VectorSchemaRoot batch);
 }

@@ -18,7 +18,6 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.BufferDecoder;
-import org.finos.tracdap.common.codec.text.consumers.CompositeArrayConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
@@ -45,7 +44,6 @@ import java.util.concurrent.Callable;
 public abstract class BufferedTextDecoder extends BufferDecoder {
 
     private static final int BATCH_SIZE = 1024;
-    private static final boolean DEFAULT_HEADER_FLAG = true;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
@@ -56,7 +54,7 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
     private ArrowVsrContext context;
 
     private JsonParser csvParser;
-    private ICompositeConsumer csvConsumer;
+    private IBatchConsumer csvConsumer;
 
     public BufferedTextDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
 
@@ -104,15 +102,13 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
 
             this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
 
-
-            var consumes = BuildConsumers.createConsumers(context.getStagingVectors());
-            csvConsumer = new CompositeArrayConsumer(consumes);
+            this.csvConsumer = createConsumer(context);
 
             consumer().onStart(context);
 
             // Call the parsing function - this may result in a partial parse
 
-            var isComplete = doParse(csvParser, context);
+            var isComplete = doParse(csvParser, context, csvConsumer);
 
             // If the parse is done, emit the EOS signal and clean up resources
             // Otherwise, wait until a callback on pump()
@@ -152,7 +148,7 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
 
         handleErrors(() -> {
 
-            var isComplete = doParse(csvParser, context);
+            var isComplete = doParse(csvParser, context, csvConsumer);
 
             // If the parse is done, emit the EOS signal and clean up resources
             // Otherwise, wait until a callback on pump()
@@ -167,51 +163,26 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
         });
     }
 
-    boolean doParse(JsonParser parser, ArrowVsrContext context) throws Exception {
+    boolean doParse(JsonParser parser, ArrowVsrContext context, IBatchConsumer consumer) throws Exception {
 
-        // CSV codec uses buffering so all the data arrives at once
-        // Still, it is probably not helpful to send it all out as fast as the CPU will run!
+        do {
 
-        // This function checks consumerReady() after each batch is sent
-        // If the consumer is not ready, leave the parse and come back to it on the next call to pump()
-        // The parser are VSR are left with their state intact, row and col will be zero anyway for a new batch
+            if (context.readyToFlip())
+                context.flip();
 
-        var batchRow = 0;
+            if (context.readyToUnload() && consumerReady())
+                consumer().onBatch();
 
-        while (parser.nextToken() != null) {
-
-            var rowConsumed = csvConsumer.consumeElement(parser);
-
-            if (rowConsumed) {
-
-                batchRow++;
-
-                if (batchRow == BATCH_SIZE) {
-
-                    context.setRowCount(batchRow);
-                    context.encodeDictionaries();
+            if (context.readyToLoad() && ! consumer.endOfStream()) {
+                if (consumer.consumeBatch(parser))
                     context.setLoaded();
-
-                    consumer().onBatch();
-
-                    if (!consumerReady())
-                        return false;
-
-                    batchRow = 0;
-                }
+                else
+                    return false;
             }
-        }
 
-        if (batchRow > 0) {
+        } while (context.readyToFlip());
 
-            context.setRowCount(batchRow);
-            context.encodeDictionaries();
-            context.setLoaded();
-
-            consumer().onBatch();
-        }
-
-        return true;
+        return consumer.endOfStream();
     }
 
     void handleErrors(Callable<Void> parseFunc) {

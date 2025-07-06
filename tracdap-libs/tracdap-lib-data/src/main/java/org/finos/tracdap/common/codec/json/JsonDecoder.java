@@ -17,180 +17,58 @@
 
 package org.finos.tracdap.common.codec.json;
 
-import org.finos.tracdap.common.codec.StreamingDecoder;
+import org.finos.tracdap.common.codec.text.BaseTextDecoder;
+import org.finos.tracdap.common.codec.text.BuildConsumers;
+import org.finos.tracdap.common.codec.text.IBatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.CompositeObjectConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
-import org.finos.tracdap.common.exception.EDataCorruption;
-import org.finos.tracdap.common.exception.ETrac;
 import org.finos.tracdap.common.exception.EUnexpected;
 
-import org.apache.arrow.memory.ArrowBuf;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.JsonFactory;
 import org.apache.arrow.memory.BufferAllocator;
 
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonToken;
 
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+public class JsonDecoder extends BaseTextDecoder {
 
-import java.io.IOException;
+    private static final boolean CASE_SENSITIVE = true;
 
-
-public class JsonDecoder extends StreamingDecoder {
-
-    private static final int BATCH_SIZE = 1024;
-    private static final boolean CASE_INSENSITIVE = false;
-
-    private final Logger log = LoggerFactory.getLogger(getClass());
-    private ArrowVsrContext context;
-    private JsonStreamParser parser;
-    private long bytesConsumed;
+    private static final JsonFactory jsonFactory = buildJsonFactory();
 
     public JsonDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
 
-        // Allocate memory once, and reuse it for every batch (i.e. do not clear/allocate per batch)
-        // This memory is released in close(), which calls root.close()
-
-        this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
+        super(arrowAllocator, arrowSchema);
     }
 
     @Override
-    public void onStart() {
+    protected JsonFactory getParserFactory() {
 
-        try {
+        return jsonFactory;
+    }
 
-            if (log.isTraceEnabled())
-                log.trace("JSON DECODER: onStart()");
+    private static JsonFactory buildJsonFactory() {
 
-            var factory = new JsonFactory();
-            var tableHandler = new JsonTableHandler(context, batch -> consumer().onBatch(), BATCH_SIZE, CASE_INSENSITIVE);
-
-            this.parser = new JsonStreamParser(factory, tableHandler);
-
-            consumer().onStart(context);
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
+        return new JsonFactory();
     }
 
     @Override
-    public void onNext(ArrowBuf chunk) {
+    protected JsonParser configureParser(JsonParser parser) {
 
-        try (chunk) {  // automatically close chunk as a resource
-
-            if (log.isTraceEnabled())
-                log.trace("JSON DECODER: onNext()");
-
-            parser.feedInput(chunk.nioBuffer());
-            bytesConsumed += chunk.readableBytes();
-
-            JsonToken token;
-
-            while ((token = parser.nextToken()) != JsonToken.NOT_AVAILABLE)
-                parser.acceptToken(token);
-        }
-        catch (ETrac e) {
-
-            // Error has already been handled, propagate as-is
-
-            var errorMessage = "JSON decoding failed: " + e.getMessage();
-
-            log.error(errorMessage, e);
-            throw e;
-        }
-        catch (JacksonException e) {
-
-            // This exception is a "well-behaved" parse failure, parse location and message should be meaningful
-
-            var errorMessage = String.format("JSON decoding failed on line %d: %s",
-                    e.getLocation().getLineNr(),
-                    e.getOriginalMessage());
-
-            log.error(errorMessage, e);
-            throw new EDataCorruption(errorMessage, e);
-        }
-        catch (IOException e) {
-
-            // Decoders work on a stream of buffers, "real" IO exceptions should not occur
-            // IO exceptions here indicate parse failures, not file/socket communication errors
-            // This is likely to be a more "badly-behaved" failure, or at least one that was not anticipated
-
-            var errorMessage = "JSON decoding failed, content is garbled: " + e.getMessage();
-            log.error(errorMessage, e);
-            throw new EDataCorruption(errorMessage, e);
-        }
-        catch (Throwable e)  {
-
-            // Ensure unexpected errors are still reported to the Flow API
-            log.error("Unexpected error during decoding", e);
-            throw new EUnexpected(e);
-        }
+        // No special configuration needed
+        return parser;
     }
 
     @Override
-    public void onComplete() {
+    protected IBatchConsumer createConsumer(ArrowVsrContext context) throws EUnexpected {
 
-        try {
+        var fieldVectors = context.getStagingVectors();
+        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
 
-            if (log.isTraceEnabled())
-                log.trace("JSON DECODER: onComplete()");
+        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, CASE_SENSITIVE);
 
-            if (bytesConsumed == 0) {
-                var error = new EDataCorruption("JSON data is empty");
-                log.error(error.getMessage(), error);
-                consumer().onError(error);
-            }
-            else {
-
-                consumer().onComplete();
-            }
-        }
-        finally {
-            close();
-        }
+        return new BatchConsumer(recordConsumer, context);
     }
 
-    @Override
-    public void onError(Throwable error) {
-
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("JSON DECODER: onError()");
-
-            // TODO: Should datapipeline handle this?
-            consumer().onError(error);
-        }
-        finally {
-            close();
-        }
-    }
-
-    @Override
-    public void close() {
-
-        try {
-
-            if (parser != null) {
-                parser.close();
-                parser = null;
-            }
-
-            if (context != null) {
-                context.close();
-                context = null;
-            }
-        }
-        catch (IOException e) {
-
-            // Ensure unexpected errors are still reported to the Flow API
-            log.error("Unexpected error closing decoder: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
-    }
 }

@@ -36,9 +36,6 @@ import java.io.IOException;
 
 public abstract class BaseTextDecoder extends StreamingDecoder {
 
-    private static final int BATCH_SIZE = 1024;
-    private static final boolean CASE_INSENSITIVE = false;
-
     private final Logger log = LoggerFactory.getLogger(getClass());
     private ArrowVsrContext context;
 
@@ -47,6 +44,7 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
 
     private IBatchConsumer consumer;
     private long bytesConsumed;
+    private boolean done;
 
     protected BaseTextDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
 
@@ -92,10 +90,13 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
             if (log.isTraceEnabled())
                 log.trace("JSON DECODER: onNext()");
 
-            feeder.feedInput(chunk.nioBuffer());
-            bytesConsumed += chunk.readableBytes();
+            // Empty chunks are allowed in the stream but should be ignored
+            if (chunk.readableBytes() > 0) {
 
-            doParse(context, consumer, parser);
+                feeder.feedInput(chunk.nioBuffer());
+                bytesConsumed += chunk.readableBytes();
+                done = doParse(context, consumer, parser);
+            }
         }
         catch (ETrac e) {
 
@@ -148,8 +149,14 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
                 log.error(error.getMessage(), error);
                 consumer().onError(error);
             }
+            else if (!done) {
+                var error = new EDataCorruption("JSON data is incomplete");
+                log.error(error.getMessage(), error);
+                consumer().onError(error);
+            }
             else {
 
+                markAsDone();
                 consumer().onComplete();
             }
         }
@@ -200,7 +207,7 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
         }
     }
 
-    void doParse(ArrowVsrContext context, IBatchConsumer consumer, JsonParser parser) throws IOException {
+    boolean doParse(ArrowVsrContext context, IBatchConsumer consumer, JsonParser parser) throws IOException {
 
         do {
 
@@ -210,13 +217,15 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
             if (context.readyToUnload() && consumerReady())
                 consumer().onBatch();
 
-            if (context.readyToFlip()) {
+            if (context.readyToLoad() && ! consumer.endOfStream()) {
                 if (consumer.consumeBatch(parser))
                     context.setLoaded();
                 else
-                    return;
+                    return false;
             }
 
         } while (context.readyToFlip());
+
+        return consumer.endOfStream();
     }
 }

@@ -23,53 +23,96 @@ import org.apache.arrow.vector.VectorSchemaRoot;
 import org.finos.tracdap.common.codec.text.IBatchConsumer;
 import org.finos.tracdap.common.codec.text.ICompositeConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 
 
 public class BatchConsumer implements IBatchConsumer {
 
+    private static final int BATCH_SIZE = 1000;
+
     private final ICompositeConsumer recordConsumer;
     private final ArrowVsrContext context;
 
-    private final int currentBatchSize = 1000;
     private int currentIndex;
+    private boolean midRecord;
+    private boolean gotFirstToken;
+    private boolean gotLastToken;
+    private boolean parseComplete;
 
     public BatchConsumer(ICompositeConsumer recordConsumer, ArrowVsrContext context) {
         this.recordConsumer = recordConsumer;
         this.context = context;
         this.currentIndex = 0;
+        this.midRecord = false;
+        this.gotFirstToken = false;
+        this.gotLastToken = false;
+        this.parseComplete = false;
     }
 
     @Override
     public boolean consumeBatch(JsonParser parser) throws IOException {
 
-        JsonToken token = parser.nextToken();
-
-        while (currentIndex < currentBatchSize && token != JsonToken.END_ARRAY && token != null) {
-
-            if (token == JsonToken.NOT_AVAILABLE)
-                return false;
-
-            var rowConsumed = recordConsumer.consumeElement(parser);
-
-            if (!rowConsumed)
-                return false;
-
-            currentIndex++;
-
-            token = parser.nextToken();
+        if (!gotFirstToken) {
+            if (parser.nextToken() == JsonToken.START_ARRAY)
+                parser.nextToken();
+            gotFirstToken = true;
         }
 
-        if (currentIndex > 0) {
+        if (currentIndex >= BATCH_SIZE) {
+            throw new IllegalStateException("Previous batch has not been reset");
+        }
+
+        for (var token = parser.currentToken(); token != null && token != JsonToken.NOT_AVAILABLE; token = parser.nextToken()) {
+
+            if (gotLastToken)
+                throw new EDataCorruption("Unexpected token: " + token);
+
+            if (midRecord || token.isStructStart()) {
+                if (currentIndex == BATCH_SIZE) {
+                    break;
+                }
+                else if (recordConsumer.consumeElement(parser)) {
+                    currentIndex++;
+                    midRecord = false;
+                    continue;
+                }
+                else {
+                    midRecord = true;
+                    return false;
+                }
+            }
+
+            if (token == JsonToken.END_ARRAY) {
+                gotLastToken = true;
+                continue;
+            }
+
+            throw new EDataCorruption("Unexpected token: " + token);
+        }
+
+        if (gotLastToken || (parser.nextToken() != JsonToken.START_OBJECT && parser.nextToken() != JsonToken.NOT_AVAILABLE)) {
+            parseComplete = true;
+        }
+
+        if (parseComplete || currentIndex == BATCH_SIZE) {
 
             context.setRowCount(currentIndex);
             context.encodeDictionaries();
             context.setLoaded();
-            currentIndex = 0;
-        }
 
-        return true;
+            return true;
+        }
+        else {
+
+            return false;
+        }
+    }
+
+    @Override
+    public boolean endOfStream() {
+        return parseComplete;
     }
 
     @Override
