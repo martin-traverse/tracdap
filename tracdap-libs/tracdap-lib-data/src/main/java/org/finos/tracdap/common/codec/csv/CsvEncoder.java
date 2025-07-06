@@ -17,192 +17,58 @@
 
 package org.finos.tracdap.common.codec.csv;
 
-import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.codec.producers.BuildProducers;
-import org.finos.tracdap.common.codec.producers.CompositeArrayProducer;
-import org.finos.tracdap.common.codec.producers.ICompositeProducer;
+import org.finos.tracdap.common.codec.text.BaseTextEncoder;
+import org.finos.tracdap.common.codec.text.BuildProducers;
+import org.finos.tracdap.common.codec.text.IBatchProducer;
+import org.finos.tracdap.common.codec.text.producers.BatchProducer;
+import org.finos.tracdap.common.codec.text.producers.CompositeArrayProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.exception.EUnexpected;
-import org.finos.tracdap.common.data.util.ByteOutputStream;
 
 import org.apache.arrow.memory.BufferAllocator;
 
 import com.fasterxml.jackson.core.JsonEncoding;
+import com.fasterxml.jackson.core.JsonGenerator;
 import com.fasterxml.jackson.dataformat.csv.CsvFactory;
 import com.fasterxml.jackson.dataformat.csv.CsvGenerator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
 
 
-public class CsvEncoder extends StreamingEncoder implements AutoCloseable {
+public class CsvEncoder extends BaseTextEncoder {
 
-    private final Logger log = LoggerFactory.getLogger(getClass());
-
-    private final BufferAllocator allocator;
-
-    private ArrowVsrContext context;
-    private OutputStream out;
-
-    private ICompositeProducer producer;
-    private CsvGenerator generator;
-
-
-    public CsvEncoder(BufferAllocator allocator) {
-        this.allocator = allocator;
+    CsvEncoder(BufferAllocator allocator) {
+        super(allocator);
     }
 
     @Override
-    public void onStart(ArrowVsrContext context) {
+    protected JsonGenerator createGenerator(ArrowVsrContext context, OutputStream out) throws IOException {
 
-        try {
+        var factory = new CsvFactory()
+                // Make sure empty strings are quoted, so they can be distinguished from nulls
+                .enable(CsvGenerator.Feature.ALWAYS_QUOTE_EMPTY_STRINGS);
 
-            if (log.isTraceEnabled())
-                log.trace("CSV ENCODER: onStart()");
+        var arrowSchema = context.getSchema();
 
-            consumer().onStart();
+        var csvSchema = CsvSchemaMapping.arrowToCsv(arrowSchema.decoded())
+                .build()
+                .withHeader();
 
-            this.context = context;
+        var generator = factory.createGenerator(out, JsonEncoding.UTF8);
+        generator.setSchema(csvSchema);
 
-            var factory = new CsvFactory()
-                    // Make sure empty strings are quoted, so they can be distinguished from nulls
-                    .enable(CsvGenerator.Feature.ALWAYS_QUOTE_EMPTY_STRINGS);
-
-            var arrowSchema = context.getSchema();
-            var csvSchema = CsvSchemaMapping
-                    .arrowToCsv(arrowSchema.decoded())
-                    .build()
-                    .withHeader();
-
-            out = new ByteOutputStream(allocator, consumer()::onNext);
-            generator = factory.createGenerator(out, JsonEncoding.UTF8);
-            generator.setSchema(csvSchema);
-
-            var producers = BuildProducers.createProducers(
-                    context.getFrontBuffer().getFieldVectors(),
-                    context.getDictionaries());
-
-            producer = new CompositeArrayProducer(producers);
-
-            // Tell Jackson to start the main array of records
-            generator.writeStartArray();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-
-            close();
-
-            throw new EUnexpected(e);
-        }
+        return generator;
     }
 
     @Override
-    public void onBatch() {
+    protected IBatchProducer createProducer(ArrowVsrContext context) {
 
-        try {
+        var fieldProducers = BuildProducers.createProducers(
+                context.getFrontBuffer().getFieldVectors(),
+                context.getDictionaries());
 
-            if (log.isTraceEnabled())
-                log.trace("CSV ENCODER: onNext()");
+        var recordProducer = new CompositeArrayProducer(fieldProducers);
 
-            var batch = context.getFrontBuffer();
-            var nRows = batch.getRowCount();
-            var dictionaries = context.getDictionaries();
-
-            for (var row = 0; row < nRows; row++)
-                producer.produceElement(generator);
-
-            context.setUnloaded();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-
-            close();
-
-            throw new EUnexpected(e);
-        }
-    }
-
-    @Override
-    public void onComplete() {
-
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("CSV ENCODER: onComplete()");
-
-            // Tell Jackson to end the main array of records
-            generator.writeEndArray();
-
-            // Flush and close output
-
-            generator.close();
-            generator = null;
-
-            out.close();
-            out = null;
-
-            markAsDone();
-            consumer().onComplete();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-
-            close();
-
-            throw new EUnexpected(e);
-        }
-    }
-
-    @Override
-    public void onError(Throwable error) {
-
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("CSV ENCODER: onError()");
-
-            markAsDone();
-            consumer().onError(error);
-        }
-        finally {
-            close();
-        }
-    }
-
-    @Override
-    public void close() {
-
-        try {
-
-            if (generator != null) {
-                generator.close();
-                generator = null;
-            }
-
-            if (out != null) {
-                out.close();
-                out = null;
-            }
-
-            // Encoder does not own context, do not try to close it
-
-            if (context != null) {
-                context = null;
-            }
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error closing encoder: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
+        return new BatchProducer(recordProducer);
     }
 }

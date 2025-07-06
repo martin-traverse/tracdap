@@ -17,290 +17,80 @@
 
 package org.finos.tracdap.common.codec.csv;
 
-import org.finos.tracdap.common.codec.BufferDecoder;
-import org.finos.tracdap.common.codec.consumer.BuildConsumers;
-import org.finos.tracdap.common.codec.consumer.CompositeArrayConsumer;
-import org.finos.tracdap.common.codec.consumer.ICompositeConsumer;
+import org.finos.tracdap.common.codec.text.BuildConsumers;
+import org.finos.tracdap.common.codec.text.BufferedTextDecoder;
+import org.finos.tracdap.common.codec.text.IBatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.CompositeArrayConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
-import org.finos.tracdap.common.codec.json.JacksonValues;
-import org.finos.tracdap.common.data.util.ByteSeekableChannel;
-import org.finos.tracdap.common.data.util.Bytes;
-import org.finos.tracdap.common.exception.EDataCorruption;
-import org.finos.tracdap.common.exception.ETrac;
-import org.finos.tracdap.common.exception.ETracInternal;
-import org.finos.tracdap.common.exception.EUnexpected;
 
-import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.memory.BufferAllocator;
-import org.apache.arrow.vector.types.Types;
-
-import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonToken;
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.dataformat.csv.CsvFactory;
 import com.fasterxml.jackson.dataformat.csv.CsvParser;
-import com.fasterxml.jackson.dataformat.csv.CsvReadException;
-import com.fasterxml.jackson.dataformat.csv.CsvSchema;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.nio.channels.Channels;
-import java.util.List;
-import java.util.concurrent.Callable;
+import org.apache.arrow.memory.BufferAllocator;
 
 
-public class CsvDecoder extends BufferDecoder {
+public class CsvDecoder extends BufferedTextDecoder {
 
-    private static final int BATCH_SIZE = 1024;
     private static final boolean DEFAULT_HEADER_FLAG = true;
 
-    private final Logger log = LoggerFactory.getLogger(getClass());
+    private static final CsvFactory csvFactory = buildCsvFactory();
 
-    private final BufferAllocator arrowAllocator;
     private final ArrowVsrSchema arrowSchema;
-
-    private List<ArrowBuf> buffer;
-    private ArrowVsrContext context;
-
-    private CsvParser csvParser;
-    private CsvSchema csvSchema;
-    private ICompositeConsumer csvConsumer;
 
 
     public CsvDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
 
-        this.arrowAllocator = arrowAllocator;
+        super(arrowAllocator, arrowSchema);
 
         // Schema cannot be inferred from CSV, so it must always be set from a TRAC schema
         this.arrowSchema = arrowSchema;
     }
 
     @Override
-    public void onBuffer(List<ArrowBuf> buffer) {
+    protected JsonFactory getParserFactory() {
 
-        if (log.isTraceEnabled())
-            log.trace("CSV DECODER: onBuffer()");
+        return buildCsvFactory();
+    }
 
-        // Sanity check, should never happen
-        if (isDone() || this.buffer != null) {
-            var error = new ETracInternal("CSV data parsed twice (this is a bug)");
-            log.error(error.getMessage(), error);
-            throw error;
-        }
+    private static CsvFactory buildCsvFactory() {
 
-        // Empty file can and does happen, treat it as data corruption
-        if (Bytes.readableBytes(buffer) == 0) {
-            var error = new EDataCorruption("CSV data is empty");
-            log.error(error.getMessage(), error);
-            throw error;
-        }
-
-        handleErrors(() -> {
-
-            // Set up all the resources needed for parsing
-
-            this.buffer = buffer;
-            this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
-
-            var csvFactory = new CsvFactory()
-                    // Require strict adherence to the schema
-                    .enable(CsvParser.Feature.FAIL_ON_MISSING_COLUMNS)
-                    // Always allow nulls during parsing (they will be rejected later for non-nullable fields)
-                    .enable(CsvParser.Feature.EMPTY_STRING_AS_NULL)
-                    // Permissive handling of extra space (strings with leading/trailing spaces must be quoted anyway)
-                    .enable(CsvParser.Feature.TRIM_SPACES);
-
-            var channel = new ByteSeekableChannel(buffer);
-            var stream = Channels.newInputStream(channel);
-
-            csvParser = csvFactory.createParser(stream);
-            csvSchema = CsvSchemaMapping
-                    .arrowToCsv(arrowSchema.decoded())
-                    //.setNullValue("")
-                    .build();
-            csvSchema = DEFAULT_HEADER_FLAG
-                    ? csvSchema.withHeader()
-                    : csvSchema.withoutHeader();
-            csvParser.setSchema(csvSchema);
-
-            var consumes = BuildConsumers.createConsumers(context.getStagingVectors());
-            csvConsumer = new CompositeArrayConsumer(consumes);
-
-            consumer().onStart(context);
-
-            // Call the parsing function - this may result in a partial parse
-
-            var isComplete = doParse(csvParser, csvSchema, context);
-
-            // If the parse is done, emit the EOS signal and clean up resources
-            // Otherwise, wait until a callback on pump()
-
-            if (isComplete) {
-                markAsDone();
-                consumer().onComplete();
-                close();
-            }
-
-            return null;
-        });
+        return new CsvFactory()
+                // Require strict adherence to the schema
+                .enable(CsvParser.Feature.FAIL_ON_MISSING_COLUMNS)
+                // Always allow nulls during parsing (they will be rejected later for non-nullable fields)
+                .enable(CsvParser.Feature.EMPTY_STRING_AS_NULL)
+                // Permissive handling of extra space (strings with leading/trailing spaces must be quoted anyway)
+                .enable(CsvParser.Feature.TRIM_SPACES);
     }
 
     @Override
-    public void onError(Throwable error) {
+    protected JsonParser configureParser(JsonParser parser) {
 
-        try {
+        var csvSchema = CsvSchemaMapping
+                .arrowToCsv(arrowSchema.decoded())
+                //.setNullValue("")
+                .build();
 
-            if (log.isTraceEnabled())
-                log.trace("CSV DECODER: onError()");
+        csvSchema = DEFAULT_HEADER_FLAG
+                ? csvSchema.withHeader()
+                : csvSchema.withoutHeader();
 
-            markAsDone();
-            consumer().onError(error);
-        }
-        finally {
-            close();
-        }
+        parser.setSchema(csvSchema);
+
+        return parser;
     }
 
     @Override
-    public void pump() {
+    protected IBatchConsumer createConsumer(ArrowVsrContext context) {
 
-        // Don't try to pump if the data hasn't arrived yet, or if it has already gone
-        if (csvParser == null || context == null)
-            return;
+        var fieldVectors = context.getStagingVectors();
+        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
 
-        handleErrors(() -> {
+        var recordConsumer = new CompositeArrayConsumer(fieldConsumers);
 
-            var isComplete = doParse(csvParser, csvSchema, context);
-
-            // If the parse is done, emit the EOS signal and clean up resources
-            // Otherwise, wait until a callback on pump()
-
-            if (isComplete) {
-                markAsDone();
-                consumer().onComplete();
-                close();
-            }
-
-            return null;
-        });
-    }
-
-    boolean doParse(CsvParser parser, CsvSchema csvSchema, ArrowVsrContext context) throws Exception {
-
-        // CSV codec uses buffering so all the data arrives at once
-        // Still, it is probably not helpful to send it all out as fast as the CPU will run!
-
-        // This function checks consumerReady() after each batch is sent
-        // If the consumer is not ready, leave the parse and come back to it on the next call to pump()
-        // The parser are VSR are left with their state intact, row and col will be zero anyway for a new batch
-
-        var batchRow = 0;
-
-        while (parser.nextToken() != null) {
-
-            var rowConsumed = csvConsumer.consumeElement(parser);
-
-            if (rowConsumed) {
-
-                batchRow++;
-
-                if (batchRow == BATCH_SIZE) {
-
-                    context.setRowCount(batchRow);
-                    context.encodeDictionaries();
-                    context.setLoaded();
-
-                    consumer().onBatch();
-
-                    if (!consumerReady())
-                        return false;
-
-                    batchRow = 0;
-                }
-            }
-        }
-
-        if (batchRow > 0) {
-
-            context.setRowCount(batchRow);
-            context.encodeDictionaries();
-            context.setLoaded();
-
-            consumer().onBatch();
-        }
-
-        return true;
-    }
-
-    void handleErrors(Callable<Void> parseFunc) {
-
-        try {
-            parseFunc.call();
-        }
-        catch (ETrac e) {
-
-            // Error has already been handled, propagate as-is
-
-            var errorMessage = "CSV decoding failed: " + e.getMessage();
-
-            log.error(errorMessage, e);
-            throw e;
-        }
-        catch (JacksonException e) {
-
-            // This exception is a "well-behaved" parse failure, parse location and message should be meaningful
-
-            var errorMessage = String.format("CSV decoding failed on line %d: %s",
-                    e.getLocation().getLineNr(),
-                    e.getOriginalMessage());
-
-            log.error(errorMessage, e);
-            throw new EDataCorruption(errorMessage, e);
-        }
-        catch (IOException e) {
-
-            // Decoders work on a stream of buffers, "real" IO exceptions should not occur
-            // IO exceptions here indicate parse failures, not file/socket communication errors
-            // This is likely to be a more "badly-behaved" failure, or at least one that was not anticipated
-
-            var errorMessage = "CSV decoding failed, content is garbled: " + e.getMessage();
-
-            log.error(errorMessage, e);
-            throw new EDataCorruption(errorMessage, e);
-        }
-        catch (Throwable e)  {
-
-            // Ensure unexpected errors are still reported to the Flow API
-
-            log.error("Unexpected error in CSV decoding", e);
-            throw new EUnexpected(e);
-        }
-    }
-
-    @Override
-    public void close() {
-
-        try {
-
-            if (context != null) {
-                context.close();
-                context = null;
-            }
-
-            if (csvParser != null) {
-                csvParser.close();
-                csvParser = null;
-            }
-
-            if (buffer != null) {
-                buffer.forEach(ArrowBuf::close);
-                buffer = null;
-            }
-        }
-        catch (IOException e) {
-            throw new ETracInternal("Unexpected error shutting down the CSV parser: " + e.getMessage(), e);
-        }
+        return new BatchConsumer(recordConsumer, context);
     }
 }

@@ -17,183 +17,45 @@
 
 package org.finos.tracdap.common.codec.json;
 
-import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.codec.producers.BuildProducers;
-import org.finos.tracdap.common.codec.producers.CompositeObjectProducer;
+import org.finos.tracdap.common.codec.text.BaseTextEncoder;
+import org.finos.tracdap.common.codec.text.BuildProducers;
+import org.finos.tracdap.common.codec.text.IBatchProducer;
+import org.finos.tracdap.common.codec.text.producers.BatchProducer;
+import org.finos.tracdap.common.codec.text.producers.CompositeObjectProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.data.util.ByteOutputStream;
-import org.finos.tracdap.common.exception.EUnexpected;
 
 import org.apache.arrow.memory.BufferAllocator;
 
 import com.fasterxml.jackson.core.JsonEncoding;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
 
 
-public class JsonEncoder extends StreamingEncoder implements AutoCloseable {
-
-    private final Logger log = LoggerFactory.getLogger(getClass());
-
-    private final BufferAllocator allocator;
-
-    private ArrowVsrContext context;
-    private OutputStream out;
-
-    private CompositeObjectProducer producer;
-    private JsonGenerator generator;
+public class JsonEncoder extends BaseTextEncoder {
 
     public JsonEncoder(BufferAllocator allocator) {
-        this.allocator = allocator;
+        super(allocator);
     }
 
     @Override
-    public void onStart(ArrowVsrContext context) {
+    protected JsonGenerator createGenerator(ArrowVsrContext context, OutputStream out) throws IOException {
 
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("JSON ENCODER: onStart()");
-
-            consumer().onStart();
-
-            this.context = context;
-
-            out = new ByteOutputStream(allocator, consumer()::onNext);
-
-            var factory = new JsonFactory();
-            generator = factory.createGenerator(out, JsonEncoding.UTF8);
-
-            var producers = BuildProducers.createProducers(
-                    context.getFrontBuffer().getFieldVectors(),
-                    context.getDictionaries());
-
-            producer = new CompositeObjectProducer(producers);
-
-            // Tell Jackson to start the main array of records
-            generator.writeStartArray();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-
-            close();
-
-            throw new EUnexpected(e);
-        }
+        var factory = new JsonFactory();
+        return factory.createGenerator(out, JsonEncoding.UTF8);
     }
 
     @Override
-    public void onBatch() {
+    protected IBatchProducer createProducer(ArrowVsrContext context) {
 
-        try {
+        var fieldProducers = BuildProducers.createProducers(
+                context.getFrontBuffer().getFieldVectors(),
+                context.getDictionaries());
 
-            if (log.isTraceEnabled())
-                log.trace("JSON ENCODER: onNext()");
+        var recordProducer = new CompositeObjectProducer(fieldProducers);
 
-            var batch = context.getFrontBuffer();
-            var nRows = batch.getRowCount();
-
-            producer.resetVectors(batch.getFieldVectors());
-
-            for (var row = 0; row < nRows; row++)
-                producer.produceElement(generator);
-
-            context.setUnloaded();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-
-            close();
-
-            throw new EUnexpected(e);
-        }
-    }
-
-    @Override
-    public void onComplete() {
-
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("JSON ENCODER: onComplete()");
-
-            // Tell Jackson to end the main array of records
-            generator.writeEndArray();
-
-            // Flush and close output
-
-            generator.close();
-            generator = null;
-
-            out.flush();
-            out = null;
-
-            markAsDone();
-            consumer().onComplete();
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
-        finally {
-
-            close();
-        }
-    }
-
-    @Override
-    public void onError(Throwable error) {
-
-        try {
-
-            if (log.isTraceEnabled())
-                log.trace("JSON ENCODER: onError()");
-
-            markAsDone();
-            consumer().onError(error);
-        }
-        finally {
-            close();
-        }
-    }
-
-    @Override
-    public void close() {
-
-        try {
-
-            if (generator != null) {
-                generator.close();
-                generator = null;
-            }
-
-            if (out != null) {
-                out.close();
-                out = null;
-            }
-
-            // Encoder does not own context, do not close it
-
-            if (context != null) {
-                context = null;
-            }
-        }
-        catch (IOException e) {
-
-            // Output stream is writing to memory buffers, IO errors are not expected
-            log.error("Unexpected error closing encoder: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
+        return new BatchProducer(recordProducer);
     }
 }
