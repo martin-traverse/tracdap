@@ -46,6 +46,9 @@ public class SchemaValidator {
 
     private static final Descriptors.Descriptor SCHEMA_DEFINITION;
     private static final Descriptors.FieldDescriptor SD_SCHEMA_TYPE;
+    private static final Descriptors.FieldDescriptor SD_FIELDS;
+    private static final Descriptors.FieldDescriptor SD_NAMED_TYPES;
+    private static final Descriptors.FieldDescriptor SD_NAMED_ENUMS;
     private static final Descriptors.OneofDescriptor SD_SCHEMA_DETAILS;
     private static final Descriptors.FieldDescriptor SD_TABLE;
 
@@ -61,14 +64,18 @@ public class SchemaValidator {
     private static final Descriptors.FieldDescriptor FS_FIELD_ORDER;
     private static final Descriptors.FieldDescriptor FS_FIELD_TYPE;
     private static final Descriptors.FieldDescriptor FS_LABEL;
-    private static final Descriptors.FieldDescriptor FS_TYPE_NAME;
     private static final Descriptors.FieldDescriptor FS_DEFAULT_VALUE;
+    private static final Descriptors.FieldDescriptor FS_NAMED_TYPE;
+    private static final Descriptors.FieldDescriptor FS_NAMED_ENUM;
     private static final Descriptors.FieldDescriptor FS_CHILDREN;
 
     static {
 
         SCHEMA_DEFINITION = SchemaDefinition.getDescriptor();
         SD_SCHEMA_TYPE = ValidatorUtils.field(SCHEMA_DEFINITION, SchemaDefinition.SCHEMATYPE_FIELD_NUMBER);
+        SD_FIELDS = ValidatorUtils.field(SCHEMA_DEFINITION, SchemaDefinition.FIELDS_FIELD_NUMBER);
+        SD_NAMED_TYPES = ValidatorUtils.field(SCHEMA_DEFINITION, SchemaDefinition.NAMEDTYPES_FIELD_NUMBER);
+        SD_NAMED_ENUMS = ValidatorUtils.field(SCHEMA_DEFINITION, SchemaDefinition.NAMEDENUMS_FIELD_NUMBER);
         SD_TABLE = ValidatorUtils.field(SCHEMA_DEFINITION, SchemaDefinition.TABLE_FIELD_NUMBER);
         SD_SCHEMA_DETAILS = SD_TABLE.getContainingOneof();
 
@@ -84,8 +91,9 @@ public class SchemaValidator {
         FS_FIELD_ORDER = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.FIELDORDER_FIELD_NUMBER);
         FS_FIELD_TYPE = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.FIELDTYPE_FIELD_NUMBER);
         FS_LABEL = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.LABEL_FIELD_NUMBER);
-        FS_TYPE_NAME = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.TYPENAME_FIELD_NUMBER);
         FS_DEFAULT_VALUE = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.DEFAULTVALUE_FIELD_NUMBER);
+        FS_NAMED_TYPE = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.NAMEDTYPE_FIELD_NUMBER);
+        FS_NAMED_ENUM = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.NAMEDENUM_FIELD_NUMBER);
         FS_CHILDREN = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.CHILDREN_FIELD_NUMBER);
     }
 
@@ -115,8 +123,23 @@ public class SchemaValidator {
             ctx = ctx.pushOneOf(SD_SCHEMA_DETAILS)
                     .apply(CommonValidators::omitted)
                     .pop();
+
+            ctx = ctx.push(SD_FIELDS)
+                    .apply(CommonValidators::omitted)
+                    .pop();
+
+            ctx = ctx.push(SD_NAMED_TYPES)
+                    .apply(CommonValidators::omitted)
+                    .pop();
+
+            ctx = ctx.push(SD_NAMED_ENUMS)
+                    .apply(CommonValidators::omitted)
+                    .pop();
+
+            return ctx;
         }
-        else {
+
+        if (schema.getSchemaType() == SchemaType.TABLE_SCHEMA) {
 
             // Otherwise apply the regular validator
 
@@ -126,6 +149,8 @@ public class SchemaValidator {
                     .applyRegistered()
                     .pop();
         }
+
+        // TODO: Validate other schema types
 
         return ctx;
     }

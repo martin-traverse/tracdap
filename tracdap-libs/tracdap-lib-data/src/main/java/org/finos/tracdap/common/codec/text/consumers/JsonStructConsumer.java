@@ -17,11 +17,15 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
+import org.finos.tracdap.common.codec.text.IJsonConsumer;
+import org.finos.tracdap.common.exception.EDataCorruption;
+
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
-import org.finos.tracdap.common.exception.EDataCorruption;
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.ValueVector;
+import org.apache.arrow.vector.complex.StructVector;
 
 import java.io.IOException;
 import java.util.Arrays;
@@ -32,25 +36,10 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 
-public class CompositeObjectConsumer extends BaseCompositeConsumer {
-
-    private final JsonStructConsumer delegate;
-
-    public CompositeObjectConsumer(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
-        super(delegates);
-        this.delegate = new JsonStructConsumer(null, delegates);
-    }
-
-    @Override
-    public boolean consumeElement(JsonParser parser) throws IOException {
-        return delegate.consumeElement(parser);
-    }
+public class JsonStructConsumer extends BaseJsonConsumer<StructVector> {
 
 
-    /*
-
-
-    private final boolean useFieldNames;
+    private final List<IJsonConsumer<?>> delegates;
     private final Map<String, Integer> fieldNameMap;
 
     private final boolean[] consumedFields;
@@ -59,13 +48,15 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
     private boolean midValue = false;
     private int currentFieldIndex;
 
-    public CompositeObjectConsumer(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
+    public JsonStructConsumer(StructVector vector, List<IJsonConsumer<?>> delegates) {
+        this(vector, delegates, true);
+    }
 
-        super(delegates);
+    public JsonStructConsumer(StructVector vector, List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
 
-        delegate = new JsonStructConsumer(null, delegates);
+        super(vector);
+        this.delegates = delegates;
 
-        useFieldNames = true;
         fieldNameMap = buildFieldNameMap(delegates, isCaseSensitive);
 
         consumedFields = new boolean[delegates.size()];
@@ -75,13 +66,13 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        if (currentFieldIndex == -1) {
+        if (!gotFirstToken) {
 
             if (parser.currentToken() != JsonToken.START_OBJECT)
-                throw new IllegalStateException();
+                throw new EDataCorruption("Unexpected token: " + parser.currentToken() + parser.currentLocation());
 
-            currentFieldIndex = 0;
-            resetConsumedFields();
+            gotFirstToken = true;
+            currentFieldIndex = -1;
 
             parser.nextValue();
         }
@@ -120,14 +111,57 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
             }
         }
 
-        // Handle missing fields - set to null if possible, error otherwise
-        checkConsumedFields(parser);
+        if (gotLastToken) {
 
-        currentFieldIndex = -1;
-        return true;
+            checkConsumedFields(parser);
+
+            if (vector != null)
+                vector.setIndexDefined(currentIndex);
+
+            resetConsumedFields();
+            currentFieldIndex = -1;
+            gotFirstToken = false;
+            gotLastToken = false;
+            midValue = false;
+
+            currentIndex++;
+
+            return true;
+        }
+        else {
+
+            return false;
+        }
     }
 
-    private static Map<String, Integer> buildFieldNameMap(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
+    @Override
+    public void resetVector(StructVector vector) {
+
+        resetFieldVectors(vector.getChildrenFromFields());
+        super.resetVector(vector);
+    }
+
+    @SuppressWarnings("unchecked")
+    public void resetFieldVectors(List<FieldVector> vectors) {
+
+        for (int i = 0; i < vectors.size(); i++) {
+
+            var delegate = (IJsonConsumer<FieldVector>) delegates.get(i);
+            var vector = vectors.get(i);
+
+            resetDelegateVector(delegate, vector);
+        }
+    }
+
+    private <TVector extends ValueVector> void resetDelegateVector(IJsonConsumer<TVector> delegate, TVector vector) {
+
+        if (vector.getMinorType() != delegate.getVector().getMinorType())
+            throw new IllegalArgumentException();
+
+        delegate.resetVector(vector);
+    }
+
+    static Map<String, Integer> buildFieldNameMap(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
 
         var casedMap = IntStream.range(0, delegates.size())
                 .boxed()
@@ -145,25 +179,6 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
 
             return uncasedMap;
         }
-    }
-
-    IJsonConsumer<?> getFieldDelegate(JsonParser parser) throws IOException {
-
-        if (useFieldNames) {
-
-            var fieldName = parser.currentName();
-            var fieldIndex = fieldNameMap.get(fieldName);
-
-            if (fieldIndex != null)
-                return delegates.get(fieldIndex);
-        }
-        else {
-
-            if (currentFieldIndex >= 0 && currentFieldIndex < delegates.size())
-                return delegates.get(currentFieldIndex);
-        }
-
-        return null;
     }
 
     private void resetConsumedFields() {
@@ -188,5 +203,5 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
                 }
             }
         }
-    }*/
+    }
 }

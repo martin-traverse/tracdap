@@ -134,6 +134,7 @@ abstract class DataRoundTripTest {
 
     private static final String BASIC_CSV_DATA = SampleData.BASIC_CSV_DATA_RESOURCE;
     private static final String BASIC_JSON_DATA = SampleData.BASIC_JSON_DATA_RESOURCE;
+    private static final String STRUCT_JSON_DATA = SampleData.STRUCT_JSON_DATA_RESOURCE;
     private static final String LARGE_CSV_DATA = "/large_csv_data_100000.csv";
 
     private static final byte[] BASIC_CSV_CONTENT = ResourceHelpers.loadResourceAsBytes(BASIC_CSV_DATA);
@@ -290,6 +291,23 @@ abstract class DataRoundTripTest {
         }
     }
 
+    @Test
+    void roundTrip_jsonStruct() throws Exception {
+
+        try (var testDataStream = getClass().getResourceAsStream(STRUCT_JSON_DATA)) {
+
+            if (testDataStream == null)
+                throw new RuntimeException("Test data not found");
+
+            var testDataBytes = testDataStream.readAllBytes();
+            var testData = List.of(ByteString.copyFrom(testDataBytes));
+
+            var mimeType = "text/json";
+            roundTripStructTest(testData, mimeType, mimeType, DataApiTestHelpers::decodeJson, true);
+            roundTripStructTest(testData, mimeType, mimeType, DataApiTestHelpers::decodeJson, false);
+        }
+    }
+
     private void roundTripTest(
             List<ByteString> content, String writeFormat, String readFormat,
             BiFunction<SchemaDefinition, List<ByteString>, List<Vector<Object>>> decodeFunc,
@@ -298,6 +316,61 @@ abstract class DataRoundTripTest {
         var requestParams = DataWriteRequest.newBuilder()
                 .setTenant(TEST_TENANT)
                 .setSchema(SampleData.BASIC_TABLE_SCHEMA)
+                .setFormat(writeFormat)
+                .build();
+
+        var createDatasetRequest = dataWriteRequest(requestParams, content, dataInChunkZero);
+        var createDataset = DataApiTestHelpers.clientStreaming(dataClient::createDataset, createDatasetRequest);
+
+        waitFor(TEST_TIMEOUT, createDataset);
+        var objHeader = resultOf(createDataset);
+
+        var dataRequest = DataReadRequest.newBuilder()
+                .setTenant(TEST_TENANT)
+                .setSelector(selectorFor(objHeader))
+                .setFormat(readFormat)
+                .build();
+
+        var readResponse = Flows.<DataReadResponse>hub(execContext.eventLoopExecutor());
+        var readResponse0 = Flows.first(readResponse);
+        var readByteStream = Flows.map(readResponse, DataReadResponse::getContent);
+        var readBytes = Flows.fold(readByteStream, ByteString::concat, ByteString.EMPTY);
+
+        DataApiTestHelpers.serverStreaming(dataClient::readDataset, dataRequest, readResponse);
+
+        waitFor(Duration.ofMinutes(20), readResponse0, readBytes);
+        var roundTripResponse = resultOf(readResponse0);
+        var roundTripSchema = roundTripResponse.getSchema();
+        var roundTripBytes = resultOf(readBytes);
+
+        var roundTripData = decodeFunc.apply(roundTripSchema, List.of(roundTripBytes));
+
+        Assertions.assertEquals(SampleData.BASIC_TABLE_SCHEMA, roundTripSchema);
+
+        for (int col = 0; col < roundTripSchema.getTable().getFieldsCount(); col++) {
+
+            for (var row = 0; row < DataRoundTripTest.BASIC_TEST_DATA.size(); row++) {
+
+                var expectedVal = DataRoundTripTest.BASIC_TEST_DATA.get(col).get(row);
+                var roundTripVal = roundTripData.get(col).get(row);
+
+                // Allow comparing big decimals with different scales
+                if (expectedVal instanceof BigDecimal)
+                    roundTripVal = ((BigDecimal) roundTripVal).setScale(((BigDecimal) expectedVal).scale(), RoundingMode.UNNECESSARY);
+
+                Assertions.assertEquals(expectedVal, roundTripVal);
+            }
+        }
+    }
+
+    private void roundTripStructTest(
+            List<ByteString> content, String writeFormat, String readFormat,
+            BiFunction<SchemaDefinition, List<ByteString>, List<Vector<Object>>> decodeFunc,
+            boolean dataInChunkZero) throws Exception {
+
+        var requestParams = DataWriteRequest.newBuilder()
+                .setTenant(TEST_TENANT)
+                .setSchema(SampleData.BASIC_STRUCT_SCHEMA)
                 .setFormat(writeFormat)
                 .build();
 

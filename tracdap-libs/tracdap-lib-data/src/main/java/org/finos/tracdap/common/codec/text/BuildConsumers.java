@@ -18,8 +18,13 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.apache.arrow.vector.*;
+import org.apache.arrow.vector.complex.ListVector;
+import org.apache.arrow.vector.complex.MapVector;
+import org.apache.arrow.vector.complex.StructVector;
+import org.apache.arrow.vector.types.Types;
 import org.finos.tracdap.common.codec.text.consumers.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -85,6 +90,38 @@ public class BuildConsumers {
                 return new JsonScalarConsumer<>(new JsonDateDayConsumer((DateDayVector) vector));
             case TIMESTAMPMILLI:
                 return new JsonScalarConsumer<>(new JsonTimestampMilliConsumer((TimeStampMilliVector) vector));
+
+            // Composite types
+
+            case LIST:
+                var listVector = (ListVector) vector;
+                var itemVector = listVector.getDataVector();
+                var itemConsumer = createConsumer(itemVector);
+                return new JsonListConsumer(listVector, itemConsumer);
+
+            // TODO: Fixed size list
+
+            case MAP:
+                var mapVector = (MapVector) vector;
+                var entryVector = (StructVector) mapVector.getDataVector();
+                var keyType = entryVector.getChildrenFromFields().get(0).getMinorType();
+                if (keyType != Types.MinorType.VARCHAR) {
+                    throw new IllegalArgumentException("MAP key type must be VARCHAR for text decoding");
+                }
+                var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
+                var valueVector = entryVector.getChildrenFromFields().get(1);
+                var valueConsumer = createConsumer(valueVector);
+                return new JsonMapConsumer(mapVector, keyVector, valueConsumer);
+
+            case STRUCT:
+                var structVector = (StructVector) vector;
+                var childVectors = structVector.getChildrenFromFields();
+                var childConsumers = new ArrayList<IJsonConsumer<?>>(childVectors.size());
+                for (FieldVector childVector : childVectors) {
+                    var childConsumer = createConsumer(childVector);
+                    childConsumers.add(childConsumer);
+                }
+                return new JsonStructConsumer(structVector, childConsumers);
 
         }
 

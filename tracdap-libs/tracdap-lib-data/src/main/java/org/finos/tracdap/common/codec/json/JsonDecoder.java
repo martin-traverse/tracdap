@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.common.codec.json;
 
+import com.fasterxml.jackson.core.StreamReadFeature;
 import org.finos.tracdap.common.codec.text.BaseTextDecoder;
 import org.finos.tracdap.common.codec.text.BuildConsumers;
 import org.finos.tracdap.common.codec.text.IBatchConsumer;
@@ -50,7 +51,8 @@ public class JsonDecoder extends BaseTextDecoder {
 
     private static JsonFactory buildJsonFactory() {
 
-        return new JsonFactory();
+        return new JsonFactory()
+                .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
     }
 
     @Override

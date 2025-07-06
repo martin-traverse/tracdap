@@ -20,8 +20,10 @@ package org.finos.tracdap.common.codec.text;
 import org.apache.arrow.vector.*;
 import org.apache.arrow.vector.complex.*;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.types.Types;
 import org.finos.tracdap.common.codec.text.producers.*;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -131,33 +133,28 @@ public class BuildProducers {
                 var fixedItemVector = fixedListVector.getDataVector();
                 var fixedItemProducer = createProducer(fixedItemVector, fixedItemVector.getField().isNullable(), dictionaries);
                 return new JsonFixedSizeListProducer(fixedListVector, fixedItemProducer);
-//
-//            case MAP:
-//                MapVector mapVector = (MapVector) vector;
-//                StructVector entryVector = (StructVector) mapVector.getDataVector();
-//                Types.MinorType keyType = entryVector.getChildrenFromFields().get(0).getMinorType();
-//                if (keyType != Types.MinorType.VARCHAR) {
-//                    throw new IllegalArgumentException("MAP key type must be VARCHAR for Avro encoding");
-//                }
-//                VarCharVector keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
-//                FieldVector valueVector = entryVector.getChildrenFromFields().get(1);
-//                Producer<?> keyProducer = new AvroStringProducer(keyVector);
-//                Producer<?> valueProducer =
-//                        createProducer(valueVector, valueVector.getField().isNullable(), dictionaries);
-//                Producer<?> entryProducer =
-//                        new AvroStructProducer(entryVector, new Producer<?>[] {keyProducer, valueProducer});
-//                return new AvroMapProducer(mapVector, entryProducer);
-//
-//            case STRUCT:
-//                StructVector structVector = (StructVector) vector;
-//                List<FieldVector> childVectors = structVector.getChildrenFromFields();
-//                Producer<?>[] childProducers = new Producer<?>[childVectors.size()];
-//                for (int i = 0; i < childVectors.size(); i++) {
-//                    FieldVector childVector = childVectors.get(i);
-//                    childProducers[i] =
-//                            createProducer(childVector, childVector.getField().isNullable(), dictionaries);
-//                }
-//                return new AvroStructProducer(structVector, childProducers);
+
+            case MAP:
+                var mapVector = (MapVector) vector;
+                var entryVector = (StructVector) mapVector.getDataVector();
+                var keyType = entryVector.getChildrenFromFields().get(0).getMinorType();
+                if (keyType != Types.MinorType.VARCHAR) {
+                    throw new IllegalArgumentException("MAP key type must be VARCHAR for text encoding");
+                }
+                var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
+                var valueVector = entryVector.getChildrenFromFields().get(1);
+                var valueProducer = createProducer(valueVector, valueVector.getField().isNullable(), dictionaries);
+                return new JsonMapProducer(mapVector, keyVector, valueProducer);
+
+            case STRUCT:
+                var structVector = (StructVector) vector;
+                var childVectors = structVector.getChildrenFromFields();
+                var childProducers = new ArrayList<IJsonProducer<?>>(childVectors.size());
+                for (FieldVector childVector : childVectors) {
+                    var childProducer = createProducer(childVector, childVector.getField().isNullable(), dictionaries);
+                    childProducers.add(childProducer);
+                }
+                return new JsonStructProducer(structVector, childProducers);
 
             // Support for UNION and DENSEUNION is not currently available
             // This is pending fixes in the implementation of the union vectors themselves

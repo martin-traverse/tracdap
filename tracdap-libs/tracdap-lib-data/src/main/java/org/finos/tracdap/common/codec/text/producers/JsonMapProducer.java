@@ -17,21 +17,26 @@
 
 package org.finos.tracdap.common.codec.text.producers;
 
+import org.finos.tracdap.common.codec.text.IJsonProducer;
+
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.FieldVector;
-import org.apache.arrow.vector.complex.ListVector;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
+import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.complex.MapVector;
+import org.apache.arrow.vector.complex.StructVector;
 
 import java.io.IOException;
 
 
-public class JsonListProducer extends BaseJsonProducer<ListVector> {
+public class JsonMapProducer extends BaseJsonProducer<MapVector> {
 
-    private final IJsonProducer<?> delegate;
+    private VarCharVector keyVector;
+    private final IJsonProducer<?> valueDelegate;
 
-    public JsonListProducer(ListVector vector, IJsonProducer<?> delegate) {
+    public JsonMapProducer(MapVector vector, VarCharVector keyVector, IJsonProducer<?> valueDelegate) {
         super(vector);
-        this.delegate = delegate;
+        this.keyVector = keyVector;
+        this.valueDelegate = valueDelegate;
     }
 
     @Override
@@ -41,13 +46,17 @@ public class JsonListProducer extends BaseJsonProducer<ListVector> {
         int endOffset = vector.getOffsetBuffer().getInt((currentIndex + 1) * (long) Integer.BYTES);
         int nItems = endOffset - startOffset;
 
-        generator.writeStartArray();
+        generator.writeStartObject();
 
         for (int i = 0; i < nItems; i++) {
-            delegate.produceElement(generator);
+
+            var key = keyVector.getObject(startOffset + i);
+            generator.writeFieldName(key.toString());
+
+            valueDelegate.produceElement(generator);
         }
 
-        generator.writeStartArray();
+        generator.writeEndObject();
 
         currentIndex++;
     }
@@ -62,15 +71,22 @@ public class JsonListProducer extends BaseJsonProducer<ListVector> {
         }
 
         int delegateOffset = vector.getOffsetBuffer().getInt(index * (long) Integer.BYTES);
-        delegate.resetIndex(delegateOffset);
+        valueDelegate.resetIndex(delegateOffset);
 
         super.resetIndex(index);
     }
 
     @Override
     @SuppressWarnings("unchecked")
-    public void resetVector(ListVector vector) {
-        ((IJsonProducer<FieldVector>) delegate).resetVector(vector.getDataVector());
+    public void resetVector(MapVector vector) {
+
+        var entryVector = (StructVector) vector.getDataVector();
+        var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
+        var valueVector = entryVector.getChildrenFromFields().get(1);
+
+        this.keyVector = keyVector;
+        ((IJsonProducer<FieldVector>) valueDelegate).resetVector(valueVector);
+
         super.resetVector(vector);
     }
 }
