@@ -18,8 +18,10 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.StreamingDecoder;
+import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.CompositeObjectConsumer;
+import org.finos.tracdap.common.codec.text.consumers.SingleRecordConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.common.exception.ETrac;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -27,17 +29,21 @@ import org.finos.tracdap.common.exception.EUnexpected;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.async.ByteBufferFeeder;
 import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.memory.BufferAllocator;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
+import java.util.function.BiConsumer;
 
-public abstract class BaseTextDecoder extends StreamingDecoder {
+
+public class BaseTextDecoder extends StreamingDecoder {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
-    private ArrowVsrContext context;
+
+    private final ArrowVsrContext context;
+    private final JsonFactory jsonFactory;
+    private final BiConsumer<JsonParser, ArrowVsrContext> configureParser;
 
     private JsonParser parser;
     private ByteBufferFeeder feeder;
@@ -46,17 +52,17 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
     private long bytesConsumed;
     private boolean done;
 
-    protected BaseTextDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
+    public BaseTextDecoder(
+            ArrowVsrContext context, JsonFactory jsonFactory,
+            BiConsumer<JsonParser, ArrowVsrContext> configureParser) {
 
         // Allocate memory once, and reuse it for every batch (i.e. do not clear/allocate per batch)
         // This memory is released in close(), which calls root.close()
 
-        this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
+        this.context = context;
+        this.jsonFactory = jsonFactory;
+        this.configureParser = configureParser;
     }
-
-    protected abstract JsonFactory getParserFactory() throws IOException;
-    protected abstract JsonParser configureParser(JsonParser parser) throws IOException;
-    protected abstract IBatchConsumer createConsumer(ArrowVsrContext context) throws EUnexpected;
 
     @Override
     public void onStart() {
@@ -66,9 +72,11 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
             if (log.isTraceEnabled())
                 log.trace("JSON DECODER: onStart()");
 
-            var factory = getParserFactory();
-            parser = configureParser(factory.createNonBlockingByteBufferParser());
+            parser = jsonFactory.createNonBlockingByteBufferParser();
             feeder = (ByteBufferFeeder) parser.getNonBlockingInputFeeder();
+
+            if (configureParser != null)
+                configureParser.accept(parser, context);
 
             consumer = createConsumer(context);
 
@@ -80,6 +88,19 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
             log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
             throw new EUnexpected(e);
         }
+    }
+
+    private IBatchConsumer createConsumer(ArrowVsrContext context) {
+
+        var fieldVectors = context.getStagingVectors();
+        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
+
+        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
+
+        if (context.getSchema().isSingleRecord())
+            return new SingleRecordConsumer(recordConsumer, context);
+        else
+            return new BatchConsumer(recordConsumer, context);
     }
 
     @Override
@@ -194,10 +215,7 @@ public abstract class BaseTextDecoder extends StreamingDecoder {
                 parser = null;
             }
 
-            if (context != null) {
-                context.close();
-                context = null;
-            }
+            context.close();
         }
         catch (IOException e) {
 

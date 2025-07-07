@@ -18,8 +18,10 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.BufferDecoder;
+import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.CompositeObjectConsumer;
+import org.finos.tracdap.common.codec.text.consumers.SingleRecordConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
 import org.finos.tracdap.common.data.util.Bytes;
 import org.finos.tracdap.common.exception.EDataCorruption;
@@ -31,7 +33,6 @@ import com.fasterxml.jackson.core.JacksonException;
 import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.memory.ArrowBuf;
-import org.apache.arrow.memory.BufferAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,34 +40,34 @@ import java.io.IOException;
 import java.nio.channels.Channels;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.function.BiConsumer;
 
 
-public abstract class BufferedTextDecoder extends BufferDecoder {
+public class BufferedTextDecoder extends BufferDecoder {
 
     private static final int BATCH_SIZE = 1024;
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final BufferAllocator arrowAllocator;
-    private final ArrowVsrSchema arrowSchema;
+    private final ArrowVsrContext context;
+    private final JsonFactory jsonFactory;
+    private final BiConsumer<JsonParser, ArrowVsrContext> configureParser;
 
     private List<ArrowBuf> buffer;
-    private ArrowVsrContext context;
-
     private JsonParser csvParser;
     private IBatchConsumer csvConsumer;
 
-    public BufferedTextDecoder(BufferAllocator arrowAllocator, ArrowVsrSchema arrowSchema) {
+    public BufferedTextDecoder(
+            ArrowVsrContext context, JsonFactory jsonFactory,
+            BiConsumer<JsonParser, ArrowVsrContext> configureParser) {
 
-        this.arrowAllocator = arrowAllocator;
+        // Schema cannot be inferred from text formats
+        // Context must always be pre-configured from a TRAC schema
 
-        // Schema cannot be inferred from CSV, so it must always be set from a TRAC schema
-        this.arrowSchema = arrowSchema;
+        this.context = context;
+        this.jsonFactory = jsonFactory;
+        this.configureParser = configureParser;
     }
-
-    protected abstract JsonFactory getParserFactory();
-    protected abstract JsonParser configureParser(JsonParser parser);
-    protected abstract IBatchConsumer createConsumer(ArrowVsrContext context);
 
     @Override
     public void onBuffer(List<ArrowBuf> buffer) {
@@ -96,11 +97,10 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
 
             var channel = new ByteSeekableChannel(buffer);
             var stream = Channels.newInputStream(channel);
+            this.csvParser = jsonFactory.createParser(stream);
 
-            var factory = getParserFactory();
-            this.csvParser = configureParser(factory.createParser(stream));
-
-            this.context = ArrowVsrContext.forSchema(arrowSchema, arrowAllocator);
+            if (configureParser != null)
+                configureParser.accept(csvParser, context);
 
             this.csvConsumer = createConsumer(context);
 
@@ -121,6 +121,19 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
 
             return null;
         });
+    }
+
+    private IBatchConsumer createConsumer(ArrowVsrContext context) {
+
+        var fieldVectors = context.getStagingVectors();
+        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
+
+        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
+
+        if (context.getSchema().isSingleRecord())
+            return new SingleRecordConsumer(recordConsumer, context);
+        else
+            return new BatchConsumer(recordConsumer, context);
     }
 
     @Override
@@ -235,10 +248,7 @@ public abstract class BufferedTextDecoder extends BufferDecoder {
 
         try {
 
-            if (context != null) {
-                context.close();
-                context = null;
-            }
+            context.close();
 
             if (csvParser != null) {
                 csvParser.close();

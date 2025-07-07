@@ -17,11 +17,20 @@
 
 package org.finos.tracdap.common.codec.json;
 
-import org.finos.tracdap.common.codec.ICodec;
 
-import org.apache.arrow.memory.BufferAllocator;
-import org.finos.tracdap.common.data.ArrowVsrSchema;
+import org.finos.tracdap.common.codec.ICodec;
+import org.finos.tracdap.common.codec.text.BaseTextDecoder;
+import org.finos.tracdap.common.codec.text.BaseTextEncoder;
+import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.DataPipeline;
+import org.finos.tracdap.common.exception.EDataConstraint;
+import org.finos.tracdap.metadata.SchemaDefinition;
+
+import com.fasterxml.jackson.core.JsonFactory;
+import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.StreamReadFeature;
+import org.apache.arrow.memory.BufferAllocator;
 
 import java.util.List;
 import java.util.Map;
@@ -30,6 +39,10 @@ import java.util.Map;
 public class JsonCodec implements ICodec {
 
     private static final String DEFAULT_FILE_EXTENSION = "json";
+
+    private static final JsonFactory jsonFactory = new JsonFactory()
+            // Show source in error messages
+            .enable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION.mappedFeature());
 
     @Override
     public List<String> options() {
@@ -44,12 +57,32 @@ public class JsonCodec implements ICodec {
     @Override
     public Encoder<DataPipeline.StreamApi>
     getEncoder(BufferAllocator allocator, Map<String, String> options) {
-        return new JsonEncoder(allocator);
+
+        return new BaseTextEncoder(allocator, jsonFactory, this::configureGenerator);
     }
 
     @Override
-    public Decoder<DataPipeline.StreamApi>
-    getDecoder(BufferAllocator allocator, ArrowVsrSchema schema, Map<String, String> options) {
-        return new JsonDecoder(allocator, schema);
+    public Decoder<?> getDecoder(BufferAllocator allocator, Map<String, String> options) {
+
+        throw new EDataConstraint("JSON decoder requires a TRAC schema");
+    }
+
+    @Override
+    public Decoder<?> getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
+
+        var context = ArrowVsrContext.forSchema(tracSchema, allocator);
+
+        return new BaseTextDecoder(context, jsonFactory, this::configureParser);
+    }
+
+    protected void configureGenerator(JsonGenerator generator, ArrowVsrContext context) {
+
+        // No special configuration needed
+    }
+
+    protected void configureParser(JsonParser parser, ArrowVsrContext context) {
+
+        // No special configuration needed
     }
 }
+

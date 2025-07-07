@@ -25,12 +25,13 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
 import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.types.pojo.DictionaryEncoding;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
+import org.finos.tracdap.metadata.SchemaDefinition;
 
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.List;
+import java.nio.charset.StandardCharsets;
+import java.util.*;
 import java.util.stream.Collectors;
 
 
@@ -137,6 +138,36 @@ public class ArrowVsrContext {
         return new ArrowVsrSchema(primarySchema, new Schema(concreteFields));
     }
 
+    private Map<String, Long> addNamedEnumDictionaries(DictionaryProvider.MapDictionaryProvider dictionaries, SchemaDefinition tracSchema) {
+
+        var namedEnumMap = new HashMap<String, Long>();
+
+        long nextId = dictionaries.getDictionaryIds().size();
+
+        for (var entry : tracSchema.getNamedEnumsMap().entrySet()) {
+
+            var name = entry.getKey();
+            var enum_ = entry.getValue();
+
+            var dictionaryVector = new VarCharVector(name, allocator);
+            dictionaryVector.allocateNew(enum_.getValuesCount());
+
+            for (int i = 0; i < enum_.getValuesCount(); i++) {
+                dictionaryVector.setSafe(i, enum_.getValues(i).getStringValue().getBytes(StandardCharsets.UTF_8));
+            }
+
+            dictionaryVector.setValueCount(enum_.getValuesCount());
+
+            var encoding = new DictionaryEncoding(nextId++, false, null);
+            var dictionary = new Dictionary(dictionaryVector, encoding);
+
+            namedEnumMap.put(name, encoding.getId());
+            dictionaries.put(dictionary);
+        }
+
+        return namedEnumMap;
+    }
+
     private DictionaryProvider prepareDictionaries() {
 
         var fields = schema.physical().getFields();
@@ -148,7 +179,7 @@ public class ArrowVsrContext {
 
             var field = fields.get(i);
 
-            if (field.getDictionary() != null) {
+            if (field.getDictionary() != null && !field.getMetadata().containsKey("trac.namedEnum")) {
 
                 var concreteField = concreteFields.get(i);
                 var encoding = field.getDictionary();

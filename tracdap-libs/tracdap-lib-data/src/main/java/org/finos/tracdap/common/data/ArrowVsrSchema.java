@@ -30,15 +30,20 @@ public class ArrowVsrSchema {
 
     private final Schema physicalSchema;
     private final Schema decodedSchema;
+    private final boolean singleRecord;
 
     public ArrowVsrSchema(Schema physicalSchema) {
-        this.physicalSchema = physicalSchema;
-        this.decodedSchema = physicalSchema;
+        this(physicalSchema, physicalSchema, false);
     }
 
     public ArrowVsrSchema(Schema physicalSchema, Schema decodedSchema) {
+        this(physicalSchema, decodedSchema, false);
+    }
+
+    public ArrowVsrSchema(Schema physicalSchema, Schema decodedSchema, boolean singleRecord) {
         this.physicalSchema = physicalSchema;
         this.decodedSchema = decodedSchema;
+        this.singleRecord = singleRecord;
     }
 
     public Schema physical() {
@@ -47,5 +52,9 @@ public class ArrowVsrSchema {
 
     public Schema decoded() {
         return decodedSchema != null ? decodedSchema : physicalSchema;
+    }
+
+    public boolean isSingleRecord() {
+        return singleRecord;
     }
 }

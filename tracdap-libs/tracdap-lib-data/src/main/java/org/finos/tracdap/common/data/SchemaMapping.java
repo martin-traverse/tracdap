@@ -26,6 +26,7 @@ import org.finos.tracdap.common.exception.EValidationGap;
 import org.finos.tracdap.metadata.*;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -104,6 +105,10 @@ public class SchemaMapping {
 
         var logicalFields = new ArrayList<Field>(tracFields.size());
         var physicalFields = new ArrayList<Field>(tracFields.size());
+
+        for (int i = 0; i < tracSchema.getNamedEnumsCount(); i++) {
+            nextDictionaryId.incrementAndGet();
+        }
 
         for (var tracField : tracFields) {
 
@@ -270,9 +275,14 @@ public class SchemaMapping {
             var notNull = tracField.getBusinessKey() || tracField.getNotNull();
             var nullable = !notNull;
 
+            var metadata = new HashMap<String, String>();
+
+            if (tracField.hasNamedEnum())
+                metadata.put("trac.namedEnum",  tracField.getNamedEnum());
+
             return new Field(
                     tracField.getFieldName(),
-                    new FieldType(nullable, indexType, encoding),
+                    new FieldType(nullable, indexType, encoding, metadata),
                     /* children = */ null);
         }
         else {

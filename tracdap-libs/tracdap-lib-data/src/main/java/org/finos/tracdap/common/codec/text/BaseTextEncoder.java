@@ -17,7 +17,11 @@
 
 package org.finos.tracdap.common.codec.text;
 
+import com.fasterxml.jackson.core.JsonFactory;
 import org.finos.tracdap.common.codec.StreamingEncoder;
+import org.finos.tracdap.common.codec.text.producers.BatchProducer;
+import org.finos.tracdap.common.codec.text.producers.CompositeObjectProducer;
+import org.finos.tracdap.common.codec.text.producers.SingleRecordProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -30,25 +34,30 @@ import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.util.function.BiConsumer;
 
 
-public abstract class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
+public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private final BufferAllocator allocator;
+    private final JsonFactory jsonFactory;
+    private final BiConsumer<JsonGenerator, ArrowVsrContext> configureGenerator;
 
     private ArrowVsrContext context;
     private OutputStream out;
     private JsonGenerator generator;
     private IBatchProducer producer;
 
-    public BaseTextEncoder(BufferAllocator allocator) {
-        this.allocator = allocator;
-    }
+    public BaseTextEncoder(
+            BufferAllocator allocator, JsonFactory jsonFactory,
+            BiConsumer<JsonGenerator, ArrowVsrContext> configureGenerator) {
 
-    protected abstract JsonGenerator createGenerator(ArrowVsrContext context, OutputStream out) throws IOException;
-    protected abstract IBatchProducer createProducer(ArrowVsrContext context);
+        this.allocator = allocator;
+        this.jsonFactory = jsonFactory;
+        this.configureGenerator = configureGenerator;
+    }
 
     @Override
     public void onStart(ArrowVsrContext context) {
@@ -61,9 +70,13 @@ public abstract class BaseTextEncoder extends StreamingEncoder implements AutoCl
             consumer().onStart();
 
             this.context = context;
-            this.out = new ByteOutputStream(allocator, consumer()::onNext);
 
-            this.generator = createGenerator(context, out);
+            this.out = new ByteOutputStream(allocator, consumer()::onNext);
+            this.generator = jsonFactory.createGenerator(out);
+
+            if (configureGenerator != null)
+                configureGenerator.accept(this.generator, context);
+
             this.producer = createProducer(context);
 
             producer.produceStart(generator);
@@ -77,6 +90,20 @@ public abstract class BaseTextEncoder extends StreamingEncoder implements AutoCl
 
             throw new EUnexpected(e);
         }
+    }
+
+    private IBatchProducer createProducer(ArrowVsrContext context) {
+
+        var fieldProducers = BuildProducers.createProducers(
+                context.getFrontBuffer().getFieldVectors(),
+                context.getDictionaries());
+
+        var recordProducer = new CompositeObjectProducer(fieldProducers);
+
+        if (context.getSchema().isSingleRecord())
+            return new SingleRecordProducer(recordProducer);
+        else
+            return new BatchProducer(recordProducer);
     }
 
     @Override
