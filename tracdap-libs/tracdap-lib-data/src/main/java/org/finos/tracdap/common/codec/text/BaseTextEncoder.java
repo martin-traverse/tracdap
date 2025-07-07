@@ -17,18 +17,14 @@
 
 package org.finos.tracdap.common.codec.text;
 
-import com.fasterxml.jackson.core.JsonFactory;
 import org.finos.tracdap.common.codec.StreamingEncoder;
-import org.finos.tracdap.common.codec.text.producers.BatchProducer;
-import org.finos.tracdap.common.codec.text.producers.CompositeObjectProducer;
-import org.finos.tracdap.common.codec.text.producers.SingleRecordProducer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
 import org.finos.tracdap.common.exception.EUnexpected;
 
-import org.apache.arrow.memory.BufferAllocator;
+import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonGenerator;
-
+import org.apache.arrow.memory.BufferAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -77,7 +73,10 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
             if (configureGenerator != null)
                 configureGenerator.accept(this.generator, context);
 
-            this.producer = createProducer(context);
+            this.producer = TextFileUtils.createBatchProducer(
+                    context.getFrontBuffer(),
+                    context.getDictionaries(),
+                    context.getSchema().isSingleRecord());
 
             producer.produceStart(generator);
         }
@@ -90,20 +89,6 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
 
             throw new EUnexpected(e);
         }
-    }
-
-    private IBatchProducer createProducer(ArrowVsrContext context) {
-
-        var fieldProducers = BuildProducers.createProducers(
-                context.getFrontBuffer().getFieldVectors(),
-                context.getDictionaries());
-
-        var recordProducer = new CompositeObjectProducer(fieldProducers);
-
-        if (context.getSchema().isSingleRecord())
-            return new SingleRecordProducer(recordProducer);
-        else
-            return new BatchProducer(recordProducer);
     }
 
     @Override

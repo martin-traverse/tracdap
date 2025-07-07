@@ -18,17 +18,37 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.apache.arrow.vector.*;
-import org.apache.arrow.vector.complex.*;
+import org.apache.arrow.vector.complex.FixedSizeListVector;
+import org.apache.arrow.vector.complex.ListVector;
+import org.apache.arrow.vector.complex.MapVector;
+import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.Types;
+import org.apache.arrow.vector.types.pojo.Field;
+import org.finos.tracdap.common.codec.text.consumers.*;
 import org.finos.tracdap.common.codec.text.producers.*;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 
-public class BuildProducers {
+public class TextFileUtils {
+
+    public static IBatchProducer createBatchProducer(
+            VectorSchemaRoot batch,
+            DictionaryProvider dictionaries,
+            boolean singleRecord) {
+
+        var fieldProducers = createProducers(batch.getFieldVectors(), dictionaries);
+        var recordProducer = new CompositeObjectProducer(fieldProducers);
+
+        if (singleRecord)
+            return new SingleRecordProducer(recordProducer);
+        else
+            return new BatchProducer(recordProducer);
+    }
 
     public static List<IJsonProducer<?>> createProducers(List<FieldVector> vectors, DictionaryProvider dictionaries) {
 
@@ -169,5 +189,159 @@ public class BuildProducers {
 
                 throw new UnsupportedOperationException(error);
         }
+    }
+
+    public static IBatchConsumer createBatchConsumer(
+            VectorSchemaRoot root,
+            DictionaryProvider dictionaries,
+            boolean singleRecord) {
+
+        var staging = new ArrayList<StagingContainer<?>>();
+
+        var fieldConsumers = createConsumers(root.getFieldVectors(), dictionaries, null, staging);
+        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
+
+        if (singleRecord)
+            return new SingleRecordConsumer(recordConsumer, root, staging);
+        else
+            return new BatchConsumer(recordConsumer, root, staging);
+    }
+
+    public static List<IJsonConsumer<?>> createConsumers(
+            List<FieldVector> vectors,
+            DictionaryProvider dictionaries,
+            Map<Long, Field> stagingFields,
+            List<StagingContainer<?>> staging) {
+
+        return vectors.stream()
+                .map(vector -> createConsumer(vector, dictionaries, stagingFields, staging))
+                .collect(Collectors.toList());
+    }
+
+    public static IJsonConsumer<?>
+    createConsumer(
+            FieldVector vector,
+            DictionaryProvider dictionaries,
+            Map<Long, Field> stagingFields,
+            List<StagingContainer<?>> staging) {
+
+        var encoding = vector.getField().getDictionary();
+
+        // If this field is dictionary encoded, set up a staging pair
+        if (encoding != null) {
+
+            var dictionary = dictionaries.lookup(encoding.getId());
+            var stagingField = stagingFields.get(encoding.getId());
+
+            if (stagingField == null) {
+                var message = String.format(
+                        "Missing type information for dictionary-encoded field [%s]",
+                        vector.getField().getName());
+                throw new IllegalArgumentException(message);
+            }
+
+            var stagingVector = (ElementAddressableVector) stagingField.createVector(vector.getAllocator());
+            var targetVector = (BaseIntVector) vector;
+
+            var stagingContainer =(dictionary != null && dictionary.getVector().getValueCount() > 0)
+                    ? new StagingContainer<>(stagingVector, targetVector, dictionary)
+                    : new StagingContainer<>(stagingVector, targetVector);
+
+            staging.add(stagingContainer);
+
+            @SuppressWarnings("unchecked")
+            var innerConsumer = (IJsonConsumer<ElementAddressableVector>)
+                    createConsumer((FieldVector) stagingVector, null, null, null);
+
+            return new StagingConsumer<>(innerConsumer, stagingContainer);
+        }
+
+        // Create a producer for the specific vector type
+        switch (vector.getMinorType()) {
+
+            // Null type
+
+            case NULL:
+                break;
+
+            // Numeric types
+
+            case BIT:
+                return new JsonScalarConsumer<>(new JsonBitConsumer((BitVector) vector));
+            case TINYINT:
+                return new JsonScalarConsumer<>(new JsonTinyIntConsumer((TinyIntVector) vector));
+            case SMALLINT:
+                return new JsonScalarConsumer<>(new JsonSmallIntConsumer((SmallIntVector) vector));
+            case INT:
+                return new JsonScalarConsumer<>(new JsonIntConsumer((IntVector) vector));
+            case BIGINT:
+                return new JsonScalarConsumer<>(new JsonBigIntConsumer((BigIntVector) vector));
+            case UINT1:
+                return new JsonScalarConsumer<>(new JsonUInt1Consumer((UInt1Vector) vector));
+            case UINT2:
+                return new JsonScalarConsumer<>(new JsonUInt2Consumer((UInt2Vector) vector));
+            case UINT4:
+                return new JsonScalarConsumer<>(new JsonUInt4Consumer((UInt4Vector) vector));
+            case UINT8:
+                return new JsonScalarConsumer<>(new JsonUInt8Consumer((UInt8Vector) vector));
+            case FLOAT2:
+                return new JsonScalarConsumer<>(new JsonFloat2Consumer((Float2Vector) vector));
+            case FLOAT4:
+                return new JsonScalarConsumer<>(new JsonFloat4Consumer((Float4Vector) vector));
+            case FLOAT8:
+                return new JsonScalarConsumer<>(new JsonFloat8Consumer((Float8Vector) vector));
+            case DECIMAL:
+                return new JsonScalarConsumer<>(new JsonDecimalConsumer((DecimalVector) vector));
+            case DECIMAL256:
+                return new JsonScalarConsumer<>(new JsonDecimal256Consumer((Decimal256Vector) vector));
+
+            // Text / binary types
+
+            case VARCHAR:
+                return new JsonScalarConsumer<>(new JsonVarCharConsumer((VarCharVector) vector));
+
+            // Temporal types
+
+            case DATEDAY:
+                return new JsonScalarConsumer<>(new JsonDateDayConsumer((DateDayVector) vector));
+            case TIMESTAMPMILLI:
+                return new JsonScalarConsumer<>(new JsonTimestampMilliConsumer((TimeStampMilliVector) vector));
+
+            // Composite types
+
+            case LIST:
+                var listVector = (ListVector) vector;
+                var itemVector = listVector.getDataVector();
+                var itemConsumer = createConsumer(itemVector, dictionaries, stagingFields, staging);
+                return new JsonListConsumer(listVector, itemConsumer);
+
+            // TODO: Fixed size list
+
+            case MAP:
+                var mapVector = (MapVector) vector;
+                var entryVector = (StructVector) mapVector.getDataVector();
+                var keyType = entryVector.getChildrenFromFields().get(0).getMinorType();
+                if (keyType != Types.MinorType.VARCHAR) {
+                    throw new IllegalArgumentException("MAP key type must be VARCHAR for text decoding");
+                }
+                var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
+                var valueVector = entryVector.getChildrenFromFields().get(1);
+                var valueConsumer = createConsumer(valueVector, dictionaries, stagingFields, staging);
+                return new JsonMapConsumer(mapVector, keyVector, valueConsumer);
+
+            case STRUCT:
+                var structVector = (StructVector) vector;
+                var childVectors = structVector.getChildrenFromFields();
+                var childConsumers = new ArrayList<IJsonConsumer<?>>(childVectors.size());
+                for (FieldVector childVector : childVectors) {
+                    var childConsumer = createConsumer(childVector, dictionaries, stagingFields, staging);
+                    childConsumers.add(childConsumer);
+                }
+                return new JsonStructConsumer(structVector, childConsumers);
+
+        }
+
+        throw new RuntimeException("Unsupported vector type: " + vector.getMinorType());
+
     }
 }

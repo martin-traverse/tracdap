@@ -20,6 +20,8 @@ package org.finos.tracdap.common.codec.text.consumers;
 import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
+import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.ValueVector;
 import org.finos.tracdap.common.codec.text.IJsonConsumer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
@@ -32,23 +34,9 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 
-public class CompositeObjectConsumer extends BaseCompositeConsumer {
+public class CompositeObjectConsumer {
 
-    private final JsonStructConsumer delegate;
-
-    public CompositeObjectConsumer(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
-        super(delegates);
-        this.delegate = new JsonStructConsumer(null, delegates);
-    }
-
-    @Override
-    public boolean consumeElement(JsonParser parser) throws IOException {
-        return delegate.consumeElement(parser);
-    }
-
-
-    /*
-
+    private final List<IJsonConsumer<?>> delegates;
 
     private final boolean useFieldNames;
     private final Map<String, Integer> fieldNameMap;
@@ -61,9 +49,7 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
 
     public CompositeObjectConsumer(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
 
-        super(delegates);
-
-        delegate = new JsonStructConsumer(null, delegates);
+        this.delegates = delegates;
 
         useFieldNames = true;
         fieldNameMap = buildFieldNameMap(delegates, isCaseSensitive);
@@ -72,16 +58,35 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
         currentFieldIndex = -1;
     }
 
-    @Override
+    private static Map<String, Integer> buildFieldNameMap(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
+
+        var casedMap = IntStream.range(0, delegates.size())
+                .boxed()
+                .collect(Collectors.toMap(
+                        i -> delegates.get(i).getVector().getName(),
+                        i -> i));
+
+        if (isCaseSensitive)
+            return casedMap;
+
+        else {
+
+            var uncasedMap = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
+            uncasedMap.putAll(casedMap);
+
+            return uncasedMap;
+        }
+    }
+
     public boolean consumeElement(JsonParser parser) throws IOException {
 
-        if (currentFieldIndex == -1) {
+        if (!gotFirstToken) {
 
             if (parser.currentToken() != JsonToken.START_OBJECT)
-                throw new IllegalStateException();
+                throw new EDataCorruption("Unexpected token: " + parser.currentToken() + parser.currentLocation());
 
+            gotFirstToken = true;
             currentFieldIndex = 0;
-            resetConsumedFields();
 
             parser.nextValue();
         }
@@ -120,30 +125,21 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
             }
         }
 
-        // Handle missing fields - set to null if possible, error otherwise
-        checkConsumedFields(parser);
+        if (gotLastToken) {
 
-        currentFieldIndex = -1;
-        return true;
-    }
+            checkConsumedFields(parser);
 
-    private static Map<String, Integer> buildFieldNameMap(List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
+            resetConsumedFields();
+            currentFieldIndex = -1;
+            gotFirstToken = false;
+            gotLastToken = false;
+            midValue = false;
 
-        var casedMap = IntStream.range(0, delegates.size())
-                .boxed()
-                .collect(Collectors.toMap(
-                        i -> delegates.get(i).getVector().getName(),
-                        i -> i));
-
-        if (isCaseSensitive)
-            return casedMap;
-
+            return true;
+        }
         else {
 
-            var uncasedMap = new TreeMap<String, Integer>(String.CASE_INSENSITIVE_ORDER);
-            uncasedMap.putAll(casedMap);
-
-            return uncasedMap;
+            return false;
         }
     }
 
@@ -188,5 +184,25 @@ public class CompositeObjectConsumer extends BaseCompositeConsumer {
                 }
             }
         }
-    }*/
+    }
+
+    public void resetVectors(List<FieldVector> vectors) {
+
+        for (int i = 0; i < vectors.size(); i++) {
+
+            @SuppressWarnings("unchecked")
+            var delegate = (IJsonConsumer<FieldVector>) delegates.get(i);
+            var vector = vectors.get(i);
+
+            resetDelegateVector(delegate, vector);
+        }
+    }
+
+    private <TVector extends ValueVector> void resetDelegateVector(IJsonConsumer<TVector> delegate, TVector vector) {
+
+        if (vector.getMinorType() != delegate.getVector().getMinorType())
+            throw new IllegalArgumentException();
+
+        delegate.resetVector(vector);
+    }
 }

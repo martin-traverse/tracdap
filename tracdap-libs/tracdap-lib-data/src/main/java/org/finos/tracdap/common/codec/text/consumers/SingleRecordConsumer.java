@@ -26,16 +26,21 @@ import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
+import java.util.List;
 
 public class SingleRecordConsumer implements IBatchConsumer {
 
-    private final ICompositeConsumer recordConsumer;
+    private final CompositeObjectConsumer recordConsumer;
+
+    private VectorSchemaRoot batch;
+    private List<StagingContainer>
+
     private final ArrowVsrContext context;
 
     private boolean gotFirstToken;
     private boolean recordConsumed;
 
-    public SingleRecordConsumer(ICompositeConsumer recordConsumer, ArrowVsrContext context) {
+    public SingleRecordConsumer(CompositeObjectConsumer recordConsumer, ArrowVsrContext context) {
         this.recordConsumer = recordConsumer;
         this.context = context;
     }

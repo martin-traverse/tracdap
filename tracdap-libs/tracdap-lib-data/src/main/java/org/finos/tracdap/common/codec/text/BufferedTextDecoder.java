@@ -18,9 +18,6 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.BufferDecoder;
-import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
-import org.finos.tracdap.common.codec.text.consumers.CompositeObjectConsumer;
-import org.finos.tracdap.common.codec.text.consumers.SingleRecordConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
 import org.finos.tracdap.common.data.util.Bytes;
@@ -102,7 +99,10 @@ public class BufferedTextDecoder extends BufferDecoder {
             if (configureParser != null)
                 configureParser.accept(csvParser, context);
 
-            this.csvConsumer = createConsumer(context);
+            this.csvConsumer = TextFileUtils.createBatchConsumer(
+                    context.getBackBuffer(),
+                    context.getDictionaries(),
+                    context.getSchema().isSingleRecord());
 
             consumer().onStart(context);
 
@@ -121,19 +121,6 @@ public class BufferedTextDecoder extends BufferDecoder {
 
             return null;
         });
-    }
-
-    private IBatchConsumer createConsumer(ArrowVsrContext context) {
-
-        var fieldVectors = context.getStagingVectors();
-        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
-
-        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
-
-        if (context.getSchema().isSingleRecord())
-            return new SingleRecordConsumer(recordConsumer, context);
-        else
-            return new BatchConsumer(recordConsumer, context);
     }
 
     @Override

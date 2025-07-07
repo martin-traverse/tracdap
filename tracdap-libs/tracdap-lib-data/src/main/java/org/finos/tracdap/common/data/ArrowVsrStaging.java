@@ -15,18 +15,7 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.codec.text;
+package org.finos.tracdap.common.data;
 
-import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.FieldVector;
-
-import java.io.IOException;
-import java.util.List;
-
-
-public interface ICompositeConsumer {
-
-    boolean consumeElement(JsonParser parser) throws IOException;
-
-    void resetVectors(List<FieldVector> vectors);
+public class ArrowVsrStaging {
 }

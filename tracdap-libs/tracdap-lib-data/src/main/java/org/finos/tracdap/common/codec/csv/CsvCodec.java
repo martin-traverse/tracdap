@@ -42,6 +42,8 @@ import java.util.Map;
 
 public class CsvCodec implements ICodec {
 
+    private static final boolean DEFAULT_HEADER_FLAG = true;
+
     private static final String DEFAULT_FILE_EXTENSION = "csv";
 
     private static final CsvFactory csvFactory = new CsvFactory()

@@ -18,9 +18,6 @@
 package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.StreamingDecoder;
-import org.finos.tracdap.common.codec.text.consumers.BatchConsumer;
-import org.finos.tracdap.common.codec.text.consumers.CompositeObjectConsumer;
-import org.finos.tracdap.common.codec.text.consumers.SingleRecordConsumer;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.common.exception.ETrac;
@@ -29,7 +26,6 @@ import org.finos.tracdap.common.exception.EUnexpected;
 import com.fasterxml.jackson.core.*;
 import com.fasterxml.jackson.core.async.ByteBufferFeeder;
 import org.apache.arrow.memory.ArrowBuf;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -78,7 +74,10 @@ public class BaseTextDecoder extends StreamingDecoder {
             if (configureParser != null)
                 configureParser.accept(parser, context);
 
-            consumer = createConsumer(context);
+            consumer = TextFileUtils.createBatchConsumer(
+                    context.getFrontBuffer(),
+                    context.getDictionaries(),
+                    context.getSchema().isSingleRecord());
 
             consumer().onStart(context);
         }
@@ -88,19 +87,6 @@ public class BaseTextDecoder extends StreamingDecoder {
             log.error("Unexpected error writing to codec buffer: {}", e.getMessage(), e);
             throw new EUnexpected(e);
         }
-    }
-
-    private IBatchConsumer createConsumer(ArrowVsrContext context) {
-
-        var fieldVectors = context.getStagingVectors();
-        var fieldConsumers = BuildConsumers.createConsumers(fieldVectors);
-
-        var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
-
-        if (context.getSchema().isSingleRecord())
-            return new SingleRecordConsumer(recordConsumer, context);
-        else
-            return new BatchConsumer(recordConsumer, context);
     }
 
     @Override

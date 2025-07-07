@@ -19,8 +19,6 @@ package org.finos.tracdap.common.data;
 
 import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.DictionaryEncoder;
-import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
-import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
 import org.apache.arrow.vector.dictionary.Dictionary;
@@ -43,11 +41,7 @@ public class ArrowVsrContext {
     private final BufferAllocator allocator;
     private final VectorSchemaRoot front;
     private final VectorSchemaRoot back;
-
     private final DictionaryProvider dictionaries;
-    private final FieldVector[] staging;
-    private final DictionaryBuilder<ElementAddressableVector>[] builders;
-    private final DictionaryEncoder<BaseIntVector, ElementAddressableVector>[] encoders;
 
     private final boolean ownership;
 
@@ -73,41 +67,9 @@ public class ArrowVsrContext {
         this.allocator = allocator;
         this.back = source;
         this.front = back;  // No double buffering yet
-
         this.dictionaries = dictionaries;
-        this.staging = null;
-        this.builders = null;
-        this.encoders = null;
 
         this.ownership = takeOwnership;
-    }
-
-    public static ArrowVsrContext forSchema(ArrowVsrSchema schema, BufferAllocator allocator) {
-
-        return new ArrowVsrContext(schema, allocator);
-    }
-
-    @SuppressWarnings("unchecked")
-    private ArrowVsrContext(ArrowVsrSchema schema, BufferAllocator allocator) {
-
-        this.schema = schema;
-        this.allocator = allocator;
-
-        var fields = schema.physical().getFields();
-        var vectors = fields.stream().map(f -> f.createVector(allocator)).collect(Collectors.toList());
-
-        this.back = new VectorSchemaRoot(vectors);
-        this.back.allocateNew();
-        this.front = back;  // No double buffering yet
-
-        // Set up dictionary encoding (no a-priori knowledge)
-        this.staging = new FieldVector[vectors.size()];
-        this.builders = new DictionaryBuilder[vectors.size()];
-        this.encoders = new DictionaryEncoder[vectors.size()];
-        this.dictionaries =  prepareDictionaries();
-
-        // Always take ownership if the VSR has been constructed internally
-        this.ownership = true;
     }
 
     private ArrowVsrSchema inferFullSchema(Schema primarySchema, DictionaryProvider dictionaries) {
@@ -136,6 +98,48 @@ public class ArrowVsrContext {
         }
 
         return new ArrowVsrSchema(primarySchema, new Schema(concreteFields));
+    }
+
+    public static ArrowVsrContext forSchema(SchemaDefinition tracSchema, BufferAllocator allocator) {
+
+        var schema = SchemaMapping.tracToArrow(tracSchema);
+
+        return new ArrowVsrContext(schema, allocator, tracSchema);
+    }
+
+    public static ArrowVsrContext forSchema(ArrowVsrSchema schema, BufferAllocator allocator) {
+
+        return new ArrowVsrContext(schema, allocator, null);
+    }
+
+    @SuppressWarnings("unchecked")
+    private ArrowVsrContext(ArrowVsrSchema schema, BufferAllocator allocator, SchemaDefinition tracSchema) {
+
+        this.schema = schema;
+        this.allocator = allocator;
+
+        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
+
+        if (tracSchema != null)
+            this.namedSnums = addNamedEnumDictionaries(dictionaries, tracSchema);
+        else
+            this.namedSnums = null;
+
+        var fields = schema.physical().getFields();
+        var vectors = fields.stream().map(f -> f.createVector(allocator)).collect(Collectors.toList());
+
+        this.back = new VectorSchemaRoot(vectors);
+        this.back.allocateNew();
+        this.front = back;  // No double buffering yet
+
+        // Set up dictionary encoding (no a-priori knowledge)
+        this.staging = new FieldVector[vectors.size()];
+        this.builders = new DictionaryBuilder[vectors.size()];
+        this.encoders = new DictionaryEncoder[vectors.size()];
+        this.dictionaries = dictionaries;
+
+        // Always take ownership if the VSR has been constructed internally
+        this.ownership = true;
     }
 
     private Map<String, Long> addNamedEnumDictionaries(DictionaryProvider.MapDictionaryProvider dictionaries, SchemaDefinition tracSchema) {
@@ -168,66 +172,12 @@ public class ArrowVsrContext {
         return namedEnumMap;
     }
 
-    private DictionaryProvider prepareDictionaries() {
-
-        var fields = schema.physical().getFields();
-        var concreteFields = schema.decoded().getFields();
-
-        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
-
-        for (int i = 0; i < fields.size(); ++i) {
-
-            var field = fields.get(i);
-
-            if (field.getDictionary() != null && !field.getMetadata().containsKey("trac.namedEnum")) {
-
-                var concreteField = concreteFields.get(i);
-                var encoding = field.getDictionary();
-
-                var stagingVector = concreteField.createVector(allocator);
-                var dictionaryVector = concreteField.createVector(allocator);
-                var dictionary = new Dictionary(dictionaryVector, encoding);
-                var builder = new HashTableBasedDictionaryBuilder<>((ElementAddressableVector) dictionaryVector);
-                var encoder = new HashTableDictionaryEncoder<>((ElementAddressableVector) dictionaryVector);
-
-                staging[i] = stagingVector;
-                builders[i] = builder;
-                encoders[i] = encoder;
-
-                dictionaryVector.allocateNew();
-
-                dictionaries.put(dictionary);
-            }
-        }
-
-        return dictionaries;
-    }
-
     public ArrowVsrSchema getSchema() {
         return schema;
     }
 
     public BufferAllocator getAllocator() {
         return allocator;
-    }
-
-    public FieldVector getStagingVector(int col) {
-
-        if (staging != null && staging[col] != null)
-            return staging[col];
-        else
-            return back.getVector(col);
-    }
-
-    public List<FieldVector> getStagingVectors() {
-
-        var vectors = new ArrayList<FieldVector>(staging.length);
-
-        for (int i = 0; i < staging.length; ++i) {
-            vectors.add(getStagingVector(i));
-        }
-
-        return vectors;
     }
 
     public VectorSchemaRoot getBackBuffer() {
@@ -249,38 +199,6 @@ public class ArrowVsrContext {
     public void setRowCount(int nRows) {
 
         back.setRowCount(nRows);
-
-        if (staging != null) {
-
-            for (var vector : staging)
-                if (vector != null)
-                    vector.setValueCount(nRows);
-        }
-    }
-
-    public void encodeDictionaries() {
-
-        for (int i = 0, n = back.getFieldVectors().size(); i < n; i++) {
-
-            if (staging[i] == null)
-                continue;
-
-            var staged = staging[i];
-            var target = back.getVector(i);
-
-            var builder = builders[i];
-            var nValues = builder.getDictionary().getValueCount();
-
-            builder.addValues((ElementAddressableVector) staged);
-
-            if (builder.getDictionary().getValueCount() > nValues) {
-                var encoder = new HashTableDictionaryEncoder<>(builder.getDictionary());
-                encoders[i] = encoder;
-            }
-
-            var encoder = encoders[i];
-            encoder.encode((ElementAddressableVector) staged, (BaseIntVector) target);
-        }
     }
 
     public void setLoaded() {
@@ -311,13 +229,6 @@ public class ArrowVsrContext {
         if (ownership) {
 
             back.close();
-
-            if (staging != null) {
-                for (var vector : staging) {
-                    if (vector != null)
-                        vector.close();
-                }
-            }
 
             if (dictionaries != null) {
                 for (var dictionaryId : dictionaries.getDictionaryIds()) {

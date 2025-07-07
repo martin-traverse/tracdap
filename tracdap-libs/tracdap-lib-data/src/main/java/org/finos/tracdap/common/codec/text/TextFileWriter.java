@@ -18,15 +18,35 @@
 package org.finos.tracdap.common.codec.text;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import org.apache.arrow.vector.FieldVector;
+import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
 
 import java.io.IOException;
-import java.util.List;
 
+public class TextFileWriter {
 
-public interface ICompositeProducer {
+    private final IBatchProducer batchProducer;
 
-    void produceElement(JsonGenerator generator) throws IOException;
+    VectorSchemaRoot batch;
+    DictionaryProvider dictionaries;
 
-    void resetVectors(List<FieldVector> vectors);
+    public TextFileWriter(
+            IBatchProducer batchProducer,
+            VectorSchemaRoot batch,
+            DictionaryProvider dictionaries) {
+
+        this.batchProducer = batchProducer;
+        this.batch = batch;
+        this.dictionaries = dictionaries;
+    }
+
+    public void produceBatch(JsonGenerator generator) throws IOException {
+
+        batchProducer.produceBatch(generator);
+    }
+
+    public void resetBatch(VectorSchemaRoot batch) throws IOException {
+
+        batchProducer.resetBatch(batch);
+    }
 }

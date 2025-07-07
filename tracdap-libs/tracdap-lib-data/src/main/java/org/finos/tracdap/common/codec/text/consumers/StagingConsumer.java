@@ -17,47 +17,42 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
+import com.fasterxml.jackson.core.JsonParser;
+import org.apache.arrow.vector.BaseIntVector;
+import org.apache.arrow.vector.ElementAddressableVector;
 import org.finos.tracdap.common.codec.text.IJsonConsumer;
 
-import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.complex.StructVector;
-
 import java.io.IOException;
-import java.util.List;
 
 
-public class JsonStructConsumer extends BaseJsonConsumer<StructVector> {
+public class StagingConsumer<TVector extends ElementAddressableVector> implements IJsonConsumer<BaseIntVector> {
+    
+    private final IJsonConsumer<TVector> delegate;
+    private final StagingContainer<TVector> staging;
 
-    private final CompositeObjectConsumer composite;
-
-    public JsonStructConsumer(StructVector vector, List<IJsonConsumer<?>> delegates) {
-        this(vector, delegates, true);
-    }
-
-    public JsonStructConsumer(StructVector vector, List<IJsonConsumer<?>> delegates, boolean isCaseSensitive) {
-
-        super(vector);
-        this.composite = new CompositeObjectConsumer(delegates, isCaseSensitive);
+    public StagingConsumer(IJsonConsumer<TVector> delegate, StagingContainer<TVector> staging) {
+        this.delegate = delegate;
+        this.staging = staging;
     }
 
     @Override
     public boolean consumeElement(JsonParser parser) throws IOException {
-
-        if (composite.consumeElement(parser)) {
-
-            vector.setIndexDefined(currentIndex++);
-            return true;
-        }
-        else {
-
-            return false;
-        }
+        return delegate.consumeElement(parser);
     }
 
     @Override
-    public void resetVector(StructVector vector) {
+    public void setNull() {
+        delegate.setNull();
+    }
 
-        composite.resetVectors(vector.getChildrenFromFields());
-        super.resetVector(vector);
+    @Override
+    public BaseIntVector getVector() {
+        return staging.getTargetVector();
+    }
+
+    @Override
+    public void resetVector(BaseIntVector vector) {
+        staging.setTargetVector(vector);
+        delegate.resetVector(staging.getStagingVector());
     }
 }

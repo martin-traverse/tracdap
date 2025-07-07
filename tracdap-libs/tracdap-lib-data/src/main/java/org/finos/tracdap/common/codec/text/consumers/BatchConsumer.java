@@ -21,19 +21,20 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.finos.tracdap.common.codec.text.IBatchConsumer;
-import org.finos.tracdap.common.codec.text.ICompositeConsumer;
-import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
+import java.util.List;
 
 
 public class BatchConsumer implements IBatchConsumer {
 
     private static final int BATCH_SIZE = 1000;
 
-    private final ICompositeConsumer recordConsumer;
-    private final ArrowVsrContext context;
+    private final CompositeObjectConsumer recordConsumer;
+
+    private VectorSchemaRoot batch;
+    private List<StagingContainer<?>> staging;
 
     private int currentIndex;
     private boolean midRecord;
@@ -41,9 +42,16 @@ public class BatchConsumer implements IBatchConsumer {
     private boolean gotLastToken;
     private boolean parseComplete;
 
-    public BatchConsumer(ICompositeConsumer recordConsumer, ArrowVsrContext context) {
+    public BatchConsumer(
+            CompositeObjectConsumer recordConsumer,
+            VectorSchemaRoot batch,
+            List<StagingContainer<?>> staging) {
+
         this.recordConsumer = recordConsumer;
-        this.context = context;
+
+        this.batch = batch;
+        this.staging = staging;
+
         this.currentIndex = 0;
         this.midRecord = false;
         this.gotFirstToken = false;
@@ -98,9 +106,13 @@ public class BatchConsumer implements IBatchConsumer {
 
         if (parseComplete || currentIndex == BATCH_SIZE) {
 
-            context.setRowCount(currentIndex);
-            context.encodeDictionaries();
-            context.setLoaded();
+            if (staging != null) {
+                for (var staged : staging) {
+                    staged.encodeVector();
+                }
+            }
+
+            batch.setRowCount(currentIndex);
 
             return true;
         }
