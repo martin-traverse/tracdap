@@ -19,12 +19,10 @@ package org.finos.tracdap.common.codec.text.producers;
 
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.codec.text.ICompositeProducer;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.util.List;
 
-abstract class BaseCompositeProducer implements ICompositeProducer {
+abstract class BaseCompositeProducer {
 
     protected final List<IJsonProducer<?>> delegates;
 
@@ -32,7 +30,12 @@ abstract class BaseCompositeProducer implements ICompositeProducer {
         this.delegates = delegates;
     }
 
-    @Override
+    public void resetIndex(int index) {
+
+        for (var delegate : delegates)
+            delegate.resetIndex(index);
+    }
+
     @SuppressWarnings("unchecked")
     public void resetVectors(List<FieldVector> vectors) {
 

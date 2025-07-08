@@ -17,18 +17,12 @@
 
 package org.finos.tracdap.common.data;
 
-import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
-import org.apache.arrow.algorithm.dictionary.DictionaryEncoder;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
-import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
-import org.apache.arrow.vector.types.pojo.DictionaryEncoding;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
-import org.finos.tracdap.metadata.SchemaDefinition;
 
-import java.nio.charset.StandardCharsets;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -74,56 +68,42 @@ public class ArrowVsrContext {
 
     private ArrowVsrSchema inferFullSchema(Schema primarySchema, DictionaryProvider dictionaries) {
 
-        var concreteFields = new ArrayList<Field>(primarySchema.getFields().size());
+        var dictionaryFields = new HashMap<Long, Field>();
 
         for (var field : primarySchema.getFields()) {
-            if (field.getDictionary() != null) {
-
-                var dictionaryId = field.getDictionary().getId();
-                var dictionary = dictionaries.lookup(dictionaryId);
-                var dictionaryField = dictionary.getVector().getField();
-
-                // Concrete field has the name of the primary field and type of the dictionary field
-                // Arrow gives dictionary fields internal names, e.g. DICT0
-                var concreteField = new Field(
-                        field.getName(),
-                        dictionaryField.getFieldType(),
-                        dictionaryField.getChildren());
-
-                concreteFields.add(concreteField);
-            }
-            else {
-                concreteFields.add(field);
-            }
+            buildDictionaryFields(field ,dictionaries, dictionaryFields);
         }
 
-        return new ArrowVsrSchema(primarySchema, new Schema(concreteFields));
+        return new ArrowVsrSchema(primarySchema, dictionaryFields, dictionaries);
     }
 
-    public static ArrowVsrContext forSchema(SchemaDefinition tracSchema, BufferAllocator allocator) {
+    private void buildDictionaryFields(Field field, DictionaryProvider dictionaries, Map<Long, Field> dictionaryFields) {
 
-        var schema = SchemaMapping.tracToArrow(tracSchema);
+        if (field.getDictionary() != null) {
 
-        return new ArrowVsrContext(schema, allocator, tracSchema);
+            var dictionaryId = field.getDictionary().getId();
+            var dictionary = dictionaries.lookup(dictionaryId);
+            var dictionaryField = dictionary.getVector().getField();
+
+            dictionaryFields.put(dictionaryId, dictionaryField);
+        }
+
+        if (field.getChildren() != null) {
+            for (var child : field.getChildren()) {
+                buildDictionaryFields(child, dictionaries, dictionaryFields);
+            }
+        }
     }
 
     public static ArrowVsrContext forSchema(ArrowVsrSchema schema, BufferAllocator allocator) {
 
-        return new ArrowVsrContext(schema, allocator, null);
+        return new ArrowVsrContext(schema, allocator);
     }
 
-    @SuppressWarnings("unchecked")
-    private ArrowVsrContext(ArrowVsrSchema schema, BufferAllocator allocator, SchemaDefinition tracSchema) {
+    private ArrowVsrContext(ArrowVsrSchema schema, BufferAllocator allocator) {
 
         this.schema = schema;
         this.allocator = allocator;
-
-        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
-
-        if (tracSchema != null)
-            this.namedSnums = addNamedEnumDictionaries(dictionaries, tracSchema);
-        else
-            this.namedSnums = null;
 
         var fields = schema.physical().getFields();
         var vectors = fields.stream().map(f -> f.createVector(allocator)).collect(Collectors.toList());
@@ -132,44 +112,16 @@ public class ArrowVsrContext {
         this.back.allocateNew();
         this.front = back;  // No double buffering yet
 
-        // Set up dictionary encoding (no a-priori knowledge)
-        this.staging = new FieldVector[vectors.size()];
-        this.builders = new DictionaryBuilder[vectors.size()];
-        this.encoders = new DictionaryEncoder[vectors.size()];
+        // TODO: Only pre-defined dictionaries are added
+        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
+
+        for (var dictId : schema.dictionaries().getDictionaryIds())
+            dictionaries.put(schema.dictionaries().lookup(dictId));
+
         this.dictionaries = dictionaries;
 
         // Always take ownership if the VSR has been constructed internally
         this.ownership = true;
-    }
-
-    private Map<String, Long> addNamedEnumDictionaries(DictionaryProvider.MapDictionaryProvider dictionaries, SchemaDefinition tracSchema) {
-
-        var namedEnumMap = new HashMap<String, Long>();
-
-        long nextId = dictionaries.getDictionaryIds().size();
-
-        for (var entry : tracSchema.getNamedEnumsMap().entrySet()) {
-
-            var name = entry.getKey();
-            var enum_ = entry.getValue();
-
-            var dictionaryVector = new VarCharVector(name, allocator);
-            dictionaryVector.allocateNew(enum_.getValuesCount());
-
-            for (int i = 0; i < enum_.getValuesCount(); i++) {
-                dictionaryVector.setSafe(i, enum_.getValues(i).getStringValue().getBytes(StandardCharsets.UTF_8));
-            }
-
-            dictionaryVector.setValueCount(enum_.getValuesCount());
-
-            var encoding = new DictionaryEncoding(nextId++, false, null);
-            var dictionary = new Dictionary(dictionaryVector, encoding);
-
-            namedEnumMap.put(name, encoding.getId());
-            dictionaries.put(dictionary);
-        }
-
-        return namedEnumMap;
     }
 
     public ArrowVsrSchema getSchema() {

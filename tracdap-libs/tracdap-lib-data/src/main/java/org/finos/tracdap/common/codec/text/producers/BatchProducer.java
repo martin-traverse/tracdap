@@ -17,8 +17,6 @@
 
 package org.finos.tracdap.common.codec.text.producers;
 
-import org.finos.tracdap.common.codec.text.IBatchProducer;
-import org.finos.tracdap.common.codec.text.ICompositeProducer;
 import org.finos.tracdap.common.exception.ETracInternal;
 
 import com.fasterxml.jackson.core.JsonGenerator;
@@ -29,11 +27,13 @@ import java.io.IOException;
 
 public class BatchProducer implements IBatchProducer {
 
-    private final ICompositeProducer recordProducer;
+    private final CompositeObjectProducer recordProducer;
+
+    private VectorSchemaRoot batch;
     private int currentBatchSize;
     private int currentIndex;
 
-    public BatchProducer(ICompositeProducer recordProducer) {
+    public BatchProducer(CompositeObjectProducer recordProducer) {
         this.recordProducer = recordProducer;
         this.currentBatchSize = 0;
         this.currentIndex = 0;
@@ -65,9 +65,20 @@ public class BatchProducer implements IBatchProducer {
     }
 
     @Override
+    public void resetIndex(int index) {
+
+        recordProducer.resetIndex(index);
+
+        currentBatchSize = batch.getRowCount();
+        currentIndex = index;
+    }
+
+    @Override
     public void resetBatch(VectorSchemaRoot batch) {
 
         recordProducer.resetVectors(batch.getFieldVectors());
+        this.batch = batch;
+
         currentBatchSize = batch.getRowCount();
         currentIndex = 0;
     }

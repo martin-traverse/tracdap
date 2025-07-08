@@ -20,7 +20,6 @@ package org.finos.tracdap.common.codec.text.producers;
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.io.IOException;
 import java.util.List;
@@ -42,7 +41,6 @@ public class CompositeObjectProducer extends BaseCompositeProducer {
                 .collect(Collectors.toList());
     }
 
-    @Override
     public void produceElement(JsonGenerator generator) throws IOException {
 
         generator.writeStartObject();

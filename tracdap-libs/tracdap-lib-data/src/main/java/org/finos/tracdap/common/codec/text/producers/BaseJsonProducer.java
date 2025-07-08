@@ -18,7 +18,6 @@
 package org.finos.tracdap.common.codec.text.producers;
 
 import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 
 abstract class BaseJsonProducer<TVector extends ValueVector> implements IJsonProducer<TVector> {

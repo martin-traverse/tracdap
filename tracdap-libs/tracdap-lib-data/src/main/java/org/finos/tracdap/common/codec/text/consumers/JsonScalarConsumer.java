@@ -21,7 +21,6 @@ import com.fasterxml.jackson.core.JsonParseException;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.FieldVector;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
 
 import java.io.IOException;
 

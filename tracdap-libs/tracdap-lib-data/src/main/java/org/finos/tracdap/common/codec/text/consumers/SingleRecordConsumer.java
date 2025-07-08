@@ -17,32 +17,33 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
+import org.finos.tracdap.common.exception.EDataCorruption;
+
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.finos.tracdap.common.codec.text.IBatchConsumer;
-import org.finos.tracdap.common.codec.text.ICompositeConsumer;
-import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 import java.util.List;
 
+
 public class SingleRecordConsumer implements IBatchConsumer {
 
     private final CompositeObjectConsumer recordConsumer;
-
-    private VectorSchemaRoot batch;
-    private List<StagingContainer>
-
-    private final ArrowVsrContext context;
+    private final VectorSchemaRoot batch;
+    private final List<StagingContainer<?>> stagingContainers;
 
     private boolean gotFirstToken;
     private boolean recordConsumed;
 
-    public SingleRecordConsumer(CompositeObjectConsumer recordConsumer, ArrowVsrContext context) {
+    public SingleRecordConsumer(
+            CompositeObjectConsumer recordConsumer,
+            VectorSchemaRoot batch,
+            List<StagingContainer<?>> stagingContainers) {
+
         this.recordConsumer = recordConsumer;
-        this.context = context;
+        this.batch = batch;
+        this.stagingContainers = stagingContainers;
     }
 
     @Override
@@ -69,9 +70,13 @@ public class SingleRecordConsumer implements IBatchConsumer {
         if (nextToken != null && nextToken != JsonToken.NOT_AVAILABLE)
             throw new EDataCorruption("Unexpected token: " + nextToken);
 
-        context.setRowCount(1);
-        context.encodeDictionaries();
-        context.setLoaded();
+        if (stagingContainers != null) {
+            for (var container : stagingContainers) {
+                container.encodeVector();
+            }
+        }
+
+        batch.setRowCount(1);
 
         return true;
     }

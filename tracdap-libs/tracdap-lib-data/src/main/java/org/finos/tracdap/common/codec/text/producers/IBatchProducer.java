@@ -15,7 +15,20 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.data;
+package org.finos.tracdap.common.codec.text.producers;
 
-public class ArrowVsrStaging {
+import com.fasterxml.jackson.core.JsonGenerator;
+import org.apache.arrow.vector.VectorSchemaRoot;
+
+import java.io.IOException;
+
+
+public interface IBatchProducer {
+
+    void produceStart(JsonGenerator generator) throws IOException;
+    void produceBatch(JsonGenerator generator) throws IOException;
+    void produceEnd(JsonGenerator generator) throws IOException;
+
+    void resetIndex(int index);
+    void resetBatch(VectorSchemaRoot batch) throws IOException;
 }

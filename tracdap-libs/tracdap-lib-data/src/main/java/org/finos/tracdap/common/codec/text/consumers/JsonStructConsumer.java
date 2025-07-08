@@ -17,8 +17,6 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
-
 import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.vector.complex.StructVector;
 

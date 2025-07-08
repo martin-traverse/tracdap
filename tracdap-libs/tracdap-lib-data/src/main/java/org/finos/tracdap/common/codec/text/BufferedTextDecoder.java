@@ -17,8 +17,10 @@
 
 package org.finos.tracdap.common.codec.text;
 
+import org.apache.arrow.memory.BufferAllocator;
 import org.finos.tracdap.common.codec.BufferDecoder;
 import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.util.ByteSeekableChannel;
 import org.finos.tracdap.common.data.util.Bytes;
 import org.finos.tracdap.common.exception.EDataCorruption;
@@ -27,7 +29,6 @@ import org.finos.tracdap.common.exception.ETracInternal;
 import org.finos.tracdap.common.exception.EUnexpected;
 
 import com.fasterxml.jackson.core.JacksonException;
-import com.fasterxml.jackson.core.JsonFactory;
 import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.memory.ArrowBuf;
 import org.slf4j.Logger;
@@ -42,28 +43,27 @@ import java.util.function.BiConsumer;
 
 public class BufferedTextDecoder extends BufferDecoder {
 
-    private static final int BATCH_SIZE = 1024;
-
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final ArrowVsrContext context;
-    private final JsonFactory jsonFactory;
-    private final BiConsumer<JsonParser, ArrowVsrContext> configureParser;
+    private final ArrowVsrSchema schema;
+    private final BufferAllocator allocator;
+    private final TextFileConfig config;
+    private final BiConsumer<JsonParser, ArrowVsrContext> parserSetup;
 
     private List<ArrowBuf> buffer;
-    private JsonParser csvParser;
-    private IBatchConsumer csvConsumer;
+    private TextFileReader reader;
+    private ArrowVsrContext context;
 
     public BufferedTextDecoder(
-            ArrowVsrContext context, JsonFactory jsonFactory,
-            BiConsumer<JsonParser, ArrowVsrContext> configureParser) {
+            ArrowVsrSchema schema,
+            BufferAllocator allocator,
+            TextFileConfig config,
+            BiConsumer<JsonParser, ArrowVsrContext> parserSetup) {
 
-        // Schema cannot be inferred from text formats
-        // Context must always be pre-configured from a TRAC schema
-
-        this.context = context;
-        this.jsonFactory = jsonFactory;
-        this.configureParser = configureParser;
+        this.schema = schema;
+        this.allocator = allocator;
+        this.config = config;
+        this.parserSetup = parserSetup;
     }
 
     @Override
@@ -91,24 +91,27 @@ public class BufferedTextDecoder extends BufferDecoder {
             // Set up all the resources needed for parsing
 
             this.buffer = buffer;
-
             var channel = new ByteSeekableChannel(buffer);
             var stream = Channels.newInputStream(channel);
-            this.csvParser = jsonFactory.createParser(stream);
 
-            if (configureParser != null)
-                configureParser.accept(csvParser, context);
+            this.reader = new TextFileReader(
+                    schema.physical(),
+                    schema.dictionaryFields(),
+                    schema.dictionaries(),
+                    allocator, stream, config);
 
-            this.csvConsumer = TextFileUtils.createBatchConsumer(
-                    context.getBackBuffer(),
-                    context.getDictionaries(),
-                    context.getSchema().isSingleRecord());
+            this.context = ArrowVsrContext.forSource(
+                    reader.getVectorSchemaRoot(),
+                    reader, allocator);
+
+            if (parserSetup != null)
+                parserSetup.accept(reader.getParser(), context);
 
             consumer().onStart(context);
 
             // Call the parsing function - this may result in a partial parse
 
-            var isComplete = doParse(csvParser, context, csvConsumer);
+            var isComplete = doParse();
 
             // If the parse is done, emit the EOS signal and clean up resources
             // Otherwise, wait until a callback on pump()
@@ -143,12 +146,12 @@ public class BufferedTextDecoder extends BufferDecoder {
     public void pump() {
 
         // Don't try to pump if the data hasn't arrived yet, or if it has already gone
-        if (csvParser == null || context == null)
+        if (reader == null || context == null)
             return;
 
         handleErrors(() -> {
 
-            var isComplete = doParse(csvParser, context, csvConsumer);
+            var isComplete = doParse();
 
             // If the parse is done, emit the EOS signal and clean up resources
             // Otherwise, wait until a callback on pump()
@@ -163,7 +166,7 @@ public class BufferedTextDecoder extends BufferDecoder {
         });
     }
 
-    boolean doParse(JsonParser parser, ArrowVsrContext context, IBatchConsumer consumer) throws Exception {
+    boolean doParse() throws Exception {
 
         do {
 
@@ -173,8 +176,8 @@ public class BufferedTextDecoder extends BufferDecoder {
             if (context.readyToUnload() && consumerReady())
                 consumer().onBatch();
 
-            if (context.readyToLoad() && ! consumer.endOfStream()) {
-                if (consumer.consumeBatch(parser))
+            if (context.readyToLoad() && reader.hasBatch()) {
+                if (reader.readBatch())
                     context.setLoaded();
                 else
                     return false;
@@ -182,7 +185,7 @@ public class BufferedTextDecoder extends BufferDecoder {
 
         } while (context.readyToFlip());
 
-        return consumer.endOfStream();
+        return ! reader.hasBatch();
     }
 
     void handleErrors(Callable<Void> parseFunc) {
@@ -235,11 +238,14 @@ public class BufferedTextDecoder extends BufferDecoder {
 
         try {
 
-            context.close();
+            if (reader != null) {
+                reader.close();
+                reader = null;
+            }
 
-            if (csvParser != null) {
-                csvParser.close();
-                csvParser = null;
+            if (context != null) {
+                context.close();
+                context = null;
             }
 
             if (buffer != null) {

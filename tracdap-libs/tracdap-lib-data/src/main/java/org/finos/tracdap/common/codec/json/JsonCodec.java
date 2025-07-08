@@ -21,8 +21,10 @@ package org.finos.tracdap.common.codec.json;
 import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.codec.text.BaseTextDecoder;
 import org.finos.tracdap.common.codec.text.BaseTextEncoder;
+import org.finos.tracdap.common.codec.text.TextFileConfig;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.DataPipeline;
+import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.EDataConstraint;
 import org.finos.tracdap.metadata.SchemaDefinition;
 
@@ -39,6 +41,7 @@ import java.util.Map;
 public class JsonCodec implements ICodec {
 
     private static final String DEFAULT_FILE_EXTENSION = "json";
+    private static final int BATCH_SIZE = 1024;
 
     private static final JsonFactory jsonFactory = new JsonFactory()
             // Show source in error messages
@@ -58,7 +61,9 @@ public class JsonCodec implements ICodec {
     public Encoder<DataPipeline.StreamApi>
     getEncoder(BufferAllocator allocator, Map<String, String> options) {
 
-        return new BaseTextEncoder(allocator, jsonFactory, this::configureGenerator);
+        var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
+
+        return new BaseTextEncoder(allocator, config);
     }
 
     @Override
@@ -70,19 +75,10 @@ public class JsonCodec implements ICodec {
     @Override
     public Decoder<?> getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
 
-        var context = ArrowVsrContext.forSchema(tracSchema, allocator);
+        var schema = SchemaMapping.tracToArrow(tracSchema);
+        var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
 
-        return new BaseTextDecoder(context, jsonFactory, this::configureParser);
-    }
-
-    protected void configureGenerator(JsonGenerator generator, ArrowVsrContext context) {
-
-        // No special configuration needed
-    }
-
-    protected void configureParser(JsonParser parser, ArrowVsrContext context) {
-
-        // No special configuration needed
+        return new BaseTextDecoder(schema, allocator, config);
     }
 }
 

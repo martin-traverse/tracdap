@@ -19,13 +19,14 @@ package org.finos.tracdap.common.codec.text;
 
 import org.finos.tracdap.common.codec.StreamingDecoder;
 import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.common.exception.ETrac;
 import org.finos.tracdap.common.exception.EUnexpected;
 
 import com.fasterxml.jackson.core.*;
-import com.fasterxml.jackson.core.async.ByteBufferFeeder;
 import org.apache.arrow.memory.ArrowBuf;
+import org.apache.arrow.memory.BufferAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -37,27 +38,35 @@ public class BaseTextDecoder extends StreamingDecoder {
 
     private final Logger log = LoggerFactory.getLogger(getClass());
 
-    private final ArrowVsrContext context;
-    private final JsonFactory jsonFactory;
-    private final BiConsumer<JsonParser, ArrowVsrContext> configureParser;
+    private final ArrowVsrSchema schema;
+    private final BufferAllocator allocator;
+    private final TextFileConfig config;
+    private final BiConsumer<JsonParser, ArrowVsrContext> parserSetup;
 
-    private JsonParser parser;
-    private ByteBufferFeeder feeder;
+    private TextFileReader reader;
+    private ArrowVsrContext context;
 
-    private IBatchConsumer consumer;
     private long bytesConsumed;
     private boolean done;
 
     public BaseTextDecoder(
-            ArrowVsrContext context, JsonFactory jsonFactory,
-            BiConsumer<JsonParser, ArrowVsrContext> configureParser) {
+            ArrowVsrSchema schema,
+            BufferAllocator allocator,
+            TextFileConfig config) {
 
-        // Allocate memory once, and reuse it for every batch (i.e. do not clear/allocate per batch)
-        // This memory is released in close(), which calls root.close()
+        this(schema, allocator, config, null);
+    }
 
-        this.context = context;
-        this.jsonFactory = jsonFactory;
-        this.configureParser = configureParser;
+    public BaseTextDecoder(
+            ArrowVsrSchema schema,
+            BufferAllocator allocator,
+            TextFileConfig config,
+            BiConsumer<JsonParser, ArrowVsrContext> parserSetup) {
+
+        this.schema = schema;
+        this.allocator = allocator;
+        this.config = config;
+        this.parserSetup = parserSetup;
     }
 
     @Override
@@ -68,16 +77,18 @@ public class BaseTextDecoder extends StreamingDecoder {
             if (log.isTraceEnabled())
                 log.trace("JSON DECODER: onStart()");
 
-            parser = jsonFactory.createNonBlockingByteBufferParser();
-            feeder = (ByteBufferFeeder) parser.getNonBlockingInputFeeder();
+            this.reader = new TextFileReader(
+                    schema.physical(),
+                    schema.dictionaryFields(),
+                    schema.dictionaries(),
+                    allocator, config);
 
-            if (configureParser != null)
-                configureParser.accept(parser, context);
+            this.context = ArrowVsrContext.forSource(
+                    reader.getVectorSchemaRoot(),
+                    reader, allocator);
 
-            consumer = TextFileUtils.createBatchConsumer(
-                    context.getFrontBuffer(),
-                    context.getDictionaries(),
-                    context.getSchema().isSingleRecord());
+            if (parserSetup != null)
+                parserSetup.accept(reader.getParser(), context);
 
             consumer().onStart(context);
         }
@@ -100,9 +111,10 @@ public class BaseTextDecoder extends StreamingDecoder {
             // Empty chunks are allowed in the stream but should be ignored
             if (chunk.readableBytes() > 0) {
 
-                feeder.feedInput(chunk.nioBuffer());
+                reader.feedInput(chunk.nioBuffer());
                 bytesConsumed += chunk.readableBytes();
-                done = doParse(context, consumer, parser);
+
+                done = doParse();
             }
         }
         catch (ETrac e) {
@@ -187,31 +199,7 @@ public class BaseTextDecoder extends StreamingDecoder {
         }
     }
 
-    @Override
-    public void close() {
-
-        try {
-
-            if (feeder != null) {
-                feeder = null;
-            }
-
-            if (parser != null) {
-                parser.close();
-                parser = null;
-            }
-
-            context.close();
-        }
-        catch (IOException e) {
-
-            // Ensure unexpected errors are still reported to the Flow API
-            log.error("Unexpected error closing decoder: {}", e.getMessage(), e);
-            throw new EUnexpected(e);
-        }
-    }
-
-    boolean doParse(ArrowVsrContext context, IBatchConsumer consumer, JsonParser parser) throws IOException {
+    boolean doParse() throws IOException {
 
         do {
 
@@ -221,8 +209,8 @@ public class BaseTextDecoder extends StreamingDecoder {
             if (context.readyToUnload() && consumerReady())
                 consumer().onBatch();
 
-            if (context.readyToLoad() && ! consumer.endOfStream()) {
-                if (consumer.consumeBatch(parser))
+            if (context.readyToLoad() && reader.hasBatch()) {
+                if (reader.readBatch())
                     context.setLoaded();
                 else
                     return false;
@@ -230,6 +218,29 @@ public class BaseTextDecoder extends StreamingDecoder {
 
         } while (context.readyToFlip());
 
-        return consumer.endOfStream();
+        return reader.hasBatch();
+    }
+
+    @Override
+    public void close() {
+
+        try {
+
+            if (reader != null) {
+                reader.close();
+                reader = null;
+            }
+
+            if (context != null) {
+                context.close();
+                context = null;
+            }
+        }
+        catch (IOException e) {
+
+            // Ensure unexpected errors are still reported to the Flow API
+            log.error("Unexpected error closing decoder: {}", e.getMessage(), e);
+            throw new EUnexpected(e);
+        }
     }
 }

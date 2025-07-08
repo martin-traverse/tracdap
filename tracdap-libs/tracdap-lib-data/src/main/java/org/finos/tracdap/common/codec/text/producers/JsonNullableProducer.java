@@ -19,7 +19,6 @@ package org.finos.tracdap.common.codec.text.producers;
 
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.io.IOException;
 

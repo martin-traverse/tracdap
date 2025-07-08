@@ -20,7 +20,6 @@ package org.finos.tracdap.common.codec.text.consumers;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.finos.tracdap.common.codec.text.IBatchConsumer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;

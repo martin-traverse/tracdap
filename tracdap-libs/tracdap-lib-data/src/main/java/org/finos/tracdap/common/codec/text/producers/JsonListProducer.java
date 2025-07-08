@@ -20,7 +20,6 @@ package org.finos.tracdap.common.codec.text.producers;
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.complex.ListVector;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.io.IOException;
 

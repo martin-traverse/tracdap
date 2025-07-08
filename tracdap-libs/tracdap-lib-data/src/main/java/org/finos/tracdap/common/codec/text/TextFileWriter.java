@@ -20,33 +20,82 @@ package org.finos.tracdap.common.codec.text;
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.finos.tracdap.common.codec.text.producers.IBatchProducer;
 
 import java.io.IOException;
+import java.io.OutputStream;
 
 public class TextFileWriter {
 
-    private final IBatchProducer batchProducer;
+    private VectorSchemaRoot root;
+    private DictionaryProvider dictionaries;
 
-    VectorSchemaRoot batch;
-    DictionaryProvider dictionaries;
+    private final JsonGenerator generator;
+    private final IBatchProducer producer;
+
 
     public TextFileWriter(
-            IBatchProducer batchProducer,
-            VectorSchemaRoot batch,
-            DictionaryProvider dictionaries) {
+            VectorSchemaRoot root,
+            DictionaryProvider dictionaries,
+            OutputStream out,
+            TextFileConfig config) throws IOException {
 
-        this.batchProducer = batchProducer;
-        this.batch = batch;
-        this.dictionaries = dictionaries;
+        this(root, dictionaries, config.getJsonFactory().createGenerator(out), config);
     }
 
-    public void produceBatch(JsonGenerator generator) throws IOException {
+    public TextFileWriter(
+            VectorSchemaRoot root,
+            DictionaryProvider dictionaries,
+            JsonGenerator generator,
+            TextFileConfig config) {
 
-        batchProducer.produceBatch(generator);
+        this.root = root;
+        this.dictionaries = dictionaries;
+
+        this.generator = generator;
+
+        if (config.hasFormatSchema())
+            this.generator.setSchema(config.getFormatSchema());
+
+        this.producer = TextFileUtils.createBatchProducer(
+                this.root, this.dictionaries,
+                config.isSingleRecord());
+    }
+
+    public JsonGenerator getGenerator() {
+        return generator;
     }
 
     public void resetBatch(VectorSchemaRoot batch) throws IOException {
 
-        batchProducer.resetBatch(batch);
+        this.root = batch;
+
+        producer.resetBatch(root);
+    }
+
+    public void writeStart() throws IOException {
+
+        producer.produceStart(generator);
+    }
+
+    public void writeBatch() throws IOException {
+
+        producer.resetIndex(0);
+        producer.produceBatch(generator);
+    }
+
+    public void writeEnd() throws IOException {
+
+        producer.produceEnd(generator);
+    }
+
+    public void flush() throws IOException {
+
+        generator.flush();
+    }
+
+    public void close() throws IOException {
+
+        generator.close();
     }
 }

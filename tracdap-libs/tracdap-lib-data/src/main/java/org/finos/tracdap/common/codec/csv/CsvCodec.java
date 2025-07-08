@@ -25,17 +25,15 @@ import com.fasterxml.jackson.dataformat.csv.CsvParser;
 import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.codec.text.BaseTextEncoder;
 import org.finos.tracdap.common.codec.text.BufferedTextDecoder;
-import org.finos.tracdap.common.codec.text.IBatchProducer;
+import org.finos.tracdap.common.codec.text.TextFileConfig;
 import org.finos.tracdap.common.data.ArrowVsrContext;
-import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 
 import org.apache.arrow.memory.BufferAllocator;
+import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.EDataConstraint;
-import org.finos.tracdap.common.exception.EDataTypeNotSupported;
 import org.finos.tracdap.metadata.SchemaDefinition;
 
-import java.io.IOException;
 import java.util.List;
 import java.util.Map;
 
@@ -43,6 +41,7 @@ import java.util.Map;
 public class CsvCodec implements ICodec {
 
     private static final boolean DEFAULT_HEADER_FLAG = true;
+    private static final int BATCH_SIZE = 1024;
 
     private static final String DEFAULT_FILE_EXTENSION = "csv";
 
@@ -70,7 +69,9 @@ public class CsvCodec implements ICodec {
     public Encoder<DataPipeline.StreamApi>
     getEncoder(BufferAllocator allocator, Map<String, String> options) {
 
-        return new BaseTextEncoder(allocator, csvFactory, this::configureGenerator);
+        var config = new TextFileConfig(csvFactory, null, BATCH_SIZE, false);
+
+        return new BaseTextEncoder(allocator, config, this::generatorSetup);
     }
 
     @Override
@@ -83,12 +84,13 @@ public class CsvCodec implements ICodec {
     public Decoder<DataPipeline.BufferApi>
     getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
 
-        var context = ArrowVsrContext.forSchema(tracSchema, allocator);
+        var schema = SchemaMapping.tracToArrow(tracSchema);
+        var config = new TextFileConfig(csvFactory, null, BATCH_SIZE, false);
 
-        return new BufferedTextDecoder(context, csvFactory, this::configureParser);
+        return new BufferedTextDecoder(schema, allocator, config, this::parserSetup);
     }
 
-    protected void configureGenerator(JsonGenerator generator, ArrowVsrContext context) {
+    protected void generatorSetup(JsonGenerator generator, ArrowVsrContext context) {
 
         var csvSchema = CsvSchemaMapping
                 .arrowToCsv(context.getSchema().decoded())
@@ -98,7 +100,7 @@ public class CsvCodec implements ICodec {
         generator.setSchema(csvSchema);
     }
 
-    protected void configureParser(JsonParser parser, ArrowVsrContext context) {
+    protected void parserSetup(JsonParser parser, ArrowVsrContext context) {
 
         var csvSchema = CsvSchemaMapping
                 .arrowToCsv(context.getSchema().decoded())

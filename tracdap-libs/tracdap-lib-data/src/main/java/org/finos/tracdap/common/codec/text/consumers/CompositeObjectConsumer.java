@@ -22,7 +22,6 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.ValueVector;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;

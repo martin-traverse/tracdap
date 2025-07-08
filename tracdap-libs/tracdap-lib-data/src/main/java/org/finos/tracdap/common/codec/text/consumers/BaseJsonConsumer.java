@@ -18,7 +18,6 @@
 package org.finos.tracdap.common.codec.text.consumers;
 
 import org.apache.arrow.vector.FieldVector;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
 
 
 public abstract class BaseJsonConsumer<TVector extends FieldVector> implements IJsonConsumer<TVector> {

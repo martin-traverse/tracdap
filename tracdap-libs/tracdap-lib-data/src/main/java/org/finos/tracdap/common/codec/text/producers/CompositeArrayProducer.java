@@ -18,7 +18,6 @@
 package org.finos.tracdap.common.codec.text.producers;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.io.IOException;
 import java.util.List;
@@ -30,7 +29,6 @@ public class CompositeArrayProducer extends BaseCompositeProducer {
         super(delegates);
     }
 
-    @Override
     public void produceElement(JsonGenerator generator) throws IOException {
 
         generator.writeStartArray();

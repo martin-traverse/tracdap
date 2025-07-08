@@ -17,7 +17,10 @@
 
 package org.finos.tracdap.common.data;
 
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.pojo.*;
+
+import java.util.Map;
 
 
 /**
@@ -29,32 +32,35 @@ import org.apache.arrow.vector.types.pojo.*;
 public class ArrowVsrSchema {
 
     private final Schema physicalSchema;
+    private final Map<Long, Field> dictionaryFields;
+    private final DictionaryProvider dictionaries;
+
     private final Schema decodedSchema;
-    private final boolean singleRecord;
 
     public ArrowVsrSchema(Schema physicalSchema) {
-        this(physicalSchema, physicalSchema, false);
+        this(physicalSchema, null, null);
     }
 
-    public ArrowVsrSchema(Schema physicalSchema, Schema decodedSchema) {
-        this(physicalSchema, decodedSchema, false);
-    }
+    public ArrowVsrSchema(Schema physicalSchema, Map<Long, Field> dictionaryFields, DictionaryProvider dictionaries) {
 
-    public ArrowVsrSchema(Schema physicalSchema, Schema decodedSchema, boolean singleRecord) {
         this.physicalSchema = physicalSchema;
-        this.decodedSchema = decodedSchema;
-        this.singleRecord = singleRecord;
+        this.dictionaryFields = dictionaryFields;
+        this.dictionaries = dictionaries;
     }
 
     public Schema physical() {
         return physicalSchema;
     }
 
-    public Schema decoded() {
-        return decodedSchema != null ? decodedSchema : physicalSchema;
+    public Map<Long, Field> dictionaryFields() {
+        return dictionaryFields;
     }
 
-    public boolean isSingleRecord() {
-        return singleRecord;
+    public DictionaryProvider dictionaries() {
+        return dictionaries;
+    }
+
+    public Schema decoded() {
+        return decodedSchema != null ? decodedSchema : physicalSchema;
     }
 }

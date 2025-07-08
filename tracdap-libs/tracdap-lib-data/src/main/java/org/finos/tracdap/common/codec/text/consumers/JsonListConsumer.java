@@ -17,7 +17,6 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import com.fasterxml.jackson.core.JsonParser;

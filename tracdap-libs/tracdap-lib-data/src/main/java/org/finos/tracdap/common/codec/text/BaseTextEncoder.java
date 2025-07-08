@@ -17,13 +17,12 @@
 
 package org.finos.tracdap.common.codec.text;
 
+import com.fasterxml.jackson.core.JsonGenerator;
 import org.finos.tracdap.common.codec.StreamingEncoder;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
 import org.finos.tracdap.common.exception.EUnexpected;
 
-import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.memory.BufferAllocator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -38,21 +37,25 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
     private final Logger log = LoggerFactory.getLogger(getClass());
 
     private final BufferAllocator allocator;
-    private final JsonFactory jsonFactory;
-    private final BiConsumer<JsonGenerator, ArrowVsrContext> configureGenerator;
+    private final TextFileConfig config;
+
+    private final BiConsumer<JsonGenerator, ArrowVsrContext> generatorSetup;
 
     private ArrowVsrContext context;
     private OutputStream out;
-    private JsonGenerator generator;
-    private IBatchProducer producer;
+    private TextFileWriter writer;
+
+    public BaseTextEncoder(BufferAllocator allocator, TextFileConfig config) {
+        this(allocator, config, null);
+    }
 
     public BaseTextEncoder(
-            BufferAllocator allocator, JsonFactory jsonFactory,
-            BiConsumer<JsonGenerator, ArrowVsrContext> configureGenerator) {
+            BufferAllocator allocator, TextFileConfig config,
+            BiConsumer<JsonGenerator, ArrowVsrContext> generatorSetup) {
 
         this.allocator = allocator;
-        this.jsonFactory = jsonFactory;
-        this.configureGenerator = configureGenerator;
+        this.config = config;
+        this.generatorSetup = generatorSetup;
     }
 
     @Override
@@ -66,19 +69,19 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
             consumer().onStart();
 
             this.context = context;
-
             this.out = new ByteOutputStream(allocator, consumer()::onNext);
-            this.generator = jsonFactory.createGenerator(out);
 
-            if (configureGenerator != null)
-                configureGenerator.accept(this.generator, context);
-
-            this.producer = TextFileUtils.createBatchProducer(
+            this.writer = new TextFileWriter(
                     context.getFrontBuffer(),
                     context.getDictionaries(),
-                    context.getSchema().isSingleRecord());
+                    this.out,
+                    this.config);
 
-            producer.produceStart(generator);
+            // Allow individual codecs to customize the generator
+            if (generatorSetup != null)
+                generatorSetup.accept(writer.getGenerator(), context);
+
+            writer.writeStart();
         }
         catch (IOException e) {
 
@@ -101,8 +104,8 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
 
             var batch = context.getFrontBuffer();
 
-            producer.resetBatch(batch);
-            producer.produceBatch(generator);
+            writer.resetBatch(batch);
+            writer.writeBatch();
 
             context.setUnloaded();
         }
@@ -125,17 +128,8 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
             if (log.isTraceEnabled())
                 log.trace("JSON ENCODER: onComplete()");
 
-            producer.produceEnd(generator);
-
-            // Flush and close output
-
-            producer = null;
-
-            generator.close();
-            generator = null;
-
-            out.flush();
-            out = null;
+            writer.writeEnd();
+            writer.flush();
 
             markAsDone();
             consumer().onComplete();
@@ -173,13 +167,11 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
 
         try {
 
-            if (producer != null) {
-                producer = null;
-            }
-
-            if (generator != null) {
-                generator.close();
-                generator = null;
+            if (writer != null) {
+                writer.close();
+                writer = null;
+                // Do not close the out stream twice
+                out = null;
             }
 
             if (out != null) {

@@ -15,19 +15,23 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.codec.text;
+package org.finos.tracdap.common.codec.text.producers;
 
 import com.fasterxml.jackson.core.JsonGenerator;
-import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.ValueVector;
 
 import java.io.IOException;
 
 
-public interface IBatchProducer {
+public interface IJsonProducer <TVector extends ValueVector> {
 
-    void produceStart(JsonGenerator generator) throws IOException;
-    void produceBatch(JsonGenerator generator) throws IOException;
-    void produceEnd(JsonGenerator generator) throws IOException;
+    void produceElement(JsonGenerator generator) throws IOException;
 
-    void resetBatch(VectorSchemaRoot batch) throws IOException;
+    void skipNull();
+
+    void resetIndex(int index);
+
+    void resetVector(TVector vector);
+
+    TVector getVector();
 }

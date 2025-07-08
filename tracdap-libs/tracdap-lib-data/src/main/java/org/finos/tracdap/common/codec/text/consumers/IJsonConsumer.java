@@ -15,19 +15,21 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.codec.text;
+package org.finos.tracdap.common.codec.text.consumers;
 
 import com.fasterxml.jackson.core.JsonParser;
-import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.ValueVector;
 
 import java.io.IOException;
 
 
-public interface IBatchConsumer {
+public interface IJsonConsumer<TVector extends ValueVector> {
 
-    boolean consumeBatch(JsonParser parser) throws IOException;
+    boolean consumeElement(JsonParser parser) throws IOException;
 
-    boolean endOfStream();
+    void setNull();
 
-    void resetBatch(VectorSchemaRoot batch);
+    TVector getVector();
+
+    void resetVector(TVector vector);
 }

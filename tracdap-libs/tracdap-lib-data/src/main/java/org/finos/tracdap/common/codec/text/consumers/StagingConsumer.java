@@ -20,7 +20,6 @@ package org.finos.tracdap.common.codec.text.consumers;
 import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.vector.BaseIntVector;
 import org.apache.arrow.vector.ElementAddressableVector;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
 
 import java.io.IOException;
 

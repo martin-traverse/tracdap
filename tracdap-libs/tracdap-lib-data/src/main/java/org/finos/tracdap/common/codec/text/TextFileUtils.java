@@ -194,9 +194,9 @@ public class TextFileUtils {
     public static IBatchConsumer createBatchConsumer(
             VectorSchemaRoot root,
             DictionaryProvider dictionaries,
+            Map<Long, Field> stagingFields,
+            List<StagingContainer<?>> staging,
             boolean singleRecord) {
-
-        var staging = new ArrayList<StagingContainer<?>>();
 
         var fieldConsumers = createConsumers(root.getFieldVectors(), dictionaries, null, staging);
         var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);

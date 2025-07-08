@@ -21,7 +21,6 @@ import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.ValueVector;
 import org.apache.arrow.vector.complex.StructVector;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
 
 import java.io.IOException;
 import java.util.List;

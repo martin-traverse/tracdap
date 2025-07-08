@@ -17,8 +17,6 @@
 
 package org.finos.tracdap.common.codec.text.producers;
 
-import org.finos.tracdap.common.codec.text.IJsonProducer;
-
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VarCharVector;

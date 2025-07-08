@@ -17,56 +17,162 @@
 
 package org.finos.tracdap.common.codec.text;
 
+import org.apache.arrow.vector.dictionary.Dictionary;
+import org.finos.tracdap.common.codec.text.consumers.IBatchConsumer;
+import org.finos.tracdap.common.codec.text.consumers.StagingContainer;
+
 import com.fasterxml.jackson.core.JsonParser;
+import com.fasterxml.jackson.core.async.ByteBufferFeeder;
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.pojo.Field;
-import org.finos.tracdap.common.codec.text.consumers.StagingContainer;
+import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.io.IOException;
-import java.util.List;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
+import java.util.ArrayList;
 import java.util.Map;
+import java.util.Set;
 
 
-public class TextFileReader {
+public class TextFileReader implements DictionaryProvider {
 
-    private final IBatchConsumer batchConsumer;
-    private final List<StagingContainer<?>> staging;
+    private final Schema schema;
+    private final VectorSchemaRoot root;
+
+    private final JsonParser parser;
+    private final ByteBufferFeeder feeder;
+    private final IBatchConsumer consumer;
+
+    private final DictionaryProvider dictionaries;
+
 
     public TextFileReader(
-            IBatchConsumer batchConsumer,
-            List<StagingContainer<?>> staging,
-            VectorSchemaRoot firstBatch,
+            Schema schema,
+            Map<Long, Field> dictionaryFields,
             DictionaryProvider dictionaries,
-            Map<Long, Field> dictionaryFields) {
+            BufferAllocator allocator,
+            InputStream in,
+            TextFileConfig config) throws IOException {
 
-        this.batchConsumer = batchConsumer;
-        this.staging = staging;
+        this(schema, dictionaryFields, dictionaries, allocator,
+                config.getJsonFactory().createParser(in),
+                config);
+    }
+
+    public TextFileReader(
+            Schema schema,
+            Map<Long, Field> dictionaryFields,
+            DictionaryProvider dictionaries,
+            BufferAllocator allocator,
+            TextFileConfig config) throws IOException {
+
+        this(schema, dictionaryFields, dictionaries, allocator,
+                config.getJsonFactory().createNonBlockingByteBufferParser(),
+                config);
+    }
+
+    public TextFileReader(
+            Schema schema,
+            Map<Long, Field> dictionaryFields,
+            DictionaryProvider dictionaries,
+            BufferAllocator allocator,
+            JsonParser parser,
+            TextFileConfig config) {
+
+        this.schema = schema;
+        this.root = buildRoot(schema, allocator, config);
+
+        this.parser = parser;
+        this.feeder = (ByteBufferFeeder) parser.getNonBlockingInputFeeder();
+
+        if (config.hasFormatSchema())
+            this.parser.setSchema(config.getFormatSchema());
+
+        var stagingFields = new ArrayList<StagingContainer<?>>(dictionaryFields.size());
+
+        this.consumer = TextFileUtils.createBatchConsumer(
+                this.root, dictionaries, dictionaryFields,
+                stagingFields, config.isSingleRecord());
 
     }
 
-    public void start(JsonParser parser) throws IOException {
+    private VectorSchemaRoot buildRoot(Schema schema, BufferAllocator allocator,  TextFileConfig config) {
 
+        var vectors = new ArrayList<FieldVector>(schema.getFields().size());
 
+        for (var field : schema.getFields()) {
+            var vector = field.createVector(allocator);
+            vectors.add(vector);
+        }
+
+        return new VectorSchemaRoot(schema, vectors, config.getBatchSize());
     }
 
-    public boolean readBatch(JsonParser parser) throws IOException {
+    public JsonParser getParser() {
+        return parser;
+    }
 
-        if (batchConsumer.consumeBatch(parser))  {
+    public Schema getSchema() {
+        return schema;
+    }
 
-            for (var staged : staging)
-                staged.encodeVector();
+    public VectorSchemaRoot getVectorSchemaRoot() {
+        return root;
+    }
 
-            return true;
-        }
-        else {
-            return false;
-        }
+    @Override
+    public Set<Long> getDictionaryIds() {
+        return dictionaries.getDictionaryIds();
+    }
+
+    @Override
+    public Dictionary lookup(long id) {
+        return dictionaries.lookup(id);
+    }
+
+    public void feedInput(ByteBuffer buffer) throws IOException {
+
+        if (feeder == null)
+            throw new IllegalStateException("Cannot feed more input, file reader is in blocking mode");
+
+        feeder.feedInput(buffer);
+    }
+
+    public void feedInput(byte[] buffer) throws IOException {
+
+        if (feeder == null)
+            throw new IllegalStateException("Cannot feed more input, file reader is in blocking mode");
+
+        feeder.feedInput(ByteBuffer.wrap(buffer));
+    }
+
+
+    public void readStart() throws IOException {
+
+        // no-op
+    }
+
+    public boolean hasBatch() {
+
+        return ! consumer.endOfStream();
+    }
+
+    public boolean readBatch() throws IOException {
+
+        return consumer.consumeBatch(parser);
     }
 
     public void resetBatch(VectorSchemaRoot batch) throws IOException {
 
-        batchConsumer.resetBatch(batch);
+        consumer.resetBatch(batch);
     }
 
+    public void close() throws IOException {
+
+        parser.close();
+    }
 }

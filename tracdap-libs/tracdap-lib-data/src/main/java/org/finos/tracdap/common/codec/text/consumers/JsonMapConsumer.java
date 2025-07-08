@@ -23,8 +23,7 @@ import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VarCharVector;
 import org.apache.arrow.vector.complex.MapVector;
 import org.apache.arrow.vector.complex.StructVector;
-import org.finos.tracdap.common.codec.text.IJsonConsumer;
-import org.finos.tracdap.common.codec.text.IJsonProducer;
+import org.finos.tracdap.common.codec.text.producers.IJsonProducer;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;

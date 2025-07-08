@@ -68,6 +68,10 @@ public class StagingContainer<TStaging extends ElementAddressableVector> {
         this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
     }
 
+    public Dictionary getDictionary() {
+        return dictionary;
+    }
+
     public TStaging getStagingVector() {
         return stagingVector;
     }

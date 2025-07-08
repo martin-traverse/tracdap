@@ -17,6 +17,9 @@
 
 package org.finos.tracdap.common.data;
 
+import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.dictionary.Dictionary;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
@@ -25,6 +28,7 @@ import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.exception.EValidationGap;
 import org.finos.tracdap.metadata.*;
 
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -289,5 +293,36 @@ public class SchemaMapping {
 
             return logicalField;
         }
+    }
+
+
+    private Map<String, Long> addNamedEnumDictionaries(DictionaryProvider.MapDictionaryProvider dictionaries, SchemaDefinition tracSchema) {
+
+        var namedEnumMap = new HashMap<String, Long>();
+
+        long nextId = dictionaries.getDictionaryIds().size();
+
+        for (var entry : tracSchema.getNamedEnumsMap().entrySet()) {
+
+            var name = entry.getKey();
+            var enum_ = entry.getValue();
+
+            var dictionaryVector = new VarCharVector(name, allocator);
+            dictionaryVector.allocateNew(enum_.getValuesCount());
+
+            for (int i = 0; i < enum_.getValuesCount(); i++) {
+                dictionaryVector.setSafe(i, enum_.getValues(i).getStringValue().getBytes(StandardCharsets.UTF_8));
+            }
+
+            dictionaryVector.setValueCount(enum_.getValuesCount());
+
+            var encoding = new DictionaryEncoding(nextId++, false, null);
+            var dictionary = new Dictionary(dictionaryVector, encoding);
+
+            namedEnumMap.put(name, encoding.getId());
+            dictionaries.put(dictionary);
+        }
+
+        return namedEnumMap;
     }
 }
