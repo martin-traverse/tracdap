@@ -22,15 +22,13 @@ import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.codec.text.BaseTextDecoder;
 import org.finos.tracdap.common.codec.text.BaseTextEncoder;
 import org.finos.tracdap.common.codec.text.TextFileConfig;
-import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.EDataConstraint;
 import org.finos.tracdap.metadata.SchemaDefinition;
 
 import com.fasterxml.jackson.core.JsonFactory;
-import com.fasterxml.jackson.core.JsonGenerator;
-import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.StreamReadFeature;
 import org.apache.arrow.memory.BufferAllocator;
 
@@ -62,7 +60,6 @@ public class JsonCodec implements ICodec {
     getEncoder(BufferAllocator allocator, Map<String, String> options) {
 
         var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
-
         return new BaseTextEncoder(allocator, config);
     }
 
@@ -75,10 +72,15 @@ public class JsonCodec implements ICodec {
     @Override
     public Decoder<?> getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
 
-        var schema = SchemaMapping.tracToArrow(tracSchema);
-        var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
+        var arrowSchema = SchemaMapping.tracToArrow(tracSchema, allocator);
+        return getDecoder(arrowSchema, allocator, options);
+    }
 
-        return new BaseTextDecoder(schema, allocator, config);
+    @Override
+    public Decoder<?> getDecoder(ArrowVsrSchema arrowSchema, BufferAllocator allocator, Map<String, String> options) {
+
+        var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
+        return new BaseTextDecoder(arrowSchema, allocator, config);
     }
 }
 

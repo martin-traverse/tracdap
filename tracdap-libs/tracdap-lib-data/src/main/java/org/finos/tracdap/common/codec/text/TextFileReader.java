@@ -49,7 +49,6 @@ public class TextFileReader implements DictionaryProvider {
 
     private final DictionaryProvider dictionaries;
 
-
     public TextFileReader(
             Schema schema,
             Map<Long, Field> dictionaryFields,
@@ -66,11 +65,11 @@ public class TextFileReader implements DictionaryProvider {
     public TextFileReader(
             Schema schema,
             Map<Long, Field> dictionaryFields,
-            DictionaryProvider dictionaries,
+            DictionaryProvider prebuiltDictionaries,
             BufferAllocator allocator,
             TextFileConfig config) throws IOException {
 
-        this(schema, dictionaryFields, dictionaries, allocator,
+        this(schema, dictionaryFields, prebuiltDictionaries, allocator,
                 config.getJsonFactory().createNonBlockingByteBufferParser(),
                 config);
     }
@@ -78,7 +77,7 @@ public class TextFileReader implements DictionaryProvider {
     public TextFileReader(
             Schema schema,
             Map<Long, Field> dictionaryFields,
-            DictionaryProvider dictionaries,
+            DictionaryProvider prebuiltDictionaries,
             BufferAllocator allocator,
             JsonParser parser,
             TextFileConfig config) {
@@ -95,9 +94,20 @@ public class TextFileReader implements DictionaryProvider {
         var stagingFields = new ArrayList<StagingContainer<?>>(dictionaryFields.size());
 
         this.consumer = TextFileUtils.createBatchConsumer(
-                this.root, dictionaries, dictionaryFields,
+                this.root, prebuiltDictionaries, dictionaryFields,
                 stagingFields, config.isSingleRecord());
 
+        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
+
+        for (var dictionaryId : prebuiltDictionaries.getDictionaryIds()) {
+            dictionaries.put(prebuiltDictionaries.lookup(dictionaryId));
+        }
+
+        for (var stagingField : stagingFields) {
+            dictionaries.put(stagingField.getDictionary());
+        }
+
+        this.dictionaries = dictionaries;
     }
 
     private VectorSchemaRoot buildRoot(Schema schema, BufferAllocator allocator,  TextFileConfig config) {

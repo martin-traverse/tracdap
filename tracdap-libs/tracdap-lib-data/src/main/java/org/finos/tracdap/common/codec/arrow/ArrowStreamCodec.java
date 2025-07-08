@@ -57,4 +57,9 @@ public class ArrowStreamCodec implements ICodec {
     public Decoder<?> getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
         return new ArrowStreamDecoder(allocator);
     }
+
+    @Override
+    public Decoder<?> getDecoder(ArrowVsrSchema arrowSchema, BufferAllocator allocator, Map<String, String> options) {
+        return new ArrowStreamDecoder(allocator);
+    }
 }

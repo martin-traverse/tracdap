@@ -27,6 +27,7 @@ import org.finos.tracdap.common.codec.text.BaseTextEncoder;
 import org.finos.tracdap.common.codec.text.BufferedTextDecoder;
 import org.finos.tracdap.common.codec.text.TextFileConfig;
 import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.DataPipeline;
 
 import org.apache.arrow.memory.BufferAllocator;
@@ -70,7 +71,6 @@ public class CsvCodec implements ICodec {
     getEncoder(BufferAllocator allocator, Map<String, String> options) {
 
         var config = new TextFileConfig(csvFactory, null, BATCH_SIZE, false);
-
         return new BaseTextEncoder(allocator, config, this::generatorSetup);
     }
 
@@ -84,10 +84,16 @@ public class CsvCodec implements ICodec {
     public Decoder<DataPipeline.BufferApi>
     getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
 
-        var schema = SchemaMapping.tracToArrow(tracSchema);
-        var config = new TextFileConfig(csvFactory, null, BATCH_SIZE, false);
+        var arrowSchema = SchemaMapping.tracToArrow(tracSchema, allocator);
+        return getDecoder(arrowSchema, allocator, options);
+    }
 
-        return new BufferedTextDecoder(schema, allocator, config, this::parserSetup);
+    @Override
+    public Decoder<DataPipeline.BufferApi>
+    getDecoder(ArrowVsrSchema arrowSchema, BufferAllocator allocator, Map<String, String> options) {
+
+        var config = new TextFileConfig(csvFactory, null, BATCH_SIZE, false);
+        return new BufferedTextDecoder(arrowSchema, allocator, config, this::parserSetup);
     }
 
     protected void generatorSetup(JsonGenerator generator, ArrowVsrContext context) {

@@ -17,24 +17,33 @@
 
 package org.finos.tracdap.common.data;
 
+import org.finos.tracdap.common.exception.ETracInternal;
+import org.finos.tracdap.common.exception.EUnexpected;
+import org.finos.tracdap.common.exception.EValidationGap;
+import org.finos.tracdap.common.metadata.MetadataCodec;
+import org.finos.tracdap.common.metadata.TypeSystem;
+import org.finos.tracdap.metadata.*;
+
+import org.apache.arrow.memory.BufferAllocator;
+import org.apache.arrow.vector.BaseIntVector;
+import org.apache.arrow.vector.DateDayVector;
+import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VarCharVector;
+import org.apache.arrow.vector.complex.ListVector;
+import org.apache.arrow.vector.complex.MapVector;
 import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.DateUnit;
 import org.apache.arrow.vector.types.FloatingPointPrecision;
 import org.apache.arrow.vector.types.TimeUnit;
 import org.apache.arrow.vector.types.pojo.*;
-import org.finos.tracdap.common.exception.EUnexpected;
-import org.finos.tracdap.common.exception.EValidationGap;
-import org.finos.tracdap.metadata.*;
 
 import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 
 public class SchemaMapping {
@@ -87,43 +96,53 @@ public class SchemaMapping {
             .setNotNull(true)
             .build();
 
-    private final SchemaDefinition tracSchema;
-    private final AtomicInteger nextDictionaryId;
+    private final SchemaDefinition topLevelSchema;
+    private final Map<Long, Field> dictionaryFields;
+    private final DictionaryProvider.MapDictionaryProvider dictionaries;
+    private final Map<String, Long> namedEnums;
 
     public static ArrowVsrSchema tracToArrow(SchemaDefinition tracSchema) {
 
         var mapping = new SchemaMapping(tracSchema);
-        return mapping.tracToArrowSchema(tracSchema);
+        return mapping.tracToArrowSchema(tracSchema, null);
+    }
+
+    public static ArrowVsrSchema tracToArrow(SchemaDefinition tracSchema, BufferAllocator allocator) {
+
+        var mapping = new SchemaMapping(tracSchema);
+        return mapping.tracToArrowSchema(tracSchema, allocator);
     }
 
     private SchemaMapping(SchemaDefinition tracSchema) {
-        this.tracSchema = tracSchema;
-        this.nextDictionaryId = new AtomicInteger(0);
+
+        this.topLevelSchema = tracSchema;
+        this.dictionaryFields = new HashMap<>();
+        this.dictionaries = new DictionaryProvider.MapDictionaryProvider();
+        this.namedEnums = new HashMap<>();
     }
 
-    private ArrowVsrSchema tracToArrowSchema(SchemaDefinition tracSchema) {
+    private ArrowVsrSchema tracToArrowSchema(SchemaDefinition tracSchema, BufferAllocator allocator) {
+
+        // Build named enums first so they are available when processing fields
+        if (tracSchema.getNamedEnumsCount() > 0)
+            processNamedEnums(tracSchema, allocator);
 
         var tracFields = tracSchema.getSchemaType() == SchemaType.TABLE_SCHEMA && tracSchema.getFieldsCount() == 0
                 ? tracSchema.getTable().getFieldsList()
                 : tracSchema.getFieldsList();
 
-        var logicalFields = new ArrayList<Field>(tracFields.size());
-        var physicalFields = new ArrayList<Field>(tracFields.size());
-
-        for (int i = 0; i < tracSchema.getNamedEnumsCount(); i++) {
-            nextDictionaryId.incrementAndGet();
+        if (tracFields.isEmpty()) {
+            throw new EValidationGap("Schema contains no fields");
         }
+
+        var arrowFields = new ArrayList<Field>(tracFields.size());
 
         for (var tracField : tracFields) {
-
-            var logicalField = tracToArrowField(tracField);
-            var physicalField = tracToArrowPhysicalField(tracField, logicalField);
-
-            logicalFields.add(logicalField);
-            physicalFields.add(physicalField);
+            var arrowField = tracToArrowField(tracField);
+            arrowFields.add(arrowField);
         }
 
-        return new ArrowVsrSchema(new Schema(physicalFields), new Schema(logicalFields));
+        return new ArrowVsrSchema(new Schema(arrowFields), dictionaryFields, dictionaries);
     }
 
     private Field tracToArrowField(FieldSchema tracField) {
@@ -134,195 +153,214 @@ public class SchemaMapping {
     private Field tracToArrowField(FieldSchema tracField, String fieldName) {
 
         var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracField.getFieldType());
-        var notNull = tracField.getBusinessKey() || tracField.getNotNull();
-        var nullable = !notNull;
+        var nullable = !(tracField.getBusinessKey() || tracField.getNotNull());
 
         // Unexpected error - All TRAC primitive types are mapped
         if (arrowType == null)
             throw new EUnexpected();
 
-        var arrowFieldType = new FieldType(nullable, arrowType, /* dictionary = */ null);
-
-        var children = tracField.hasChildren() || (tracField.getFieldType() == BasicType.STRUCT && tracField.hasNamedType())
-                ? tracToArrowChildren(tracField)
+        // For complex types, process the child fields
+        var children = ! TypeSystem.isPrimitive(tracField.getFieldType())
+                ? tracToArrowFieldChildren(tracField)
                 : null;
 
-        return new Field(fieldName, arrowFieldType, children);
-    }
+        if (tracField.hasNamedEnum()) {
 
-    private List<Field> tracToArrowChildren(FieldSchema tracField) {
+            // Named enums have pre-built dictionaries
+            var dictionaryId = namedEnums.get(fieldName);
+            var dictionary = dictionaries.lookup(dictionaryId);
 
-        var tracChildren = tracField.getChildren();
-
-        if (tracField.getFieldType() == BasicType.ARRAY) {
-
-            var tracItems = tracChildren.getArrayItems();
-            var arrowItems = tracToArrowField(tracItems, "$data$");
-
-            return List.of(arrowItems);
+            // Create an index field for the existing dictionary
+            var encoding = dictionary.getEncoding();
+            var indexFieldType = new FieldType(nullable, encoding.getIndexType(), encoding);
+            return new Field(fieldName, indexFieldType, /* children = */ null);
         }
 
-        if (tracField.getFieldType() == BasicType.MAP) {
+        else if (tracField.getCategorical()) {
 
-            var tracKeys = tracChildren.hasMapKeys()
-                    ? tracChildren.getMapKeys()
-                    : DEFAULT_MAP_KEY_FIELD;
-
-            var tracValues = tracChildren.getMapValues();
-            var arrowKeys = tracToArrowField(tracKeys, "key");
-            var arrowValues = tracToArrowField(tracValues, "value");
-
-            // Arrow maps are a list of entries, where the entry has keys and values as children
-            var entriesType = new FieldType(false, new ArrowType.Struct(), null);
-            var entriesField = new Field("entries", entriesType, List.of(arrowKeys, arrowValues));
-
-            return List.of(entriesField);
-        }
-
-        if (tracField.getFieldType() == BasicType.STRUCT) {
-
-            if (tracField.hasNamedType()) {
-
-                if (!tracSchema.containsNamedTypes(tracField.getNamedType())) {
-
-                    // TODO: Error
-                    var error = String.format("Named type is missing in the schema: [%s]",  tracField.getNamedType());
-                    throw new EValidationGap(error);
-                }
-
-                var namedType = tracSchema.getNamedTypesOrThrow(tracField.getNamedType());
-
-                return namedType.getFieldsList().stream()
-                        .map(this::tracToArrowField)
-                        .collect(Collectors.toList());
-            }
-
-            if (tracChildren.getStructFieldsCount() > 0) {
-
-                return tracChildren.getStructFieldsList().stream()
-                        .map(this::tracToArrowField)
-                        .collect(Collectors.toList());
-            }
-        }
-
-        throw new EUnexpected();
-    }
-
-
-    private Field tracToArrowPhysicalField(FieldSchema tracField, Field logicalField) {
-
-        if (logicalField.getChildren() != null && !logicalField.getChildren().isEmpty()) {
-
-            if (tracField.getChildren().hasArrayItems()) {
-
-                var physicalChild = tracToArrowPhysicalField(
-                        tracField.getChildren().getArrayItems(),
-                        logicalField.getChildren().get(0));
-
-                return new Field(
-                        logicalField.getName(),
-                        logicalField.getFieldType(),
-                        List.of(physicalChild));
-            }
-
-            if (tracField.getChildren().hasMapValues()) {
-
-                var logicalEntries = logicalField.getChildren().get(0);
-                var logicalKey = logicalEntries.getChildren().get(0);
-                var logicalValue = logicalEntries.getChildren().get(1);
-
-                var physicalKey = tracToArrowPhysicalField(tracField.getChildren().getMapKeys(), logicalKey);
-                var physicalValue = tracToArrowPhysicalField(tracField.getChildren().getMapValues(), logicalValue);
-
-                var physicalEntries = new Field(
-                        logicalEntries.getName(),
-                        logicalEntries.getFieldType(),
-                        List.of(physicalKey, physicalValue));
-
-                return new Field(
-                        logicalField.getName(),
-                        logicalField.getFieldType(),
-                        List.of(physicalEntries));
-            }
-
-            if (tracField.hasNamedType() || tracField.getChildren().getStructFieldsCount() > 0) {
-
-                var tracChildren = tracField.hasNamedType()
-                        ? tracSchema.getNamedTypesOrThrow(tracField.getNamedType()).getFieldsList()
-                        : tracField.getChildren().getStructFieldsList();
-
-                var physicalChildren = new ArrayList<Field>(tracField.getChildren().getStructFieldsCount());
-
-                for (int i = 0; i < logicalField.getChildren().size(); i++) {
-
-                    var tracChild = tracChildren.get(i);
-                    var logicalChild = logicalField.getChildren().get(i);
-                    var physicalChild = tracToArrowPhysicalField(tracChild, logicalChild);
-
-                    physicalChildren.add(physicalChild);
-                }
-
-                return new Field(
-                        logicalField.getName(),
-                        logicalField.getFieldType(),
-                        physicalChildren);
-            }
-
-            // Children exist but no mapping logic available
-            throw new EUnexpected();
-        }
-
-        if (tracField.getCategorical()) {
-
+            // Categorical without named enum requires a dedicated dictionary
+            // Values not known ahead of time, so assign 32-bit index
+            var dictionaryId = (long) dictionaryFields.size();
             var indexType = new ArrowType.Int(32, true);
-            var encoding = new DictionaryEncoding(nextDictionaryId.getAndIncrement(), false, indexType);
-            var notNull = tracField.getBusinessKey() || tracField.getNotNull();
-            var nullable = !notNull;
 
-            var metadata = new HashMap<String, String>();
+            // Use the non-null version of the original type for the dictionary field
+            var dictionaryFieldType = new FieldType(false, arrowType, /* dictionary = */ null);
+            var dictionaryFiled = new Field(fieldName, dictionaryFieldType, children);
+            dictionaryFields.put(dictionaryId, dictionaryFiled);
 
-            if (tracField.hasNamedEnum())
-                metadata.put("trac.namedEnum",  tracField.getNamedEnum());
+            // Create an index field for the newly defined dictionary
+            var encoding = new DictionaryEncoding(dictionaryId, false, indexType);
+            var indexFieldType = new FieldType(nullable, indexType, encoding);
+            return new Field(fieldName, indexFieldType, /* children = */ null);
+        }
 
-            return new Field(
-                    tracField.getFieldName(),
-                    new FieldType(nullable, indexType, encoding, metadata),
-                    /* children = */ null);
+        else {
+
+            // Regular field, not dictionary encoded
+            var fieldType = new FieldType(nullable, arrowType, /* dictionary = */ null);
+            return new Field(fieldName, fieldType, children);
+        }
+    }
+
+    private List<Field> tracToArrowFieldChildren(FieldSchema tracField) {
+
+        switch (tracField.getFieldType()) {
+
+            case ARRAY:
+                return tracToArrowListChildren(tracField);
+
+            case MAP:
+                return tracToArrowMapChildren(tracField);
+
+            case STRUCT:
+                return tracToArrowStructChildren(tracField);
+
+            default:
+                return null;
+        }
+    }
+
+    private List<Field> tracToArrowListChildren(FieldSchema tracField) {
+
+        var tracItems = tracField.getChildren().getArrayItems();
+        var arrowItems = tracToArrowField(tracItems, ListVector.DATA_VECTOR_NAME);
+
+        return List.of(arrowItems);
+    }
+
+    private List<Field> tracToArrowMapChildren(FieldSchema tracField) {
+
+        var tracKeys = tracField.getChildren().hasMapKeys()
+                ? tracField.getChildren().getMapKeys()
+                : DEFAULT_MAP_KEY_FIELD;
+
+        var tracValues = tracField.getChildren().getMapValues();
+        var arrowKeys = tracToArrowField(tracKeys, MapVector.KEY_NAME);
+        var arrowValues = tracToArrowField(tracValues, MapVector.VALUE_NAME);
+
+        // Arrow maps are a list of entries, where the entry has keys and values as children
+        var entriesType = new FieldType(false, new ArrowType.Struct(), null);
+        var entriesField = new Field(MapVector.DATA_VECTOR_NAME, entriesType, List.of(arrowKeys, arrowValues));
+
+        return List.of(entriesField);
+    }
+
+    private List<Field> tracToArrowStructChildren(FieldSchema tracField) {
+
+        if (tracField.hasNamedType()) {
+
+            if (!topLevelSchema.containsNamedTypes(tracField.getNamedType())) {
+                var message = String.format("Named type is missing in the schema: [%s]",  tracField.getNamedType());
+                throw new EValidationGap(message);
+            }
+
+            var childSchema = topLevelSchema.getNamedTypesOrThrow(tracField.getNamedType());
+            var childFields = new ArrayList<Field>(childSchema.getFieldsCount());
+
+            for (var tracChildField : childSchema.getFieldsList()) {
+                var arrowChildField = tracToArrowField(tracChildField);
+                childFields.add(arrowChildField);
+            }
+
+            return childFields;
         }
         else {
 
-            return logicalField;
+            var childFields = new ArrayList<Field>(tracField.getChildren().getStructFieldsCount());
+
+            for (var tracChildField : tracField.getChildren().getStructFieldsList()) {
+                var arrowChildField = tracToArrowField(tracChildField);
+                childFields.add(arrowChildField);
+            }
+
+            return childFields;
         }
     }
 
+    private void processNamedEnums(SchemaDefinition tracSchema, BufferAllocator allocator) {
 
-    private Map<String, Long> addNamedEnumDictionaries(DictionaryProvider.MapDictionaryProvider dictionaries, SchemaDefinition tracSchema) {
-
-        var namedEnumMap = new HashMap<String, Long>();
-
-        long nextId = dictionaries.getDictionaryIds().size();
+        if (tracSchema.getNamedEnumsCount() > 0 && allocator == null) {
+            throw new ETracInternal("Arrow buffer allocator cannot be null for schemas with named enums");
+        }
 
         for (var entry : tracSchema.getNamedEnumsMap().entrySet()) {
 
-            var name = entry.getKey();
-            var enum_ = entry.getValue();
+            var name =  entry.getKey();
+            var namedEnum = entry.getValue();
 
-            var dictionaryVector = new VarCharVector(name, allocator);
-            dictionaryVector.allocateNew(enum_.getValuesCount());
-
-            for (int i = 0; i < enum_.getValuesCount(); i++) {
-                dictionaryVector.setSafe(i, enum_.getValues(i).getStringValue().getBytes(StandardCharsets.UTF_8));
+            if (namedEnum.getValuesCount() == 0) {
+                var message = String.format("Named enum [%s] must have at least one value", name);
+                throw new EValidationGap(message);
             }
 
-            dictionaryVector.setValueCount(enum_.getValuesCount());
+            var tracType = namedEnum.getValues(0).getType().getBasicType();
+            var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracType);
+            var fieldType = new FieldType(false, arrowType, /* dictionary = */ null);
+            var field = new Field(name, fieldType, /* children = */ null);
 
-            var encoding = new DictionaryEncoding(nextId++, false, null);
+            var dictionaryId = (long) dictionaryFields.size();
+            dictionaryFields.put(dictionaryId, field);
+
+            var dictionaryVector = field.createVector(allocator);
+            dictionaryVector.setInitialCapacity(namedEnum.getValuesCount());
+
+            for (int i = 0; i < namedEnum.getValuesCount(); i++) {
+                var value = MetadataCodec.decodeValue(namedEnum.getValues(i));
+                setDictionaryValue(name, dictionaryVector, i, value, tracType);
+            }
+
+            var indexType = chooseIndexType(namedEnum.getValuesCount());
+            var encoding = new DictionaryEncoding(dictionaryId, false, indexType);
             var dictionary = new Dictionary(dictionaryVector, encoding);
 
-            namedEnumMap.put(name, encoding.getId());
             dictionaries.put(dictionary);
+            namedEnums.put(name, dictionaryId);
         }
+    }
 
-        return namedEnumMap;
+    private void setDictionaryValue(String name, FieldVector dictionaryVector, int index, Object value, BasicType tracType) {
+
+        switch (tracType) {
+
+            case STRING:
+                if (dictionaryVector instanceof VarCharVector) {
+                    var stringVector = (VarCharVector) dictionaryVector;
+                    var stringBytes = ((String) value).getBytes(StandardCharsets.UTF_8);
+                    stringVector.setSafe(index, stringBytes);
+                }
+                break;
+
+            case INTEGER:
+                if (dictionaryVector instanceof BaseIntVector) {
+                    var intVector = (BaseIntVector) dictionaryVector;
+                    var intValue = (Long) value;
+                    intVector.setWithPossibleTruncate(index, intValue);
+                }
+                break;
+
+            case DATE:
+                if (dictionaryVector instanceof DateDayVector) {
+                    var dateVector = (DateDayVector) dictionaryVector;
+                    var dateValue = ((LocalDate) value).toEpochDay();
+                    dateVector.set(index, (int) dateValue);
+                }
+                break;
+
+            default:
+                var message = String.format("Named enum [%s] has invalid type %s", name, tracType.name());
+                throw new EValidationGap(message);
+        }
+    }
+
+    private ArrowType.Int chooseIndexType(int nValues) {
+
+        if (nValues <= (int) Byte.MAX_VALUE)
+            return new ArrowType.Int(8, true);
+
+        else if (nValues <= (int) Short.MAX_VALUE)
+            return new ArrowType.Int(16, true);
+
+        else
+            return new ArrowType.Int(32, true);
     }
 }

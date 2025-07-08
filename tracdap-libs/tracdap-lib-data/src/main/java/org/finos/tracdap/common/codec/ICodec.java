@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.common.codec;
 
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.metadata.SchemaDefinition;
 import org.finos.tracdap.common.data.DataPipeline;
 
@@ -51,6 +52,11 @@ public interface ICodec {
 
     Decoder<?> getDecoder(
             SchemaDefinition tracSchema,
+            BufferAllocator allocator,
+            Map<String, String> options);
+
+    Decoder<?> getDecoder(
+            ArrowVsrSchema arrowSchema,
             BufferAllocator allocator,
             Map<String, String> options);
 }

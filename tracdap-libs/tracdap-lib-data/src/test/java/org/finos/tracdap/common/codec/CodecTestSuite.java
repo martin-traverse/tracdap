@@ -380,7 +380,7 @@ public abstract class CodecTestSuite {
         var pipeline = DataPipeline.forSource(dataSrc, ctx);
 
         pipeline.addStage(codec.getEncoder(allocator, Map.of()));
-        pipeline.addStage(codec.getDecoder(allocator, inputData.getSchema(), Map.of()));
+        pipeline.addStage(codec.getDecoder(inputData.getSchema(), allocator, Map.of()));
 
         var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(inputData, batch));
         pipeline.addSink(dataSink);
@@ -424,7 +424,7 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, inputData.getSchema(), Map.of());
+        var decoder = codec.getDecoder(inputData.getSchema(), allocator, Map.of());
         pipeline.addStage(decoder);
 
         var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(inputData, batch));
@@ -459,7 +459,7 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, structSchema, Map.of());
+        var decoder = codec.getDecoder(structSchema, allocator, Map.of());
         pipeline.addStage(decoder);
 
         var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(null, batch));
@@ -490,7 +490,7 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(noBufStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, arrowSchema, Map.of());
+        var decoder = codec.getDecoder(arrowSchema, allocator, Map.of());
         pipeline.addStage(decoder);
 
         var dataSink = new SingleBatchDataSink(pipeline);
@@ -513,7 +513,7 @@ public abstract class CodecTestSuite {
         var dataCtx2 = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline2 = DataPipeline.forSource(emptyBufStream, dataCtx2);
 
-        var decoder2 = codec.getDecoder(allocator, arrowSchema, Map.of());
+        var decoder2 = codec.getDecoder(arrowSchema, allocator, Map.of());
         pipeline2.addStage(decoder2);
 
         var dataSink2 = new SingleBatchDataSink(pipeline2);
@@ -551,7 +551,7 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, arrowSchema, Map.of());
+        var decoder = codec.getDecoder(arrowSchema, allocator, Map.of());
         pipeline.addStage(decoder);
 
         var dataSink = new SingleBatchDataSink(pipeline);
@@ -593,7 +593,7 @@ public abstract class CodecTestSuite {
         var dataCtx = new DataContext(new DefaultEventExecutor(), allocator);
         var pipeline = DataPipeline.forSource(testDataStream, dataCtx);
 
-        var decoder = codec.getDecoder(allocator, arrowSchema, Map.of());
+        var decoder = codec.getDecoder(arrowSchema, allocator, Map.of());
         pipeline.addStage(decoder);
 
         var dataSink = new SingleBatchDataSink(pipeline);

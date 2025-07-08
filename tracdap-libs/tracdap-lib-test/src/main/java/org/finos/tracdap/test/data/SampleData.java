@@ -486,7 +486,7 @@ public class SampleData {
             switch (field.getType().getTypeID()) {
 
                 case Bool:
-                    var booleanVec = (BitVector) context.getStagingVector(col);
+                    var booleanVec = (BitVector) context.getBackBuffer().getVector(col);
                     vector = booleanVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -499,7 +499,7 @@ public class SampleData {
                     break;
 
                 case Int:
-                    var intVec = (BigIntVector) context.getStagingVector(col);
+                    var intVec = (BigIntVector) context.getBackBuffer().getVector(col);
                     vector = intVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -514,7 +514,7 @@ public class SampleData {
                     break;
 
                 case FloatingPoint:
-                    var floatVec = (Float8Vector) context.getStagingVector(col);
+                    var floatVec = (Float8Vector) context.getBackBuffer().getVector(col);
                     vector = floatVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -529,7 +529,7 @@ public class SampleData {
                     break;
 
                 case Decimal:
-                    var decimalVec = (DecimalVector) context.getStagingVector(col);
+                    var decimalVec = (DecimalVector) context.getBackBuffer().getVector(col);
                     vector = decimalVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -542,7 +542,7 @@ public class SampleData {
                     break;
 
                 case Utf8:
-                    var stringVec = (VarCharVector) context.getStagingVector(col);
+                    var stringVec = (VarCharVector) context.getBackBuffer().getVector(col);
                     vector = stringVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -555,7 +555,7 @@ public class SampleData {
                     break;
 
                 case Date:
-                    var dateVec = (DateDayVector) context.getStagingVector(col);
+                    var dateVec = (DateDayVector) context.getBackBuffer().getVector(col);
                     vector = dateVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -568,7 +568,7 @@ public class SampleData {
                     break;
 
                 case Timestamp:
-                    var timestampVec = (TimeStampMilliVector) context.getStagingVector(col);
+                    var timestampVec = (TimeStampMilliVector) context.getBackBuffer().getVector(col);
                     vector = timestampVec;
                     setFunc = (i, o) -> {
                         if (o == null)
@@ -603,7 +603,6 @@ public class SampleData {
         }
 
         context.setRowCount(size);
-        context.encodeDictionaries();
         context.setLoaded();
 
         // Do not flip, client code may modify back buffer before flipping

@@ -20,11 +20,8 @@ package org.finos.tracdap.common.data;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.*;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
-import org.apache.arrow.vector.types.pojo.Field;
-import org.apache.arrow.vector.types.pojo.Schema;
 
 import java.util.*;
-import java.util.stream.Collectors;
 
 
 /// A working context for Arrow data being processed through the VSR framework in a data pipeline
@@ -56,7 +53,7 @@ public class ArrowVsrContext {
 
     private ArrowVsrContext(VectorSchemaRoot source, DictionaryProvider dictionaries, BufferAllocator allocator, boolean takeOwnership) {
 
-        this.schema = inferFullSchema(source.getSchema(), dictionaries);
+        this.schema = new ArrowVsrSchema(source.getSchema(), dictionaries);
 
         this.allocator = allocator;
         this.back = source;
@@ -64,35 +61,6 @@ public class ArrowVsrContext {
         this.dictionaries = dictionaries;
 
         this.ownership = takeOwnership;
-    }
-
-    private ArrowVsrSchema inferFullSchema(Schema primarySchema, DictionaryProvider dictionaries) {
-
-        var dictionaryFields = new HashMap<Long, Field>();
-
-        for (var field : primarySchema.getFields()) {
-            buildDictionaryFields(field ,dictionaries, dictionaryFields);
-        }
-
-        return new ArrowVsrSchema(primarySchema, dictionaryFields, dictionaries);
-    }
-
-    private void buildDictionaryFields(Field field, DictionaryProvider dictionaries, Map<Long, Field> dictionaryFields) {
-
-        if (field.getDictionary() != null) {
-
-            var dictionaryId = field.getDictionary().getId();
-            var dictionary = dictionaries.lookup(dictionaryId);
-            var dictionaryField = dictionary.getVector().getField();
-
-            dictionaryFields.put(dictionaryId, dictionaryField);
-        }
-
-        if (field.getChildren() != null) {
-            for (var child : field.getChildren()) {
-                buildDictionaryFields(child, dictionaries, dictionaryFields);
-            }
-        }
     }
 
     public static ArrowVsrContext forSchema(ArrowVsrSchema schema, BufferAllocator allocator) {
@@ -106,19 +74,21 @@ public class ArrowVsrContext {
         this.allocator = allocator;
 
         var fields = schema.physical().getFields();
-        var vectors = fields.stream().map(f -> f.createVector(allocator)).collect(Collectors.toList());
+        var vectors = new  ArrayList<FieldVector>(fields.size());
 
-        this.back = new VectorSchemaRoot(vectors);
-        this.back.allocateNew();
-        this.front = back;  // No double buffering yet
+        for (var field : fields) {
+            var vector = field.createVector(allocator);
+            vectors.add(vector);
+        }
 
-        // TODO: Only pre-defined dictionaries are added
-        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
+        var root = new VectorSchemaRoot(fields, vectors);
+        root.allocateNew();
 
-        for (var dictId : schema.dictionaries().getDictionaryIds())
-            dictionaries.put(schema.dictionaries().lookup(dictId));
+        this.back = root;
+        this.front = root;  // No double buffering yet
 
-        this.dictionaries = dictionaries;
+        // Use pre-defined dictionaries from the schema (if there are any)
+        this.dictionaries = schema.dictionaries();
 
         // Always take ownership if the VSR has been constructed internally
         this.ownership = true;
