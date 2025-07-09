@@ -17,11 +17,11 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
+import org.finos.tracdap.common.exception.EDataCorruption;
+
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.VectorSchemaRoot;
-import org.finos.tracdap.common.data.ArrowVsrStaging;
-import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
 import java.util.List;
@@ -29,12 +29,11 @@ import java.util.List;
 
 public class BatchConsumer implements IBatchConsumer {
 
-    private static final int BATCH_SIZE = 1000;
-
     private final CompositeObjectConsumer recordConsumer;
+    private final int batchSize;
 
     private VectorSchemaRoot batch;
-    private List<ArrowVsrStaging<?>> staging;
+    private List<DictionaryStagingConsumer<?>> staging;
 
     private int currentIndex;
     private boolean midRecord;
@@ -45,9 +44,11 @@ public class BatchConsumer implements IBatchConsumer {
     public BatchConsumer(
             CompositeObjectConsumer recordConsumer,
             VectorSchemaRoot batch,
-            List<ArrowVsrStaging<?>> staging) {
+            List<DictionaryStagingConsumer<?>> staging,
+            int batchSize) {
 
         this.recordConsumer = recordConsumer;
+        this.batchSize = batchSize;
 
         this.batch = batch;
         this.staging = staging;
@@ -68,7 +69,7 @@ public class BatchConsumer implements IBatchConsumer {
             gotFirstToken = true;
         }
 
-        if (currentIndex >= BATCH_SIZE) {
+        if (currentIndex >= batchSize) {
             throw new IllegalStateException("Previous batch has not been reset");
         }
 
@@ -78,7 +79,7 @@ public class BatchConsumer implements IBatchConsumer {
                 throw new EDataCorruption("Unexpected token: " + token);
 
             if (midRecord || token.isStructStart()) {
-                if (currentIndex == BATCH_SIZE) {
+                if (currentIndex == batchSize) {
                     break;
                 }
                 else if (recordConsumer.consumeElement(parser)) {
@@ -104,7 +105,7 @@ public class BatchConsumer implements IBatchConsumer {
             parseComplete = true;
         }
 
-        if (parseComplete || currentIndex == BATCH_SIZE) {
+        if (parseComplete || currentIndex == batchSize) {
 
             if (staging != null) {
                 for (var staged : staging) {
@@ -131,6 +132,8 @@ public class BatchConsumer implements IBatchConsumer {
     public void resetBatch(VectorSchemaRoot batch) {
 
         recordConsumer.resetVectors(batch.getFieldVectors());
-        currentIndex = 0;
+
+        this.batch = batch;
+        this.currentIndex = 0;
     }
 }

@@ -194,28 +194,28 @@ public class TextFileUtils {
 
     public static IBatchConsumer createBatchConsumer(
             VectorSchemaRoot root,
+            Map<Long, Field> dictionaryFields,
             DictionaryProvider dictionaries,
-            Map<Long, Field> stagingFields,
-            List<ArrowVsrStaging<?>> staging,
-            boolean singleRecord) {
+            List<DictionaryStagingConsumer<?>> staging,
+            TextFileConfig config) {
 
-        var fieldConsumers = createConsumers(root.getFieldVectors(), dictionaries, null, staging);
+        var fieldConsumers = createConsumers(root.getFieldVectors(), dictionaryFields, dictionaries, staging);
         var recordConsumer = new CompositeObjectConsumer(fieldConsumers, /* caseSensitive = */ true);
 
-        if (singleRecord)
+        if (config.isSingleRecord())
             return new SingleRecordConsumer(recordConsumer, root, staging);
         else
-            return new BatchConsumer(recordConsumer, root, staging);
+            return new BatchConsumer(recordConsumer, root, staging, config.getBatchSize());
     }
 
     public static List<IJsonConsumer<?>> createConsumers(
             List<FieldVector> vectors,
+            Map<Long, Field> dictionaryFields,
             DictionaryProvider dictionaries,
-            Map<Long, Field> stagingFields,
-            List<ArrowVsrStaging<?>> staging) {
+            List<DictionaryStagingConsumer<?>> staging) {
 
         return vectors.stream()
-                .map(vector -> createConsumer(vector, dictionaries, stagingFields, staging))
+                .map(vector -> createConsumer(vector, dictionaryFields, dictionaries, staging))
                 .collect(Collectors.toList());
     }
 
@@ -223,7 +223,8 @@ public class TextFileUtils {
     createConsumer(
             FieldVector vector,
             Map<Long, Field> dictionaryFields,
-            DictionaryProvider dictionaries) {
+            DictionaryProvider dictionaries,
+            List<DictionaryStagingConsumer<?>> staging) {
 
         var encoding = vector.getField().getDictionary();
 
@@ -239,26 +240,19 @@ public class TextFileUtils {
                 throw new IllegalArgumentException(message);
             }
 
-            var stagingVector = stagingField.createVector(vector.getAllocator());
-            var stagingConsumer = createConsumer(stagingVector, null, null);
-
             var targetVector = (BaseIntVector) vector;
             var dictionary = dictionaries.lookup(encoding.getId());
 
-
-
-
-            var stagingContainer = (dictionary != null && dictionary.getVector().getValueCount() > 0)
-                    ? new ArrowVsrStaging<>(stagingVector, targetVector, dictionary)
-                    : new ArrowVsrStaging<>(stagingVector, targetVector);
-
-            staging.add(stagingContainer);
+            var stagingVector = stagingField.createVector(vector.getAllocator());
+            stagingVector.setInitialCapacity(vector.getValueCapacity());
 
             @SuppressWarnings("unchecked")
-            var innerConsumer = (IJsonConsumer<ElementAddressableVector>)
-                    createConsumer(stagingVector, null, null, null);
+            var stagingConsumer = (IJsonConsumer<ElementAddressableVector>) createConsumer(stagingVector, null, null, null);
+            var dictionaryConsumer = new DictionaryStagingConsumer<>(targetVector, stagingConsumer, dictionary);
 
-            return new DictionaryStagingConsumer<>(innerConsumer, stagingContainer);
+            staging.add(dictionaryConsumer);
+
+            return dictionaryConsumer;
         }
 
         // Create a producer for the specific vector type
@@ -317,7 +311,7 @@ public class TextFileUtils {
             case LIST:
                 var listVector = (ListVector) vector;
                 var itemVector = listVector.getDataVector();
-                var itemConsumer = createConsumer(itemVector, dictionaries, stagingFields, staging);
+                var itemConsumer = createConsumer(itemVector, dictionaryFields, dictionaries, staging);
                 return new JsonListConsumer(listVector, itemConsumer);
 
             // TODO: Fixed size list
@@ -331,7 +325,7 @@ public class TextFileUtils {
                 }
                 var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
                 var valueVector = entryVector.getChildrenFromFields().get(1);
-                var valueConsumer = createConsumer(valueVector, dictionaries, stagingFields, staging);
+                var valueConsumer = createConsumer(valueVector, dictionaryFields, dictionaries, staging);
                 return new JsonMapConsumer(mapVector, keyVector, valueConsumer);
 
             case STRUCT:
@@ -339,7 +333,7 @@ public class TextFileUtils {
                 var childVectors = structVector.getChildrenFromFields();
                 var childConsumers = new ArrayList<IJsonConsumer<?>>(childVectors.size());
                 for (FieldVector childVector : childVectors) {
-                    var childConsumer = createConsumer(childVector, dictionaries, stagingFields, staging);
+                    var childConsumer = createConsumer(childVector, dictionaryFields, dictionaries, staging);
                     childConsumers.add(childConsumer);
                 }
                 return new JsonStructConsumer(structVector, childConsumers);

@@ -17,7 +17,6 @@
 
 package org.finos.tracdap.common.codec.text.consumers;
 
-import org.finos.tracdap.common.data.ArrowVsrStaging;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import com.fasterxml.jackson.core.JsonParser;
@@ -32,7 +31,7 @@ public class SingleRecordConsumer implements IBatchConsumer {
 
     private final CompositeObjectConsumer recordConsumer;
     private final VectorSchemaRoot batch;
-    private final List<ArrowVsrStaging<?>> stagingContainers;
+    private final List<DictionaryStagingConsumer<?>> stagingContainers;
 
     private boolean gotFirstToken;
     private boolean recordConsumed;
@@ -40,7 +39,7 @@ public class SingleRecordConsumer implements IBatchConsumer {
     public SingleRecordConsumer(
             CompositeObjectConsumer recordConsumer,
             VectorSchemaRoot batch,
-            List<ArrowVsrStaging<?>> stagingContainers) {
+            List<DictionaryStagingConsumer<?>>stagingContainers) {
 
         this.recordConsumer = recordConsumer;
         this.batch = batch;

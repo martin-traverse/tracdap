@@ -20,9 +20,11 @@ package org.finos.tracdap.common.codec.text.consumers;
 import com.fasterxml.jackson.core.JsonParser;
 import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.DictionaryEncoder;
+import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
 import org.apache.arrow.vector.BaseIntVector;
 import org.apache.arrow.vector.ElementAddressableVector;
+import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.dictionary.Dictionary;
 
 import java.io.IOException;
@@ -33,9 +35,9 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
     
     private final IJsonConsumer<TStaging> delegate;
 
-    private final Dictionary dictionary;
     private final DictionaryBuilder<TStaging> builder;
     private DictionaryEncoder<BaseIntVector, TStaging> encoder;
+    private final Dictionary dictionary;
 
     public DictionaryStagingConsumer(
             BaseIntVector vector,
@@ -43,17 +45,29 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
             Dictionary dictionary) {
 
         super(vector);
-
         this.delegate = delegate;
-        this.dictionary = dictionary;
 
         if (dictionary != null) {
 
             @SuppressWarnings("unchecked")
             var dictionaryVector = (TStaging) dictionary.getVector();
-
             this.builder = null;
             this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
+
+            this.dictionary = dictionary;
+        }
+        else {
+
+            var dictionaryField = delegate.getVector().getField();
+            var allocator = vector.getAllocator();
+
+            @SuppressWarnings("unchecked")
+            var dictionaryVector = (TStaging) dictionaryField.createVector(allocator);
+            this.builder = new HashTableBasedDictionaryBuilder<>(dictionaryVector, false);
+            this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
+
+            var encoding = vector.getField().getDictionary();
+            this.dictionary = new Dictionary((FieldVector) dictionaryVector, encoding);
         }
     }
 
@@ -86,5 +100,21 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
         delegate.resetVector(stagingVector);
 
         super.resetVector(vector);
+    }
+
+    public void encodeVector() {
+
+        if (builder != null) {
+            int newEntries = builder.addValues(delegate.getVector());
+            if (newEntries > 0) {
+                encoder = new HashTableDictionaryEncoder<>(builder.getDictionary());
+            }
+        }
+
+        encoder.encode(delegate.getVector(), vector);
+    }
+
+    public Dictionary getDictionary() {
+        return dictionary;
     }
 }

@@ -17,15 +17,15 @@
 
 package org.finos.tracdap.common.codec.text;
 
-import org.apache.arrow.vector.dictionary.Dictionary;
+import org.finos.tracdap.common.codec.text.consumers.DictionaryStagingConsumer;
 import org.finos.tracdap.common.codec.text.consumers.IBatchConsumer;
-import org.finos.tracdap.common.data.ArrowVsrStaging;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.async.ByteBufferFeeder;
 import org.apache.arrow.memory.BufferAllocator;
 import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.Schema;
@@ -91,11 +91,11 @@ public class TextFileReader implements DictionaryProvider {
         if (config.hasFormatSchema())
             this.parser.setSchema(config.getFormatSchema());
 
-        var stagingFields = new ArrayList<ArrowVsrStaging<?>>(dictionaryFields.size());
+        var stagingFields = new ArrayList<DictionaryStagingConsumer<?>>(dictionaryFields.size());
 
         this.consumer = TextFileUtils.createBatchConsumer(
-                this.root, prebuiltDictionaries, dictionaryFields,
-                stagingFields, config.isSingleRecord());
+                this.root, dictionaryFields, prebuiltDictionaries,
+                stagingFields, config);
 
         var dictionaries = new DictionaryProvider.MapDictionaryProvider();
 
@@ -116,6 +116,8 @@ public class TextFileReader implements DictionaryProvider {
 
         for (var field : schema.getFields()) {
             var vector = field.createVector(allocator);
+            vector.allocateNew();
+            vector.setInitialCapacity(config.getBatchSize());
             vectors.add(vector);
         }
 
