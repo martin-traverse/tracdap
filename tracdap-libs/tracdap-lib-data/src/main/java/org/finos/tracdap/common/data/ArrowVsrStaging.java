@@ -15,7 +15,7 @@
  * limitations under the License.
  */
 
-package org.finos.tracdap.common.codec.text.consumers;
+package org.finos.tracdap.common.data;
 
 import org.apache.arrow.algorithm.dictionary.DictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.DictionaryEncoder;
@@ -27,7 +27,7 @@ import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.dictionary.Dictionary;
 
 
-public class StagingContainer<TStaging extends ElementAddressableVector> {
+public class ArrowVsrStaging<TStaging extends ElementAddressableVector> {
 
     private final TStaging stagingVector;
     private BaseIntVector targetVector;
@@ -36,7 +36,7 @@ public class StagingContainer<TStaging extends ElementAddressableVector> {
     private final DictionaryBuilder<TStaging> builder;
     private DictionaryEncoder<BaseIntVector, TStaging> encoder;
 
-    public StagingContainer(
+    public ArrowVsrStaging(
             TStaging stagingVector,
             BaseIntVector targetVector,
             Dictionary dictionary) {
@@ -52,7 +52,7 @@ public class StagingContainer<TStaging extends ElementAddressableVector> {
         this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
     }
 
-    public StagingContainer(
+    public ArrowVsrStaging(
             TStaging stagingVector,
             BaseIntVector targetVector) {
 

@@ -27,6 +27,7 @@ import org.apache.arrow.vector.types.Types;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.finos.tracdap.common.codec.text.consumers.*;
 import org.finos.tracdap.common.codec.text.producers.*;
+import org.finos.tracdap.common.data.ArrowVsrStaging;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -195,7 +196,7 @@ public class TextFileUtils {
             VectorSchemaRoot root,
             DictionaryProvider dictionaries,
             Map<Long, Field> stagingFields,
-            List<StagingContainer<?>> staging,
+            List<ArrowVsrStaging<?>> staging,
             boolean singleRecord) {
 
         var fieldConsumers = createConsumers(root.getFieldVectors(), dictionaries, null, staging);
@@ -211,7 +212,7 @@ public class TextFileUtils {
             List<FieldVector> vectors,
             DictionaryProvider dictionaries,
             Map<Long, Field> stagingFields,
-            List<StagingContainer<?>> staging) {
+            List<ArrowVsrStaging<?>> staging) {
 
         return vectors.stream()
                 .map(vector -> createConsumer(vector, dictionaries, stagingFields, staging))
@@ -221,17 +222,15 @@ public class TextFileUtils {
     public static IJsonConsumer<?>
     createConsumer(
             FieldVector vector,
-            DictionaryProvider dictionaries,
-            Map<Long, Field> stagingFields,
-            List<StagingContainer<?>> staging) {
+            Map<Long, Field> dictionaryFields,
+            DictionaryProvider dictionaries) {
 
         var encoding = vector.getField().getDictionary();
 
         // If this field is dictionary encoded, set up a staging pair
         if (encoding != null) {
 
-            var dictionary = dictionaries.lookup(encoding.getId());
-            var stagingField = stagingFields.get(encoding.getId());
+            var stagingField = dictionaryFields.get(encoding.getId());
 
             if (stagingField == null) {
                 var message = String.format(
@@ -240,20 +239,26 @@ public class TextFileUtils {
                 throw new IllegalArgumentException(message);
             }
 
-            var stagingVector = (ElementAddressableVector) stagingField.createVector(vector.getAllocator());
-            var targetVector = (BaseIntVector) vector;
+            var stagingVector = stagingField.createVector(vector.getAllocator());
+            var stagingConsumer = createConsumer(stagingVector, null, null);
 
-            var stagingContainer =(dictionary != null && dictionary.getVector().getValueCount() > 0)
-                    ? new StagingContainer<>(stagingVector, targetVector, dictionary)
-                    : new StagingContainer<>(stagingVector, targetVector);
+            var targetVector = (BaseIntVector) vector;
+            var dictionary = dictionaries.lookup(encoding.getId());
+
+
+
+
+            var stagingContainer = (dictionary != null && dictionary.getVector().getValueCount() > 0)
+                    ? new ArrowVsrStaging<>(stagingVector, targetVector, dictionary)
+                    : new ArrowVsrStaging<>(stagingVector, targetVector);
 
             staging.add(stagingContainer);
 
             @SuppressWarnings("unchecked")
             var innerConsumer = (IJsonConsumer<ElementAddressableVector>)
-                    createConsumer((FieldVector) stagingVector, null, null, null);
+                    createConsumer(stagingVector, null, null, null);
 
-            return new StagingConsumer<>(innerConsumer, stagingContainer);
+            return new DictionaryStagingConsumer<>(innerConsumer, stagingContainer);
         }
 
         // Create a producer for the specific vector type

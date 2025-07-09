@@ -19,7 +19,7 @@ package org.finos.tracdap.common.codec.text;
 
 import org.apache.arrow.vector.dictionary.Dictionary;
 import org.finos.tracdap.common.codec.text.consumers.IBatchConsumer;
-import org.finos.tracdap.common.codec.text.consumers.StagingContainer;
+import org.finos.tracdap.common.data.ArrowVsrStaging;
 
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.async.ByteBufferFeeder;
@@ -91,7 +91,7 @@ public class TextFileReader implements DictionaryProvider {
         if (config.hasFormatSchema())
             this.parser.setSchema(config.getFormatSchema());
 
-        var stagingFields = new ArrayList<StagingContainer<?>>(dictionaryFields.size());
+        var stagingFields = new ArrayList<ArrowVsrStaging<?>>(dictionaryFields.size());
 
         this.consumer = TextFileUtils.createBatchConsumer(
                 this.root, prebuiltDictionaries, dictionaryFields,

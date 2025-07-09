@@ -20,6 +20,7 @@ package org.finos.tracdap.common.codec.text.consumers;
 import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonToken;
 import org.apache.arrow.vector.VectorSchemaRoot;
+import org.finos.tracdap.common.data.ArrowVsrStaging;
 import org.finos.tracdap.common.exception.EDataCorruption;
 
 import java.io.IOException;
@@ -33,7 +34,7 @@ public class BatchConsumer implements IBatchConsumer {
     private final CompositeObjectConsumer recordConsumer;
 
     private VectorSchemaRoot batch;
-    private List<StagingContainer<?>> staging;
+    private List<ArrowVsrStaging<?>> staging;
 
     private int currentIndex;
     private boolean midRecord;
@@ -44,7 +45,7 @@ public class BatchConsumer implements IBatchConsumer {
     public BatchConsumer(
             CompositeObjectConsumer recordConsumer,
             VectorSchemaRoot batch,
-            List<StagingContainer<?>> staging) {
+            List<ArrowVsrStaging<?>> staging) {
 
         this.recordConsumer = recordConsumer;
 
