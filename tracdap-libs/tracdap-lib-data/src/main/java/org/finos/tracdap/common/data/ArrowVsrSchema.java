@@ -41,7 +41,8 @@ public class ArrowVsrSchema {
     private final Schema decodedSchema;
 
     public ArrowVsrSchema(Schema physicalSchema) {
-        this(physicalSchema, null, null);
+        // Create empty dictionary maps
+        this(physicalSchema, new HashMap<>(), new DictionaryProvider.MapDictionaryProvider());
     }
 
     public ArrowVsrSchema(Schema physicalSchema, DictionaryProvider dictionaries) {
@@ -74,13 +75,15 @@ public class ArrowVsrSchema {
         return decodedSchema != null ? decodedSchema : physicalSchema;
     }
 
-    private static  Map<Long, Field> buildDictionaryFields(DictionaryProvider dictionaries) {
+    private static Map<Long, Field> buildDictionaryFields(DictionaryProvider dictionaries) {
 
         var dictionaryFields = new HashMap<Long, Field>();
 
-        for (var dictionaryId : dictionaries.getDictionaryIds()) {
-            var dictionary = dictionaries.lookup(dictionaryId);
-            dictionaryFields.put(dictionaryId, dictionary.getVector().getField());
+        if (dictionaries != null) {
+            for (var dictionaryId : dictionaries.getDictionaryIds()) {
+                var dictionary = dictionaries.lookup(dictionaryId);
+                dictionaryFields.put(dictionaryId, dictionary.getVector().getField());
+            }
         }
 
         return dictionaryFields;

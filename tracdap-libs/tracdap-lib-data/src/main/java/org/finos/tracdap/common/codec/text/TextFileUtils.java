@@ -25,6 +25,7 @@ import org.apache.arrow.vector.complex.StructVector;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.Types;
 import org.apache.arrow.vector.types.pojo.Field;
+import org.apache.arrow.vector.types.pojo.FieldType;
 import org.finos.tracdap.common.codec.text.consumers.*;
 import org.finos.tracdap.common.codec.text.producers.*;
 import org.finos.tracdap.common.data.ArrowVsrStaging;
@@ -231,13 +232,31 @@ public class TextFileUtils {
         // If this field is dictionary encoded, set up a staging pair
         if (encoding != null) {
 
-            var stagingField = dictionaryFields.get(encoding.getId());
-
-            if (stagingField == null) {
+            if (dictionaryFields == null) {
                 var message = String.format(
                         "Missing type information for dictionary-encoded field [%s]",
                         vector.getField().getName());
                 throw new IllegalArgumentException(message);
+            }
+
+            var dictionaryField = dictionaryFields.get(encoding.getId());
+
+            if (dictionaryField == null) {
+                var message = String.format(
+                        "Missing type information for dictionary-encoded field [%s]",
+                        vector.getField().getName());
+                throw new IllegalArgumentException(message);
+            }
+
+            Field stagingField;
+
+            // Dictionary vector may have different nullability from the main vector
+            if (vector.getField().isNullable() != dictionaryField.isNullable()) {
+                var stagingFieldType = new FieldType(vector.getField().isNullable(), dictionaryField.getType(), null);
+                stagingField = new Field(dictionaryField.getName(), stagingFieldType, dictionaryField.getChildren());
+            }
+            else {
+                stagingField = dictionaryField;
             }
 
             var targetVector = (BaseIntVector) vector;

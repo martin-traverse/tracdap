@@ -99,8 +99,10 @@ public class TextFileReader implements DictionaryProvider {
 
         var dictionaries = new DictionaryProvider.MapDictionaryProvider();
 
-        for (var dictionaryId : prebuiltDictionaries.getDictionaryIds()) {
-            dictionaries.put(prebuiltDictionaries.lookup(dictionaryId));
+        if (prebuiltDictionaries != null) {
+            for (var dictionaryId : prebuiltDictionaries.getDictionaryIds()) {
+                dictionaries.put(prebuiltDictionaries.lookup(dictionaryId));
+            }
         }
 
         for (var stagingField : stagingFields) {

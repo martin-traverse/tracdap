@@ -412,7 +412,7 @@ public abstract class CodecTestSuite {
 
     @Test
     @EnabledIf(value = "basicDataAvailable", disabledReason = "Pre-saved test data not available for this format")
-    void decode_basic() {
+    void decode_basic() throws Exception {
 
         var allocator = new RootAllocator();
         var inputData = generateBasicData(allocator);
@@ -432,6 +432,7 @@ public abstract class CodecTestSuite {
 
         var exec = pipeline.execute();
         waitFor(TEST_TIMEOUT, exec);
+        getResultOf(exec);
 
         var rtSchema = dataSink.getSchema();
         var rtRowCount = dataSink.getRowCount();
@@ -446,7 +447,7 @@ public abstract class CodecTestSuite {
 
     @Test
     @EnabledIf(value = "structDataAvailable", disabledReason = "Pre-saved struct data not available for this format")
-    void decode_struct() {
+    void decode_struct() throws Exception {
 
         var structSchema = SchemaMapping.tracToArrow(SampleData.BASIC_STRUCT_SCHEMA);
 
@@ -467,6 +468,7 @@ public abstract class CodecTestSuite {
 
         var exec = pipeline.execute();
         waitFor(TEST_TIMEOUT, exec);
+        getResultOf(exec);
 
         var rtSchema = dataSink.getSchema();
         var rtRowCount = dataSink.getRowCount();
@@ -526,7 +528,7 @@ public abstract class CodecTestSuite {
     }
 
     @Test
-    void decode_garbled() {
+    void decode_garbled() throws Exception {
 
         // Send a stream of random bytes - 3 chunks worth
 

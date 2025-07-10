@@ -18,7 +18,11 @@
 package org.finos.tracdap.test.data;
 
 import com.google.common.collect.Streams;
-import org.apache.arrow.vector.complex.ListVector;
+import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
+import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
+import org.apache.arrow.vector.dictionary.Dictionary;
+import org.apache.arrow.vector.dictionary.DictionaryProvider;
+import org.apache.arrow.vector.types.pojo.Field;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.SchemaMapping;
@@ -461,7 +465,9 @@ public class SampleData {
             SchemaDefinition schema, Map<String, List<Object>> data,
             int size, BufferAllocator arrowAllocator) {
 
-        return convertData(SchemaMapping.tracToArrow(schema), data, size, arrowAllocator);
+        var arrowSchema = SchemaMapping.tracToArrow(schema, arrowAllocator);
+
+        return convertData(arrowSchema, data, size, arrowAllocator);
     }
 
     public static ArrowVsrContext convertData(
@@ -474,139 +480,205 @@ public class SampleData {
             }
         }
 
-        var context = ArrowVsrContext.forSchema(schema, arrowAllocator);
+        var dictionaries = new DictionaryProvider.MapDictionaryProvider();
 
-        FieldVector vector;
-        BiConsumer<Integer, Object> setFunc;
-
-        for (int col = 0, nCols = schema.decoded().getFields().size(); col < nCols; col++) {
-
-            var field = schema.decoded().getFields().get(col);
-
-            switch (field.getType().getTypeID()) {
-
-                case Bool:
-                    var booleanVec = (BitVector) context.getBackBuffer().getVector(col);
-                    vector = booleanVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            booleanVec.setNull(i);
-                        else if (o instanceof Boolean)
-                            booleanVec.set(i, (Boolean) o ? 1 : 0);
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case Int:
-                    var intVec = (BigIntVector) context.getBackBuffer().getVector(col);
-                    vector = intVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            intVec.setNull(i);
-                        else if (o instanceof Integer)
-                            intVec.set(i, (Integer) o);
-                        else if (o instanceof Long)
-                            intVec.set(i, (Long) o);
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case FloatingPoint:
-                    var floatVec = (Float8Vector) context.getBackBuffer().getVector(col);
-                    vector = floatVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            floatVec.setNull(i);
-                        else if (o instanceof Float)
-                            floatVec.set(i, (Float) o);
-                        else if (o instanceof Double)
-                            floatVec.set(i, (Double) o);
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case Decimal:
-                    var decimalVec = (DecimalVector) context.getBackBuffer().getVector(col);
-                    vector = decimalVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            decimalVec.setNull(i);
-                        else if (o instanceof BigDecimal)
-                            decimalVec.set(i, (BigDecimal) o);
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case Utf8:
-                    var stringVec = (VarCharVector) context.getBackBuffer().getVector(col);
-                    vector = stringVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            stringVec.setNull(i);
-                        else if (o instanceof String)
-                            stringVec.set(i, ((String) o).getBytes(StandardCharsets.UTF_8));
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case Date:
-                    var dateVec = (DateDayVector) context.getBackBuffer().getVector(col);
-                    vector = dateVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            dateVec.setNull(i);
-                        else if (o instanceof LocalDate)
-                            dateVec.set(i, (int) ((LocalDate) o).toEpochDay());
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                case Timestamp:
-                    var timestampVec = (TimeStampMilliVector) context.getBackBuffer().getVector(col);
-                    vector = timestampVec;
-                    setFunc = (i, o) -> {
-                        if (o == null)
-                            timestampVec.setNull(i);
-                        else if (o instanceof LocalDateTime) {
-                            LocalDateTime datetimeNoZone = (LocalDateTime) o;
-                            long unixEpochMillis =
-                                    (datetimeNoZone.toEpochSecond(ZoneOffset.UTC) * 1000) +
-                                            (datetimeNoZone.getNano() / 1000000);
-
-                            timestampVec.set(i, unixEpochMillis);
-                        }
-                        else
-                            throw new EUnexpected();
-                    };
-                    break;
-
-                default:
-                    throw new EUnexpected();
-            }
-
-            vector.allocateNew();
-            vector.setInitialCapacity(size);
-
-            var values = data.get(field.getName());
-            if (values == null)
-                values = Collections.nCopies(size, null);
-
-            for (int i = 0; i < size; i++) {
-                setFunc.accept(i, values.get(i));
+        if (schema.dictionaries() != null) {
+            for (var id : schema.dictionaries().getDictionaryIds()) {
+                dictionaries.put(schema.dictionaries().lookup(id));
             }
         }
 
+        List<FieldVector> vectors = new ArrayList<>(schema.physical().getFields().size());
+        FieldVector vector;
+
+        for (int col = 0, nCols = schema.physical().getFields().size(); col < nCols; col++) {
+
+            var field = schema.physical().getFields().get(col);
+            var values = data.get(field.getName());
+
+            if (values == null)
+                values = Collections.nCopies(size, null);
+
+            vector = field.createVector(arrowAllocator);
+            vector.allocateNew();
+
+            populateVector(
+                    vector, values,
+                    schema.dictionaryFields(),
+                    dictionaries,
+                    arrowAllocator);
+
+            vectors.add(vector);
+        }
+
+        var vsr = new VectorSchemaRoot(schema.physical(), vectors, vectors.get(0).getValueCount());
+
+        var context = ArrowVsrContext.forSource(vsr, dictionaries, arrowAllocator, /* ownership = */ true);
         context.setRowCount(size);
         context.setLoaded();
 
         // Do not flip, client code may modify back buffer before flipping
 
         return context;
+    }
+
+    public static void populateVector(
+            FieldVector vector, List<Object> values,
+            Map<Long, Field> dictionaryFields,
+            DictionaryProvider.MapDictionaryProvider dictionaries,
+            BufferAllocator allocator) {
+
+        var field = vector.getField();
+
+        System.out.println(field);
+
+        if (field.getDictionary() != null) {
+
+            var encoding = field.getDictionary();
+            var dictionaryField =  dictionaryFields.get(encoding.getId());
+
+            var stagingVector = dictionaryField.createVector(allocator);
+            stagingVector.allocateNew();
+            stagingVector.setInitialCapacity(values.size());
+
+            populateVector(stagingVector, values, null, null, allocator);
+
+            var dictionary = dictionaries.lookup(encoding.getId());
+            FieldVector dictionaryVector;
+
+            if (dictionary != null) {
+
+                dictionaryVector = dictionary.getVector();
+            }
+            else {
+
+                dictionaryVector = dictionaryField.createVector(allocator);
+                dictionaryVector.allocateNew();
+
+                var builder = new HashTableBasedDictionaryBuilder<>((ElementAddressableVector) dictionaryVector);
+                builder.addValues((ElementAddressableVector) stagingVector);
+
+                dictionary = new Dictionary(dictionaryVector, encoding);
+                dictionaries.put(dictionary);
+            }
+
+            var encoder = new HashTableDictionaryEncoder<>((ElementAddressableVector) dictionaryVector);
+            encoder.encode((ElementAddressableVector) stagingVector, (BaseIntVector) vector);
+
+            stagingVector.close();
+
+            return;
+        }
+
+        BiConsumer<Integer, Object> setFunc;
+
+        switch (field.getType().getTypeID()) {
+
+            case Bool:
+                var booleanVec = (BitVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        booleanVec.setNull(i);
+                    else if (o instanceof Boolean)
+                        booleanVec.set(i, (Boolean) o ? 1 : 0);
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case Int:
+                var intVec = (BigIntVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        intVec.setNull(i);
+                    else if (o instanceof Integer)
+                        intVec.set(i, (Integer) o);
+                    else if (o instanceof Long)
+                        intVec.set(i, (Long) o);
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case FloatingPoint:
+                var floatVec = (Float8Vector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        floatVec.setNull(i);
+                    else if (o instanceof Float)
+                        floatVec.set(i, (Float) o);
+                    else if (o instanceof Double)
+                        floatVec.set(i, (Double) o);
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case Decimal:
+                var decimalVec = (DecimalVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        decimalVec.setNull(i);
+                    else if (o instanceof BigDecimal)
+                        decimalVec.set(i, (BigDecimal) o);
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case Utf8:
+                var stringVec = (VarCharVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        stringVec.setNull(i);
+                    else if (o instanceof String)
+                        stringVec.set(i, ((String) o).getBytes(StandardCharsets.UTF_8));
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case Date:
+                var dateVec = (DateDayVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        dateVec.setNull(i);
+                    else if (o instanceof LocalDate)
+                        dateVec.set(i, (int) ((LocalDate) o).toEpochDay());
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            case Timestamp:
+                var timestampVec = (TimeStampMilliVector) vector;
+                setFunc = (i, o) -> {
+                    if (o == null)
+                        timestampVec.setNull(i);
+                    else if (o instanceof LocalDateTime) {
+                        LocalDateTime datetimeNoZone = (LocalDateTime) o;
+                        long unixEpochMillis =
+                                (datetimeNoZone.toEpochSecond(ZoneOffset.UTC) * 1000) +
+                                        (datetimeNoZone.getNano() / 1000000);
+
+                        timestampVec.set(i, unixEpochMillis);
+                    }
+                    else
+                        throw new EUnexpected();
+                };
+                break;
+
+            default:
+                throw new EUnexpected();
+        }
+
+        vector.allocateNew();
+        vector.setInitialCapacity(values.size());
+
+        for (int i = 0; i < values.size(); i++) {
+            setFunc.accept(i, values.get(i));
+        }
+
+        vector.setValueCount(values.size());
     }
 }
