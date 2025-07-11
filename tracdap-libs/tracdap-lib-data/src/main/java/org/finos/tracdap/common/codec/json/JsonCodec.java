@@ -79,7 +79,7 @@ public class JsonCodec implements ICodec {
     @Override
     public Decoder<?> getDecoder(ArrowVsrSchema arrowSchema, BufferAllocator allocator, Map<String, String> options) {
 
-        var config = new TextFileConfig(jsonFactory, BATCH_SIZE);
+        var config = new TextFileConfig(jsonFactory, null, BATCH_SIZE, arrowSchema.isSingleRecord());
         return new BaseTextDecoder(arrowSchema, allocator, config);
     }
 }

@@ -25,6 +25,7 @@ import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
 import org.apache.arrow.vector.BaseIntVector;
 import org.apache.arrow.vector.ElementAddressableVector;
 import org.apache.arrow.vector.dictionary.Dictionary;
+import org.finos.tracdap.common.exception.EDataConstraint;
 
 import java.io.IOException;
 
@@ -97,7 +98,14 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
             }
         }
 
-        encoder.encode(delegate.getVector(), vector);
+        try {
+            encoder.encode(delegate.getVector(), vector);
+        }
+        catch (IllegalArgumentException e) {
+            var fieldName = vector.getField().getName();
+            var message = String.format("Enum field [%s] contains values that are not in the enum", fieldName);
+            throw new EDataConstraint(message);
+        }
     }
 
     public Dictionary getDictionary() {

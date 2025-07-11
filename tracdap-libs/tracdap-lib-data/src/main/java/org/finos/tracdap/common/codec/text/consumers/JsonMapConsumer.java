@@ -51,7 +51,7 @@ public class JsonMapConsumer extends BaseJsonConsumer<MapVector> {
 
         if (!gotFirstToken) {
 
-            if (parser.nextToken() != JsonToken.START_OBJECT)
+            if (parser.currentToken() != JsonToken.START_OBJECT)
                 throw new EDataCorruption("Unexpected token: " + parser.currentToken());
 
             vector.startNewValue(currentIndex);
@@ -59,7 +59,7 @@ public class JsonMapConsumer extends BaseJsonConsumer<MapVector> {
             gotFirstToken = true;
             nItems = 0;
 
-            parser.nextToken();
+            parser.nextValue();
         }
 
         for (var token = parser.currentToken(); token != null && token != JsonToken.NOT_AVAILABLE; token = parser.nextValue()) {

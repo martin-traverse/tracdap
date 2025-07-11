@@ -449,9 +449,8 @@ public abstract class CodecTestSuite {
     @EnabledIf(value = "structDataAvailable", disabledReason = "Pre-saved struct data not available for this format")
     void decode_struct() throws Exception {
 
-        var structSchema = SchemaMapping.tracToArrow(SampleData.BASIC_STRUCT_SCHEMA);
-
         var allocator = new RootAllocator();
+        var structSchema = SchemaMapping.tracToArrow(SampleData.BASIC_STRUCT_SCHEMA, allocator);
 
         var testData = ResourceHelpers.loadResourceAsBytes(structData);
         var testDataBuf = Bytes.copyToBuffer(testData, allocator);

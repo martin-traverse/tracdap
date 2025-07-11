@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.common.data;
 
+import org.apache.arrow.memory.RootAllocator;
 import org.finos.tracdap.test.data.SampleData;
 import org.apache.arrow.vector.types.pojo.*;
 import org.junit.jupiter.api.Assertions;
@@ -95,8 +96,9 @@ class SchemaMappingTest {
     @Test
     void testStructSchemaConversion() {
 
+        var allocator = new RootAllocator();
         var tracSchema = SampleData.BASIC_STRUCT_SCHEMA;
-        var arrowSchema = SchemaMapping.tracToArrow(tracSchema);
+        var arrowSchema = SchemaMapping.tracToArrow(tracSchema, allocator);
 
         Assertions.assertNotNull(arrowSchema, "Arrow schema should not be null");
 

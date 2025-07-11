@@ -218,7 +218,7 @@ public class BaseTextDecoder extends StreamingDecoder {
 
         } while (context.readyToFlip());
 
-        return reader.hasBatch();
+        return ! reader.hasBatch();
     }
 
     @Override

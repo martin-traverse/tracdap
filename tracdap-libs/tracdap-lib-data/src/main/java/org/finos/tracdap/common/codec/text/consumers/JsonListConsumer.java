@@ -47,7 +47,7 @@ public class JsonListConsumer extends BaseJsonConsumer<ListVector> {
 
         if (!gotFirstToken) {
 
-            if (parser.nextToken() != JsonToken.START_ARRAY)
+            if (parser.currentToken() != JsonToken.START_ARRAY)
                 throw new EDataCorruption("Unexpected token: " + parser.currentToken());
 
             vector.startNewValue(currentIndex);

@@ -37,12 +37,13 @@ public class ArrowVsrSchema {
     private final Schema physicalSchema;
     private final Map<Long, Field> dictionaryFields;
     private final DictionaryProvider dictionaries;
+    private final boolean singleRecord;
 
     private final Schema decodedSchema;
 
     public ArrowVsrSchema(Schema physicalSchema) {
         // Create empty dictionary maps
-        this(physicalSchema, new HashMap<>(), new DictionaryProvider.MapDictionaryProvider());
+        this(physicalSchema, new HashMap<>(), new DictionaryProvider.MapDictionaryProvider(), false);
     }
 
     public ArrowVsrSchema(Schema physicalSchema, DictionaryProvider dictionaries) {
@@ -52,9 +53,19 @@ public class ArrowVsrSchema {
 
     public ArrowVsrSchema(Schema physicalSchema, Map<Long, Field> dictionaryFields, DictionaryProvider dictionaries) {
 
+        this(physicalSchema, dictionaryFields, dictionaries, false);
+    }
+
+    public ArrowVsrSchema(
+            Schema physicalSchema,
+            Map<Long, Field> dictionaryFields,
+            DictionaryProvider dictionaries,
+            boolean singleRecord) {
+
         this.physicalSchema = physicalSchema;
         this.dictionaryFields = dictionaryFields;
         this.dictionaries = dictionaries;
+        this.singleRecord = singleRecord;
 
         this.decodedSchema = buildLogicalSchema(physicalSchema);
     }
@@ -69,6 +80,10 @@ public class ArrowVsrSchema {
 
     public DictionaryProvider dictionaries() {
         return dictionaries;
+    }
+
+    public boolean isSingleRecord() {
+        return singleRecord;
     }
 
     public Schema decoded() {
@@ -104,8 +119,15 @@ public class ArrowVsrSchema {
     private Field buildLogicalField(Field physicalField) {
 
         if (physicalField.getDictionary() != null) {
+
             var dictionaryId = physicalField.getDictionary().getId();
-            return dictionaryFields.get(dictionaryId);
+            var dictionaryField = dictionaryFields.get(dictionaryId);
+
+            // Take name and nullability from the physical field
+            // These are not encoded in the dictionary field type, which can be shared between fields
+
+            var fieldType = new FieldType(physicalField.isNullable(), dictionaryField.getType(), null);
+            return new Field(physicalField.getName(), fieldType, dictionaryField.getChildren());
         }
 
         if (physicalField.getChildren() != null) {

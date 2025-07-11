@@ -142,7 +142,9 @@ public class SchemaMapping {
             arrowFields.add(arrowField);
         }
 
-        return new ArrowVsrSchema(new Schema(arrowFields), dictionaryFields, dictionaries);
+        var singleRecord = tracSchema.getSchemaType() == SchemaType.STRUCT_SCHEMA;
+
+        return new ArrowVsrSchema(new Schema(arrowFields), dictionaryFields, dictionaries, singleRecord);
     }
 
     private Field tracToArrowField(FieldSchema tracField) {
@@ -167,7 +169,7 @@ public class SchemaMapping {
         if (tracField.hasNamedEnum()) {
 
             // Named enums have pre-built dictionaries
-            var dictionaryId = namedEnums.get(fieldName);
+            var dictionaryId = namedEnums.get(tracField.getNamedEnum());
             var dictionary = dictionaries.lookup(dictionaryId);
 
             // Create an index field for the existing dictionary
@@ -293,6 +295,7 @@ public class SchemaMapping {
                 throw new EValidationGap(message);
             }
 
+            // TODO enum value type
             var tracType = namedEnum.getValues(0).getType().getBasicType();
             var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracType);
             var fieldType = new FieldType(false, arrowType, /* dictionary = */ null);
@@ -308,6 +311,8 @@ public class SchemaMapping {
                 var value = MetadataCodec.decodeValue(namedEnum.getValues(i));
                 setDictionaryValue(name, dictionaryVector, i, value, tracType);
             }
+
+            dictionaryVector.setValueCount(namedEnum.getValuesCount());
 
             var indexType = chooseIndexType(namedEnum.getValuesCount());
             var encoding = new DictionaryEncoding(dictionaryId, false, indexType);
