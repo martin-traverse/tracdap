@@ -22,13 +22,13 @@ import org.apache.arrow.vector.complex.FixedSizeListVector;
 import org.apache.arrow.vector.complex.ListVector;
 import org.apache.arrow.vector.complex.MapVector;
 import org.apache.arrow.vector.complex.StructVector;
+import org.apache.arrow.vector.dictionary.Dictionary;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.Types;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.apache.arrow.vector.types.pojo.FieldType;
 import org.finos.tracdap.common.codec.text.consumers.*;
 import org.finos.tracdap.common.codec.text.producers.*;
-import org.finos.tracdap.common.data.ArrowVsrStaging;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -261,13 +261,21 @@ public class TextFileUtils {
 
             var targetVector = (BaseIntVector) vector;
             var dictionary = dictionaries.lookup(encoding.getId());
+            var dynamic = false;
+
+            if (dictionary == null) {
+                var dictionaryVector = dictionaryField.createVector(vector.getAllocator());
+                dictionaryVector.allocateNew();
+                dictionary = new Dictionary(dictionaryVector, encoding);
+                dynamic = true;
+            }
 
             var stagingVector = stagingField.createVector(vector.getAllocator());
             stagingVector.setInitialCapacity(vector.getValueCapacity());
 
             @SuppressWarnings("unchecked")
             var stagingConsumer = (IJsonConsumer<ElementAddressableVector>) createConsumer(stagingVector, null, null, null);
-            var dictionaryConsumer = new DictionaryStagingConsumer<>(targetVector, stagingConsumer, dictionary);
+            var dictionaryConsumer = new DictionaryStagingConsumer<>(targetVector, stagingConsumer, dictionary, dynamic);
 
             staging.add(dictionaryConsumer);
 

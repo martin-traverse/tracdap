@@ -24,7 +24,6 @@ import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
 import org.apache.arrow.vector.BaseIntVector;
 import org.apache.arrow.vector.ElementAddressableVector;
-import org.apache.arrow.vector.FieldVector;
 import org.apache.arrow.vector.dictionary.Dictionary;
 
 import java.io.IOException;
@@ -35,40 +34,24 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
     
     private final IJsonConsumer<TStaging> delegate;
 
-    private final DictionaryBuilder<TStaging> builder;
-    private DictionaryEncoder<BaseIntVector, TStaging> encoder;
     private final Dictionary dictionary;
+    private DictionaryEncoder<BaseIntVector, TStaging> encoder;
+    private final DictionaryBuilder<TStaging> builder;
 
     public DictionaryStagingConsumer(
             BaseIntVector vector,
             IJsonConsumer<TStaging> delegate,
-            Dictionary dictionary) {
+            Dictionary dictionary,
+            boolean dynamic) {
 
         super(vector);
         this.delegate = delegate;
+        this.dictionary = dictionary;
 
-        if (dictionary != null) {
-
-            @SuppressWarnings("unchecked")
-            var dictionaryVector = (TStaging) dictionary.getVector();
-            this.builder = null;
-            this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
-
-            this.dictionary = dictionary;
-        }
-        else {
-
-            var dictionaryField = delegate.getVector().getField();
-            var allocator = vector.getAllocator();
-
-            @SuppressWarnings("unchecked")
-            var dictionaryVector = (TStaging) dictionaryField.createVector(allocator);
-            this.builder = new HashTableBasedDictionaryBuilder<>(dictionaryVector, false);
-            this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
-
-            var encoding = vector.getField().getDictionary();
-            this.dictionary = new Dictionary((FieldVector) dictionaryVector, encoding);
-        }
+        @SuppressWarnings("unchecked")
+        var dictionaryVector = (TStaging) dictionary.getVector();
+        this.encoder = new HashTableDictionaryEncoder<>(dictionaryVector);
+        this.builder = dynamic ? new HashTableBasedDictionaryBuilder<>(dictionaryVector, false) : null;
     }
 
     @Override
@@ -104,8 +87,11 @@ public class DictionaryStagingConsumer<TStaging extends ElementAddressableVector
 
     public void encodeVector() {
 
+        var stagingVector = delegate.getVector();
+        stagingVector.setValueCount(currentIndex);
+
         if (builder != null) {
-            int newEntries = builder.addValues(delegate.getVector());
+            int newEntries = builder.addValues(stagingVector);
             if (newEntries > 0) {
                 encoder = new HashTableDictionaryEncoder<>(builder.getDictionary());
             }
