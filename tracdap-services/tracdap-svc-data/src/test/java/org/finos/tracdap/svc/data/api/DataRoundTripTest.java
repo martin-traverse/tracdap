@@ -17,7 +17,6 @@
 
 package org.finos.tracdap.svc.data.api;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.finos.tracdap.api.*;
 import org.finos.tracdap.common.data.DataContext;
@@ -52,6 +51,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Flow;
+import java.util.function.BiConsumer;
 import java.util.function.BiFunction;
 import java.util.stream.Stream;
 
@@ -305,9 +305,25 @@ abstract class DataRoundTripTest {
             var testDataBytes = testDataStream.readAllBytes();
             var testData = List.of(ByteString.copyFrom(testDataBytes));
 
+            var jsonComparison = (BiConsumer<byte[], byte[]>) (expected, actual) -> {
+
+                try {
+
+                    var mapper = new ObjectMapper();
+                    var expectedTree = mapper.readTree(new String(expected, StandardCharsets.UTF_8));
+                    var roundTripTree = mapper.readTree(new String(actual, StandardCharsets.UTF_8));
+
+                    Assertions.assertEquals(expectedTree, roundTripTree);
+                }
+                catch (Exception e) {
+
+                    Assertions.fail(e);
+                }
+            };
+
             var mimeType = "text/json";
-            roundTripStructTest(testData, mimeType, mimeType, DataApiTestHelpers::decodeJson, true);
-            roundTripStructTest(testData, mimeType, mimeType, DataApiTestHelpers::decodeJson, false);
+            roundTripComparison(testData, mimeType, mimeType, jsonComparison, true);
+            roundTripComparison(testData, mimeType, mimeType, jsonComparison, false);
         }
     }
 
@@ -366,12 +382,10 @@ abstract class DataRoundTripTest {
         }
     }
 
-    private void roundTripStructTest(
+    private void roundTripComparison(
             List<ByteString> content, String writeFormat, String readFormat,
-            BiFunction<SchemaDefinition, List<ByteString>, List<Vector<Object>>> decodeFunc,
+            BiConsumer<byte[], byte[]> comparison,
             boolean dataInChunkZero) throws Exception {
-
-        var mapper = new ObjectMapper();
 
         var requestParams = DataWriteRequest.newBuilder()
                 .setTenant(TEST_TENANT)
@@ -401,18 +415,12 @@ abstract class DataRoundTripTest {
         waitFor(Duration.ofMinutes(20), readResponse0, readBytes);
         var roundTripBytes = resultOf(readBytes);
 
-        System.out.println(roundTripBytes.toString(StandardCharsets.UTF_8));
-
         var originalBytes = ByteString.empty();
         for (var chunk : content) {
             originalBytes = originalBytes.concat(chunk);
         }
 
-        var originalTree = mapper.readTree(originalBytes.toString(StandardCharsets.UTF_8));
-        var roundTripTree = mapper.readTree(roundTripBytes.toString(StandardCharsets.UTF_8));
-
-        Assertions.assertEquals(originalTree, roundTripTree);
-
+        comparison.accept(originalBytes.toByteArray(), roundTripBytes.toByteArray());
     }
 
     private Flow.Publisher<DataWriteRequest> dataWriteRequest(

@@ -48,12 +48,12 @@ public class ArrowVsrSchema {
 
     public ArrowVsrSchema(Schema physicalSchema, DictionaryProvider dictionaries) {
 
-        this(physicalSchema, buildDictionaryFields(dictionaries), dictionaries);
+        this(physicalSchema, buildDictionaryFields(dictionaries), dictionaries, checkSingleRecord(physicalSchema));
     }
 
     public ArrowVsrSchema(Schema physicalSchema, Map<Long, Field> dictionaryFields, DictionaryProvider dictionaries) {
 
-        this(physicalSchema, dictionaryFields, dictionaries, false);
+        this(physicalSchema, dictionaryFields, dictionaries, checkSingleRecord(physicalSchema));
     }
 
     public ArrowVsrSchema(
@@ -68,6 +68,21 @@ public class ArrowVsrSchema {
         this.singleRecord = singleRecord;
 
         this.logicalSchema = buildLogicalSchema(physicalSchema);
+    }
+
+    private static boolean checkSingleRecord(Schema physicalSchema) {
+
+        var schemaMetadata = physicalSchema.getCustomMetadata();
+
+        if (schemaMetadata == null)
+            return false;
+
+        var singleRecordFlag = schemaMetadata.get("trac.schema.singleRecord");
+
+        if (singleRecordFlag == null)
+            return false;
+
+        return Boolean.TRUE.toString().equalsIgnoreCase(singleRecordFlag);
     }
 
     public Schema physical() {

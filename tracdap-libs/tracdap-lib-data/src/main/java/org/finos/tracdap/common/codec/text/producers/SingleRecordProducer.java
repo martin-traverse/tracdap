@@ -70,6 +70,6 @@ public class SingleRecordProducer implements IBatchProducer {
     public void resetBatch(VectorSchemaRoot batch) throws IOException {
 
         recordProducer.resetVectors(batch.getFieldVectors());
-        currentBatchSize = batch.getFieldVectors().size();
+        currentBatchSize = batch.getRowCount();
     }
 }

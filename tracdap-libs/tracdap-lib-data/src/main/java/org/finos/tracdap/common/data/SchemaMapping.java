@@ -142,9 +142,16 @@ public class SchemaMapping {
             arrowFields.add(arrowField);
         }
 
+        var metadata = new HashMap<String, String>();
         var singleRecord = tracSchema.getSchemaType() == SchemaType.STRUCT_SCHEMA;
 
-        return new ArrowVsrSchema(new Schema(arrowFields), dictionaryFields, dictionaries, singleRecord);
+        if (singleRecord) {
+            metadata.put("trac.schema.singleRecord", "true");
+        }
+
+        var schema = new Schema(arrowFields, metadata);
+
+        return new ArrowVsrSchema(schema, dictionaryFields, dictionaries, singleRecord);
     }
 
     private Field tracToArrowField(FieldSchema tracField) {

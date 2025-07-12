@@ -20,6 +20,7 @@ package org.finos.tracdap.common.codec.text;
 import com.fasterxml.jackson.core.JsonGenerator;
 import org.finos.tracdap.common.codec.StreamingEncoder;
 import org.finos.tracdap.common.data.ArrowVsrContext;
+import org.finos.tracdap.common.data.ArrowVsrSchema;
 import org.finos.tracdap.common.data.util.ByteOutputStream;
 import org.finos.tracdap.common.exception.EUnexpected;
 
@@ -75,7 +76,7 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
                     context.getFrontBuffer(),
                     context.getDictionaries(),
                     this.out,
-                    this.config);
+                    configForSchema(this.config, context.getSchema()));
 
             // Allow individual codecs to customize the generator
             if (generatorSetup != null)
@@ -92,6 +93,15 @@ public class BaseTextEncoder extends StreamingEncoder implements AutoCloseable {
 
             throw new EUnexpected(e);
         }
+    }
+
+    private TextFileConfig configForSchema(TextFileConfig baseConfig, ArrowVsrSchema schema) {
+
+        return new TextFileConfig(
+                baseConfig.getJsonFactory(),
+                baseConfig.getFormatSchema(),
+                baseConfig.getBatchSize(),
+                schema.isSingleRecord());
     }
 
     @Override
