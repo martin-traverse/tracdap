@@ -81,9 +81,9 @@ message FieldChildren {
     repeated FieldSchema structFields = 4;
 }
 
-message CategoricalValues {
+message EnumValues {
 
-    repeated Value values = 1;
+    repeated string values = 1;
 }
 
 /**
@@ -103,7 +103,7 @@ message StructSchema {
 
     map<string, StructSchema> namedTypes = 2;
 
-    map<string, CategoricalValues> namedEnums = 6;
+    map<string, EnumValues> namedEnums = 6;
 }
 
 
@@ -137,7 +137,7 @@ message SchemaDefinition {
 
     map<string, SchemaDefinition> namedTypes = 6;
 
-    map<string, CategoricalValues> namedEnums = 7;
+    map<string, EnumValues> namedEnums = 7;
 }
 
 

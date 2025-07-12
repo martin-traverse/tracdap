@@ -6,7 +6,7 @@
   "strField": "Hello, TRAC!",
   "dateField": "2025-06-30",
   "datetimeField": "2025-06-30T12:34:56.789",
-  "enumField": "VALUE1",
+  "enumField": "RED",
   "quotedField": "This needs \"quotes\"",
   "optionalField": "present",
   "optionalQuotedField": "also \"present\"",
@@ -23,18 +23,18 @@
   "structField": {
     "field1": "struct field1",
     "field2": 200,
-    "enumField": "VALUE3"
+    "enumField": "BLUE"
   },
   "nestedStructField": {
     "mapKey1": {
       "field1": "nested map value 1",
       "field2": 300,
-      "enumField": "VALUE1"
+      "enumField": "GREEN"
     },
     "mapKey2": {
       "field1": "nested map value 2",
       "field2": 400,
-      "enumField": "VALUE2"
+      "enumField": "RED"
     }
   }
 }

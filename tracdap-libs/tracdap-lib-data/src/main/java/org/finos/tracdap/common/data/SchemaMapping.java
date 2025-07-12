@@ -295,8 +295,8 @@ public class SchemaMapping {
                 throw new EValidationGap(message);
             }
 
-            // TODO enum value type
-            var tracType = namedEnum.getValues(0).getType().getBasicType();
+            // Named enums are always string values
+            var tracType = BasicType.STRING;
             var arrowType = TRAC_ARROW_TYPE_MAPPING.get(tracType);
             var fieldType = new FieldType(false, arrowType, /* dictionary = */ null);
             var field = new Field(name, fieldType, /* children = */ null);
@@ -308,7 +308,7 @@ public class SchemaMapping {
             dictionaryVector.setInitialCapacity(namedEnum.getValuesCount());
 
             for (int i = 0; i < namedEnum.getValuesCount(); i++) {
-                var value = MetadataCodec.decodeValue(namedEnum.getValues(i));
+                var value = namedEnum.getValues(i);
                 setDictionaryValue(name, dictionaryVector, i, value, tracType);
             }
 
