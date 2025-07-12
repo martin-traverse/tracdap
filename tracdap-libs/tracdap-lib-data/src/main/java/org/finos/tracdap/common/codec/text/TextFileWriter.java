@@ -18,6 +18,7 @@
 package org.finos.tracdap.common.codec.text;
 
 import com.fasterxml.jackson.core.JsonGenerator;
+import com.fasterxml.jackson.core.PrettyPrinter;
 import org.apache.arrow.vector.VectorSchemaRoot;
 import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.finos.tracdap.common.codec.text.producers.IBatchProducer;
@@ -53,6 +54,7 @@ public class TextFileWriter {
         this.dictionaries = dictionaries;
 
         this.generator = generator;
+        this.generator.useDefaultPrettyPrinter();
 
         if (config.hasFormatSchema())
             this.generator.setSchema(config.getFormatSchema());

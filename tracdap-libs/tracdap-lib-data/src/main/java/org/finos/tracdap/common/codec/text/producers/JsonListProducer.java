@@ -46,7 +46,7 @@ public class JsonListProducer extends BaseJsonProducer<ListVector> {
             delegate.produceElement(generator);
         }
 
-        generator.writeStartArray();
+        generator.writeEndArray();
 
         currentIndex++;
     }

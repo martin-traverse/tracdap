@@ -61,6 +61,8 @@ public class ArrowVsrStaging<TStaging extends ElementAddressableVector> {
 
         @SuppressWarnings("unchecked")
         var dictionaryVector = (TStaging) stagingVector.getField().createVector(targetVector.getAllocator());
+        dictionaryVector.allocateNew();
+
         var encoding = targetVector.getField().getDictionary();
 
         this.dictionary = new Dictionary((FieldVector) dictionaryVector, encoding);

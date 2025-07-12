@@ -42,7 +42,7 @@ class SchemaMappingTest {
         Assertions.assertNotNull(arrowSchema, "Arrow schema should not be null");
 
         // Get the logical and physical fields for verification
-        var logicalFields = arrowSchema.decoded()
+        var logicalFields = arrowSchema.logical()
                 .getFields().stream()
                 .collect(Collectors.toMap(
                         Field::getName,
@@ -102,7 +102,7 @@ class SchemaMappingTest {
 
         Assertions.assertNotNull(arrowSchema, "Arrow schema should not be null");
 
-        var logicalFields = arrowSchema.decoded()
+        var logicalFields = arrowSchema.logical()
                 .getFields().stream()
                 .collect(Collectors.toMap(
                         Field::getName,

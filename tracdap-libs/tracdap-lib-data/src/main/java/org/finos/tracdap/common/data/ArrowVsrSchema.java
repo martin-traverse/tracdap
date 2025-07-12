@@ -39,7 +39,7 @@ public class ArrowVsrSchema {
     private final DictionaryProvider dictionaries;
     private final boolean singleRecord;
 
-    private final Schema decodedSchema;
+    private final Schema logicalSchema;
 
     public ArrowVsrSchema(Schema physicalSchema) {
         // Create empty dictionary maps
@@ -67,7 +67,7 @@ public class ArrowVsrSchema {
         this.dictionaries = dictionaries;
         this.singleRecord = singleRecord;
 
-        this.decodedSchema = buildLogicalSchema(physicalSchema);
+        this.logicalSchema = buildLogicalSchema(physicalSchema);
     }
 
     public Schema physical() {
@@ -86,8 +86,8 @@ public class ArrowVsrSchema {
         return singleRecord;
     }
 
-    public Schema decoded() {
-        return decodedSchema != null ? decodedSchema : physicalSchema;
+    public Schema logical() {
+        return logicalSchema != null ? logicalSchema : physicalSchema;
     }
 
     private static Map<Long, Field> buildDictionaryFields(DictionaryProvider dictionaries) {

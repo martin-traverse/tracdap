@@ -18,6 +18,7 @@
 package org.finos.tracdap.test.data;
 
 import com.google.common.collect.Streams;
+import com.google.errorprone.annotations.Var;
 import org.apache.arrow.algorithm.dictionary.HashTableBasedDictionaryBuilder;
 import org.apache.arrow.algorithm.dictionary.HashTableDictionaryEncoder;
 import org.apache.arrow.vector.complex.ListVector;
@@ -28,6 +29,7 @@ import org.apache.arrow.vector.dictionary.DictionaryProvider;
 import org.apache.arrow.vector.types.pojo.Field;
 import org.finos.tracdap.common.data.ArrowVsrContext;
 import org.finos.tracdap.common.data.ArrowVsrSchema;
+import org.finos.tracdap.common.data.ArrowVsrStaging;
 import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.ETracInternal;
 import org.finos.tracdap.common.exception.EUnexpected;
@@ -328,7 +330,7 @@ public class SampleData {
 
         for (var field : BASIC_TABLE_SCHEMA.getTable().getFieldsList()) {
 
-            var javaValues = generateJavaValues(field.getFieldType(), field.getCategorical(), 10);
+            var javaValues = generateJavaValues(field.getFieldType(), field.getCategorical(), 10, 0);
             javaData.put(field.getFieldName(), javaValues);
         }
 
@@ -341,25 +343,25 @@ public class SampleData {
 
         for (var field : BASIC_STRUCT_SCHEMA.getFieldsList()) {
 
-            var javaValues = generateJavaValues(field, 1, BASIC_STRUCT_SCHEMA);
+            var javaValues = generateJavaValues(field, 1, 2, BASIC_STRUCT_SCHEMA);
             javaData.put(field.getFieldName(), javaValues);
         }
 
         return convertData(BASIC_STRUCT_SCHEMA, javaData, 1, arrowAllocator);
     }
 
-    public static List<Object> generateJavaValues(FieldSchema field, int n, SchemaDefinition schema) {
+    public static List<Object> generateJavaValues(FieldSchema field, int n, int offset, SchemaDefinition schema) {
 
         if (TypeSystem.isPrimitive(field.getFieldType())) {
-            return generateJavaValues(field.getFieldType(), field.getCategorical(), n);
+            return generateJavaValues(field.getFieldType(), field.getCategorical(), n, offset);
         }
 
         if (field.getFieldType() == BasicType.ARRAY) {
 
             var itemsField = field.getChildren().getArrayItems();
 
-            return IntStream.range(0, n)
-                    .mapToObj(i -> generateJavaValues(itemsField, 10, schema))
+            return IntStream.range(offset, n + offset)
+                    .mapToObj(i -> generateJavaValues(itemsField, 10, offset, schema))
                     .collect(Collectors.toList());
         }
 
@@ -371,10 +373,10 @@ public class SampleData {
 
             var valuesField = field.getChildren().getMapValues();
 
-            return IntStream.range(0, n)
+            return IntStream.range(offset, n + offset)
                     .mapToObj(i -> Streams.zip(
-                            generateJavaValues(keyField, 10, schema).stream(),
-                            generateJavaValues(valuesField, 10, schema).stream(),
+                            generateJavaValues(keyField, 10, offset, schema).stream(),
+                            generateJavaValues(valuesField, 10, offset, schema).stream(),
                             Map::entry)
                             .collect(Collectors.toMap(
                                     Map.Entry::getKey,
@@ -396,7 +398,7 @@ public class SampleData {
 
                 for (var structField : structFields) {
 
-                    var javaValues = generateJavaValues(structField, 1, BASIC_STRUCT_SCHEMA);
+                    var javaValues = generateJavaValues(structField, 1, offset, BASIC_STRUCT_SCHEMA);
                     structDataMap.put(structField.getFieldName(), javaValues.get(0));
                 }
 
@@ -409,29 +411,29 @@ public class SampleData {
         throw new EUnexpected();
     }
 
-    public static List<Object> generateJavaValues(BasicType basicType, boolean categorical, int n) {
+    public static List<Object> generateJavaValues(BasicType basicType, boolean categorical, int n, int offset) {
 
         // NOTE: These values should match the pre-saved basic test files in resources/sample_data of -lib-test
 
         switch (basicType) {
 
             case BOOLEAN:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(i -> i % 2 == 0)
                         .collect(Collectors.toList());
 
             case INTEGER:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(i -> (long) i)
                         .collect(Collectors.toList());
 
             case FLOAT:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(i -> (double) i)
                         .collect(Collectors.toList());
 
             case DECIMAL:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(BigDecimal::valueOf)
                         .map(d -> d.setScale(12, RoundingMode.UNNECESSARY))
                         .collect(Collectors.toList());
@@ -439,23 +441,23 @@ public class SampleData {
             case STRING:
                 if (categorical) {
                     var categories = new String[] {"RED", "BLUE", "GREEN"};
-                    return IntStream.range(0, n)
+                    return IntStream.range(offset, n + offset)
                             .mapToObj(i -> categories[i % categories.length])
                             .collect(Collectors.toList());
                 }
                 else {
-                    return IntStream.range(0, n)
+                    return IntStream.range(offset, n + offset)
                             .mapToObj(i -> "Hello world " + i)
                             .collect(Collectors.toList());
                 }
 
             case DATE:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(i -> LocalDate.ofEpochDay(0).plusDays(i))
                         .collect(Collectors.toList());
 
             case DATETIME:
-                return IntStream.range(0, n)
+                return IntStream.range(offset, n + offset)
                         .mapToObj(i -> LocalDateTime.ofEpochSecond(0, 0, ZoneOffset.UTC).plusSeconds(i))
                         .collect(Collectors.toList());
 
@@ -483,38 +485,46 @@ public class SampleData {
             }
         }
 
+        var vectors = schema.physical().getFields()
+                .stream().map(field -> field.createVector(arrowAllocator))
+                .map(v -> { v.allocateNew(); v.setInitialCapacity(size); return v; })
+                .collect(Collectors.toList());
+
+        var vsr = new VectorSchemaRoot(vectors);
         var dictionaries = new DictionaryProvider.MapDictionaryProvider();
 
         if (schema.dictionaries() != null) {
             for (var id : schema.dictionaries().getDictionaryIds()) {
-                dictionaries.put(schema.dictionaries().lookup(id));
+                var prebuilt = schema.dictionaries().lookup(id);
+                if (prebuilt != null && prebuilt.getVector().getValueCount() > 0)
+                    dictionaries.put(prebuilt);
             }
         }
 
-        List<FieldVector> vectors = new ArrayList<>(schema.physical().getFields().size());
-        FieldVector vector;
+        var staging = new ArrayList<ArrowVsrStaging<?>>();
+
+        var consumers = vectors.stream()
+                .map(vector -> buildConsumer(vector, schema.dictionaryFields(), dictionaries, staging, arrowAllocator))
+                .collect(Collectors.toList());
 
         for (int col = 0, nCols = schema.physical().getFields().size(); col < nCols; col++) {
 
             var field = schema.physical().getFields().get(col);
             var values = data.get(field.getName());
+            var consumer = consumers.get(col);
 
-            if (values == null)
-                values = Collections.nCopies(size, null);
+            for (int i = 0; i < values.size(); i++) {
+                consumer.accept(i, values.get(i));
+            }
 
-            vector = field.createVector(arrowAllocator);
-            vector.allocateNew();
-
-            populateVector(
-                    vector, values,
-                    schema.dictionaryFields(),
-                    dictionaries,
-                    arrowAllocator);
-
-            vectors.add(vector);
+            vectors.get(col).setValueCount(values.size());
         }
 
-        var vsr = new VectorSchemaRoot(schema.physical(), vectors, vectors.get(0).getValueCount());
+        for (var staged :  staging) {
+            staged.getStagingVector().setValueCount(size);
+            staged.encodeVector();
+            staged.getTargetVector().setValueCount(size);
+        }
 
         var context = ArrowVsrContext.forSource(vsr, dictionaries, arrowAllocator, /* ownership = */ true);
         context.setRowCount(size);
@@ -525,84 +535,11 @@ public class SampleData {
         return context;
     }
 
-    public static void populateVector(
-            FieldVector vector, List<Object> values,
-            Map<Long, Field> dictionaryFields,
-            DictionaryProvider.MapDictionaryProvider dictionaries,
-            BufferAllocator allocator) {
-
-        populateVector(vector, values, dictionaryFields, dictionaries, allocator, 0);
-    }
-
-    public static void populateVector(
-            FieldVector vector, List<Object> values,
-            Map<Long, Field> dictionaryFields,
-            DictionaryProvider.MapDictionaryProvider dictionaries,
-            BufferAllocator allocator,
-            int offset) {
-
-        var field = vector.getField();
-
-        System.out.println(field);
-
-        if (field.getDictionary() != null) {
-
-            var encoding = field.getDictionary();
-            var dictionaryField =  dictionaryFields.get(encoding.getId());
-
-            var stagingVector = dictionaryField.createVector(allocator);
-            stagingVector.allocateNew();
-            stagingVector.setInitialCapacity(values.size());
-
-            populateVector(stagingVector, values, null, null, allocator);
-
-            var dictionary = dictionaries.lookup(encoding.getId());
-            FieldVector dictionaryVector;
-
-            if (dictionary != null) {
-
-                dictionaryVector = dictionary.getVector();
-            }
-            else {
-
-                dictionaryVector = dictionaryField.createVector(allocator);
-                dictionaryVector.allocateNew();
-
-                var builder = new HashTableBasedDictionaryBuilder<>((ElementAddressableVector) dictionaryVector);
-                builder.addValues((ElementAddressableVector) stagingVector);
-
-                dictionary = new Dictionary(dictionaryVector, encoding);
-                dictionaries.put(dictionary);
-            }
-
-            var encoder = new HashTableDictionaryEncoder<>((ElementAddressableVector) dictionaryVector);
-            encoder.encode((ElementAddressableVector) stagingVector, (BaseIntVector) vector);
-
-            stagingVector.close();
-
-            return;
-        }
-
-        BiConsumer<Integer, Object> setFunc = buildSetFunc(vector, dictionaryFields, dictionaries, allocator);
-
-        vector.allocateNew();
-        vector.setInitialCapacity(values.size());
-
-        for (int i = 0; i < values.size(); i++) {
-            var value = values.get(i);
-            if (value == null)
-                vector.setNull(i + offset);
-            else
-                setFunc.accept(i + offset, value);
-        }
-
-        vector.setValueCount(values.size());
-    }
-
-    private static BiConsumer<Integer, Object> buildSetFunc(
+    private static BiConsumer<Integer, Object> buildConsumer(
             FieldVector vector,
             Map<Long, Field> dictionaryFields,
             DictionaryProvider.MapDictionaryProvider dictionaries,
+            List<ArrowVsrStaging<?>> stagedFields,
             BufferAllocator allocator) {
 
         Field field = vector.getField();
@@ -612,37 +549,24 @@ public class SampleData {
             var encoding = field.getDictionary();
             var dictionaryField =  dictionaryFields.get(encoding.getId());
 
-            var stagingVector = dictionaryField.createVector(allocator);
+            var stagingVector = (ElementAddressableVector) dictionaryField.createVector(allocator);
             stagingVector.allocateNew();
-            stagingVector.setInitialCapacity(values.size());
-
-            populateVector(stagingVector, values, null, null, allocator);
 
             var dictionary = dictionaries.lookup(encoding.getId());
-            FieldVector dictionaryVector;
 
             if (dictionary != null) {
 
-                dictionaryVector = dictionary.getVector();
+                var staging = new ArrowVsrStaging(stagingVector, (BaseIntVector) vector, dictionary);
+                stagedFields.add(staging);
             }
             else {
 
-                dictionaryVector = dictionaryField.createVector(allocator);
-                dictionaryVector.allocateNew();
-
-                var builder = new HashTableBasedDictionaryBuilder<>((ElementAddressableVector) dictionaryVector);
-                builder.addValues((ElementAddressableVector) stagingVector);
-
-                dictionary = new Dictionary(dictionaryVector, encoding);
-                dictionaries.put(dictionary);
+                var staging = new ArrowVsrStaging(stagingVector, (BaseIntVector) vector);
+                stagedFields.add(staging);
+                dictionaries.put(staging.getDictionary());
             }
 
-            var encoder = new HashTableDictionaryEncoder<>((ElementAddressableVector) dictionaryVector);
-            encoder.encode((ElementAddressableVector) stagingVector, (BaseIntVector) vector);
-
-            stagingVector.close();
-
-            return;
+            return buildConsumer((FieldVector) stagingVector, null, null, null, allocator);
         }
 
         switch (field.getType().getTypeID()) {
@@ -696,11 +620,14 @@ public class SampleData {
                 };
 
             case List:
+
                 var listVector = (ListVector) vector;
+                var dataVector = listVector.getDataVector();
+                var itemConsumer = buildConsumer(dataVector, dictionaryFields, dictionaries, stagedFields, allocator);
+
                 return (i, o) -> {
                     @SuppressWarnings("unchecked")
                     List<Object> list = (List<Object>) o;
-                    FieldVector dataVector = listVector.getDataVector();
                     int currentSize = dataVector.getValueCount();
                     int currenCapacity = dataVector.getValueCapacity();
                     if (currentSize == 0) {
@@ -711,19 +638,27 @@ public class SampleData {
                         dataVector.reAlloc();
                         currenCapacity =  dataVector.getValueCapacity();
                     }
-                    populateVector(dataVector, list, dictionaryFields, dictionaries, allocator, currentSize);
+                    listVector.startNewValue(i);
+                    for (int j = 0; j < list.size(); j++) {
+                        itemConsumer.accept(currentSize + j, list.get(j));
+                    }
+                    listVector.endValue(i, list.size());
                 };
 
             case Map:
+
                 var mapVector = (MapVector) vector;
+                var entryVector = (StructVector) mapVector.getDataVector();
+                var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
+                var valueVector = entryVector.getChildrenFromFields().get(1);
+                var keyConsumer = buildConsumer(keyVector, dictionaryFields, dictionaries, stagedFields, allocator);
+                var valueConsumer = buildConsumer(valueVector, dictionaryFields, dictionaries, stagedFields, allocator);
+
                 return (i, o) -> {
                     @SuppressWarnings("unchecked")
                     Map<String, Object> map = (Map<String, Object>) o;
                     List<Object> mapKeys = new ArrayList<>(map.keySet());
                     List<Object> mapValues = mapKeys.stream().map(Object::toString).map(map::get).collect(Collectors.toList());
-                    FieldVector entryVector = mapVector.getDataVector();
-                    VarCharVector keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
-                    FieldVector valueVector = entryVector.getChildrenFromFields().get(1);
                     int currentSize = entryVector.getValueCount();
                     int currenCapacity = entryVector.getValueCapacity();
                     if (currentSize == 0) {
@@ -734,18 +669,26 @@ public class SampleData {
                         entryVector.reAlloc();
                         currenCapacity = entryVector.getValueCapacity();
                     }
-                    populateVector(keyVector, mapKeys, dictionaryFields, dictionaries, allocator, currentSize);
-                    populateVector(valueVector,mapValues, dictionaryFields, dictionaries, allocator, currentSize);
+                    mapVector.startNewValue(i);
+                    for (int j = 0; j < mapKeys.size(); j++) {
+                        var mapKey = mapKeys.get(j);
+                        var mapValue = mapValues.get(j);
+                        keyConsumer.accept(currentSize + j, mapKey);
+                        valueConsumer.accept(currentSize + j, mapValue);
+                        entryVector.setIndexDefined(currentSize + j);
+                    }
+                    entryVector.setValueCount(currentSize + mapKeys.size());
+                    mapVector.endValue(i, mapKeys.size());
                 };
 
             case Struct:
 
                 var structVector = (StructVector) vector;
                 var childVectors = structVector.getChildrenFromFields();
-                var childFuncs = new HashMap<String, BiConsumer<Integer, Object>>();
+                var childConsumers = new HashMap<String, BiConsumer<Integer, Object>>();
                 for (var child : childVectors) {
-                    var childFunc = buildSetFunc(child, dictionaryFields, dictionaries, allocator);
-                    childFuncs.put(child.getName(), childFunc);
+                    var childConsumer = buildConsumer(child, dictionaryFields, dictionaries, stagedFields, allocator);
+                    childConsumers.put(child.getName(), childConsumer);
                 }
 
                 return (i, o) -> {
@@ -755,11 +698,10 @@ public class SampleData {
 
                     for (FieldVector childVector : childVectors) {
                         var childValue = map.get(childVector.getName());
-                        if (childValue == null)
-                            childVector.setNull(i);
-                        else
-                            childFuncs.get(childVector.getName()).accept(i, childValue);
+                        childConsumers.get(childVector.getName()).accept(i, childValue);
                     }
+
+                    structVector.setIndexDefined(i);
                 };
 
             default:

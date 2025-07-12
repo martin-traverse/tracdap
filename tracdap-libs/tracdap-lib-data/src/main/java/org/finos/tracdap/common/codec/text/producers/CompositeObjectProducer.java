@@ -47,6 +47,8 @@ public class CompositeObjectProducer extends BaseCompositeProducer {
 
         for (int i = 0; i < fieldNames.size(); i++) {
 
+            System.out.println(fieldNames.get(i));
+
             generator.writeFieldName(fieldNames.get(i));
             delegates.get(i).produceElement(generator);
         }

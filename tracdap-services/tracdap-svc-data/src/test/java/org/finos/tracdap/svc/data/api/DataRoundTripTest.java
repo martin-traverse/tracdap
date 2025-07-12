@@ -17,6 +17,8 @@
 
 package org.finos.tracdap.svc.data.api;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.finos.tracdap.api.*;
 import org.finos.tracdap.common.data.DataContext;
 import org.finos.tracdap.common.async.Flows;
@@ -46,6 +48,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.nio.ByteBuffer;
 import java.nio.channels.WritableByteChannel;
+import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Flow;
@@ -368,6 +371,8 @@ abstract class DataRoundTripTest {
             BiFunction<SchemaDefinition, List<ByteString>, List<Vector<Object>>> decodeFunc,
             boolean dataInChunkZero) throws Exception {
 
+        var mapper = new ObjectMapper();
+
         var requestParams = DataWriteRequest.newBuilder()
                 .setTenant(TEST_TENANT)
                 .setSchema(SampleData.BASIC_STRUCT_SCHEMA)
@@ -394,28 +399,20 @@ abstract class DataRoundTripTest {
         DataApiTestHelpers.serverStreaming(dataClient::readDataset, dataRequest, readResponse);
 
         waitFor(Duration.ofMinutes(20), readResponse0, readBytes);
-        var roundTripResponse = resultOf(readResponse0);
-        var roundTripSchema = roundTripResponse.getSchema();
         var roundTripBytes = resultOf(readBytes);
 
-        var roundTripData = decodeFunc.apply(roundTripSchema, List.of(roundTripBytes));
+        System.out.println(roundTripBytes.toString(StandardCharsets.UTF_8));
 
-        Assertions.assertEquals(SampleData.BASIC_TABLE_SCHEMA, roundTripSchema);
-
-        for (int col = 0; col < roundTripSchema.getTable().getFieldsCount(); col++) {
-
-            for (var row = 0; row < DataRoundTripTest.BASIC_TEST_DATA.size(); row++) {
-
-                var expectedVal = DataRoundTripTest.BASIC_TEST_DATA.get(col).get(row);
-                var roundTripVal = roundTripData.get(col).get(row);
-
-                // Allow comparing big decimals with different scales
-                if (expectedVal instanceof BigDecimal)
-                    roundTripVal = ((BigDecimal) roundTripVal).setScale(((BigDecimal) expectedVal).scale(), RoundingMode.UNNECESSARY);
-
-                Assertions.assertEquals(expectedVal, roundTripVal);
-            }
+        var originalBytes = ByteString.empty();
+        for (var chunk : content) {
+            originalBytes = originalBytes.concat(chunk);
         }
+
+        var originalTree = mapper.readTree(originalBytes.toString(StandardCharsets.UTF_8));
+        var roundTripTree = mapper.readTree(roundTripBytes.toString(StandardCharsets.UTF_8));
+
+        Assertions.assertEquals(originalTree, roundTripTree);
+
     }
 
     private Flow.Publisher<DataWriteRequest> dataWriteRequest(

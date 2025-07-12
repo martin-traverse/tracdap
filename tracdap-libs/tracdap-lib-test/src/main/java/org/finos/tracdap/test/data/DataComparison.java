@@ -33,8 +33,8 @@ public class DataComparison {
 
     public static void compareSchemas(ArrowVsrSchema expected, ArrowVsrSchema actual) {
 
-        if (expected.decoded() == null) {
-            Assertions.assertNull(actual.decoded());
+        if (expected.logical() == null) {
+            Assertions.assertNull(actual.logical());
             Assertions.assertEquals(expected.physical(), actual.physical());
             return;
         }

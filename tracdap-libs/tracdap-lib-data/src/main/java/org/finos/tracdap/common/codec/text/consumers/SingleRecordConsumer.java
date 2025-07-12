@@ -83,7 +83,7 @@ public class SingleRecordConsumer implements IBatchConsumer {
 
     @Override
     public boolean endOfStream() {
-        return false;
+        return recordConsumed;
     }
 
     @Override

@@ -34,6 +34,7 @@ import org.apache.arrow.memory.BufferAllocator;
 import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.EDataConstraint;
 import org.finos.tracdap.metadata.SchemaDefinition;
+import org.finos.tracdap.metadata.SchemaType;
 
 import java.util.List;
 import java.util.Map;
@@ -84,6 +85,10 @@ public class CsvCodec implements ICodec {
     public Decoder<DataPipeline.BufferApi>
     getDecoder(SchemaDefinition tracSchema, BufferAllocator allocator, Map<String, String> options) {
 
+        if (tracSchema.getSchemaType() != SchemaType.TABLE_SCHEMA) {
+            throw new EDataConstraint("CSV decoder only support TABLE_SCHEMA");
+        }
+
         var arrowSchema = SchemaMapping.tracToArrow(tracSchema, allocator);
         return getDecoder(arrowSchema, allocator, options);
     }
@@ -99,7 +104,7 @@ public class CsvCodec implements ICodec {
     protected void generatorSetup(JsonGenerator generator, ArrowVsrContext context) {
 
         var csvSchema = CsvSchemaMapping
-                .arrowToCsv(context.getSchema().decoded())
+                .arrowToCsv(context.getSchema().logical())
                 .build()
                 .withHeader();
 
@@ -109,7 +114,7 @@ public class CsvCodec implements ICodec {
     protected void parserSetup(JsonParser parser, ArrowVsrContext context) {
 
         var csvSchema = CsvSchemaMapping
-                .arrowToCsv(context.getSchema().decoded())
+                .arrowToCsv(context.getSchema().logical())
                 .build();
 
         csvSchema = DEFAULT_HEADER_FLAG

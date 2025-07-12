@@ -72,7 +72,7 @@ public class JsonMapConsumer extends BaseJsonConsumer<MapVector> {
                 if (!midValue) {
                     ensureInnerVectorCapacity(totalItems + 1);
                     var key = parser.currentName();
-                    keyVector.setSafe(totalItems + 1, key.getBytes(StandardCharsets.UTF_8));
+                    keyVector.setSafe(totalItems, key.getBytes(StandardCharsets.UTF_8));
                 }
 
                 if(valueDelegate.consumeElement(parser)) {

@@ -40,6 +40,7 @@ import org.apache.arrow.vector.types.pojo.FieldType;
 import org.apache.arrow.vector.*;
 
 import org.junit.jupiter.api.*;
+import org.junit.jupiter.api.condition.DisabledIf;
 import org.junit.jupiter.api.condition.EnabledIf;
 
 import java.math.BigDecimal;
@@ -66,24 +67,28 @@ public abstract class CodecTestSuite {
         codec = new ArrowStreamCodec();
         basicData = null;
         structData = null;
+        structSupport = true;
     } }
 
     static class ArrowFileTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new ArrowFileCodec();
         basicData = null;
         structData = null;
+        structSupport = true;
     } }
 
     static class CSVTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new CsvCodec();
         basicData = SampleData.BASIC_CSV_DATA_RESOURCE;
         structData = null;
+        structSupport = false;
     } }
 
     static class JSONTest extends CodecTestSuite { @BeforeAll static void setup() {
         codec = new JsonCodec();
         basicData = SampleData.BASIC_JSON_DATA_RESOURCE;
         structData = SampleData.STRUCT_JSON_DATA_RESOURCE;
+        structSupport = true;
     } }
 
     private static final Duration TEST_TIMEOUT = Duration.ofSeconds(20);
@@ -91,6 +96,7 @@ public abstract class CodecTestSuite {
     static ICodec codec;
     static String basicData;
     static String structData;
+    static boolean structSupport;
 
     private boolean basicDataAvailable() {
         return basicData != null;
@@ -98,6 +104,10 @@ public abstract class CodecTestSuite {
 
     private boolean structDataAvailable() {
         return structData != null;
+    }
+
+    private boolean structSupported() {
+        return structSupport;
     }
 
     @Test
@@ -144,6 +154,7 @@ public abstract class CodecTestSuite {
     }
 
     @Test
+    @EnabledIf(value = "structSupported", disabledReason = "This codec does not support STRUCT data")
     void roundTrip_struct() {
 
         var allocator = new RootAllocator();
@@ -451,6 +462,7 @@ public abstract class CodecTestSuite {
 
         var allocator = new RootAllocator();
         var structSchema = SchemaMapping.tracToArrow(SampleData.BASIC_STRUCT_SCHEMA, allocator);
+        var structExpectedResult = generateStructData(allocator);
 
         var testData = ResourceHelpers.loadResourceAsBytes(structData);
         var testDataBuf = Bytes.copyToBuffer(testData, allocator);
@@ -462,7 +474,7 @@ public abstract class CodecTestSuite {
         var decoder = codec.getDecoder(structSchema, allocator, Map.of());
         pipeline.addStage(decoder);
 
-        var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(null, batch));
+        var dataSink = new SingleBatchDataSink(pipeline, batch -> DataComparison.compareBatches(structExpectedResult, batch));
         pipeline.addSink(dataSink);
 
         var exec = pipeline.execute();

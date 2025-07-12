@@ -263,7 +263,7 @@ public class TextFileUtils {
             var dictionary = dictionaries.lookup(encoding.getId());
             var dynamic = false;
 
-            if (dictionary == null) {
+            if (dictionary == null || dictionary.getVector().getValueCount() == 0) {
                 var dictionaryVector = dictionaryField.createVector(vector.getAllocator());
                 dictionaryVector.allocateNew();
                 dictionary = new Dictionary(dictionaryVector, encoding);
@@ -339,7 +339,8 @@ public class TextFileUtils {
                 var listVector = (ListVector) vector;
                 var itemVector = listVector.getDataVector();
                 var itemConsumer = createConsumer(itemVector, dictionaryFields, dictionaries, staging);
-                return new JsonListConsumer(listVector, itemConsumer);
+                var listConsumer = new JsonListConsumer(listVector, itemConsumer);
+                return new JsonScalarConsumer<>(listConsumer);
 
             // TODO: Fixed size list
 
@@ -353,7 +354,8 @@ public class TextFileUtils {
                 var keyVector = (VarCharVector) entryVector.getChildrenFromFields().get(0);
                 var valueVector = entryVector.getChildrenFromFields().get(1);
                 var valueConsumer = createConsumer(valueVector, dictionaryFields, dictionaries, staging);
-                return new JsonMapConsumer(mapVector, keyVector, valueConsumer);
+                var mapConsumer = new JsonMapConsumer(mapVector, keyVector, valueConsumer);
+                return new JsonScalarConsumer<>(mapConsumer);
 
             case STRUCT:
                 var structVector = (StructVector) vector;
@@ -363,7 +365,8 @@ public class TextFileUtils {
                     var childConsumer = createConsumer(childVector, dictionaryFields, dictionaries, staging);
                     childConsumers.add(childConsumer);
                 }
-                return new JsonStructConsumer(structVector, childConsumers);
+                var structConsumer = new JsonStructConsumer(structVector, childConsumers);
+                return new JsonScalarConsumer<>(structConsumer);
 
         }
 
