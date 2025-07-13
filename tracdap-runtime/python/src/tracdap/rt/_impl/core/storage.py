@@ -753,6 +753,13 @@ class CommonDataStorage(IDataStorage):
         self.__pushdown_pandas = pushdown_pandas
         self.__pushdown_spark = pushdown_spark
 
+    def convert_struct(self, table: pa.Table) -> pa.StructScalar:
+
+        if len(table) != 1:
+            raise RuntimeError()
+
+        struct: pa.StructScalar = table.to_struct_array(1)[0]
+
     def read_table(
             self, storage_path: str, storage_format: str,
             schema: tp.Optional[pa.Schema],

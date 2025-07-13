@@ -273,6 +273,10 @@ class _NamespaceShimFinder(_ila.MetaPathFinder):
 
             return spec
 
+        else:
+
+            return None
+
     def invalidate_caches(self) -> None:
         pass
 
