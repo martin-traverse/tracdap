@@ -24,8 +24,6 @@ import uuid as _uuid
 
 import yaml as _yaml
 
-from tracdap.rt_gen.domain.tracdap.metadata import SchemaType
-
 try:
     import pydantic as _pyd  # noqa
 except ModuleNotFoundError:
@@ -148,9 +146,9 @@ class StructProcessor:
                 trac_fields.append(trac_field)
 
             if len(type_stack) == 1:
-                return _meta.SchemaDefinition(schemaType=SchemaType.STRUCT_SCHEMA, fields=trac_fields, namedTypes=named_types)
+                return _meta.SchemaDefinition(schemaType=_meta.SchemaType.STRUCT_SCHEMA, fields=trac_fields, namedTypes=named_types)
             else:
-                return _meta.SchemaDefinition(schemaType=SchemaType.STRUCT_SCHEMA, fields=trac_fields)
+                return _meta.SchemaDefinition(schemaType=_meta.SchemaType.STRUCT_SCHEMA, fields=trac_fields)
 
         finally:
 
@@ -185,9 +183,9 @@ class StructProcessor:
                     field_index += 1
 
             if len(type_stack) == 1:
-                return _meta.SchemaDefinition(schemaType=SchemaType.STRUCT_SCHEMA, fields=trac_fields, namedTypes=named_types)
+                return _meta.SchemaDefinition(schemaType=_meta.SchemaType.STRUCT_SCHEMA, fields=trac_fields, namedTypes=named_types)
             else:
-                return _meta.SchemaDefinition(schemaType=SchemaType.STRUCT_SCHEMA, fields=trac_fields)
+                return _meta.SchemaDefinition(schemaType=_meta.SchemaType.STRUCT_SCHEMA, fields=trac_fields)
 
         finally:
 

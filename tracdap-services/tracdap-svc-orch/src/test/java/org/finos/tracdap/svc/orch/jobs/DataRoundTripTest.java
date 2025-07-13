@@ -349,7 +349,7 @@ public abstract class DataRoundTripTest {
                 javaData.put(field.getFieldName(), edgeCases);
             }
             else {
-                var javaValues = SampleData.generateJavaValues(field.getFieldType(), field.getCategorical(), edgeCases.size());
+                var javaValues = SampleData.generateJavaValues(field.getFieldType(), field.getCategorical(), edgeCases.size(), 0);
                 javaData.put(field.getFieldName(), javaValues);
             }
         }

@@ -24,7 +24,6 @@ import org.finos.tracdap.common.validation.core.ValidatorUtils;
 import org.finos.tracdap.metadata.*;
 import com.google.protobuf.Descriptors;
 
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -42,6 +41,7 @@ public class SchemaValidator {
     private static final List<BasicType> ALLOWED_CATEGORICAL_TYPES = List.of(BasicType.STRING);
 
     private static final Map<String, SchemaDefinition> NO_NAMED_TYPES = Map.of();
+    private static final Map<String, EnumValues> NO_NAMED_ENUMS = Map.of();
 
     private static final Descriptors.Descriptor SCHEMA_DEFINITION;
     private static final Descriptors.FieldDescriptor SD_SCHEMA_TYPE;
@@ -88,46 +88,73 @@ public class SchemaValidator {
         FS_CHILDREN = ValidatorUtils.field(FIELD_SCHEMA, FieldSchema.CHILDREN_FIELD_NUMBER);
     }
 
-
-    @Validator
-    public static ValidationContext schema(SchemaDefinition schema, ValidationContext ctx) {
-
-        return schema(schema, false, ctx);
-    }
-
     public static ValidationContext dynamicSchema(SchemaDefinition schema, ValidationContext ctx) {
-
-        return schema(schema, true, ctx);
-    }
-
-    private static ValidationContext schema(SchemaDefinition schema, boolean dynamic, ValidationContext ctx) {
 
         ctx = ctx.push(SD_SCHEMA_TYPE)
                 .apply(CommonValidators::required)
                 .apply(CommonValidators::nonZeroEnum, SchemaType.class)
                 .pop();
 
-        if (dynamic) {
+        // For dynamic schemas, schema details must not be included
 
-            // For dynamic schemas, schema details must not be included
+        ctx = ctx.pushOneOf(SD_SCHEMA_DETAILS)
+                .apply(CommonValidators::omitted)
+                .pop();
 
-            ctx = ctx.pushOneOf(SD_SCHEMA_DETAILS)
+        ctx = ctx.pushRepeated(SD_FIELDS)
+                .apply(CommonValidators::omitted)
+                .pop();
+
+        ctx = ctx.pushMap(SD_NAMED_TYPES)
+                .apply(CommonValidators::omitted)
+                .pop();
+
+        ctx = ctx.pushMap(SD_NAMED_ENUMS)
+                .apply(CommonValidators::omitted)
+                .pop();
+
+        return ctx;
+    }
+
+    @Validator
+    public static ValidationContext schema(SchemaDefinition schema, ValidationContext ctx) {
+
+        return schema(schema, null, ctx);
+    }
+
+    private static ValidationContext schema(SchemaDefinition schema, SchemaDefinition rootSchema, ValidationContext ctx) {
+
+        ctx = ctx.push(SD_SCHEMA_TYPE)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::nonZeroEnum, SchemaType.class)
+                .pop();
+
+        var parentSchema = rootSchema != null ? rootSchema : schema;
+        var allowNamedTypes = rootSchema == null && schema.getSchemaType() != SchemaType.TABLE;
+        var allowNamedEnums = rootSchema == null;
+
+        if (allowNamedTypes) {
+            ctx = ctx.pushMap(SD_NAMED_TYPES)
+                    .applyMapKeys(CommonValidators::identifier)
+                    .applyMapValues(SchemaValidator::schema, SchemaDefinition.class, parentSchema)
+                    .pop();
+        }
+        else {
+            ctx = ctx.pushMap(SD_NAMED_TYPES)
                     .apply(CommonValidators::omitted)
                     .pop();
+        }
 
-            ctx = ctx.push(SD_FIELDS)
+        if (allowNamedEnums) {
+            ctx = ctx.pushMap(SD_NAMED_ENUMS)
+                    .applyMapKeys(CommonValidators::identifier)
+                    .applyMapValues(SchemaValidator::enumValues, EnumValues.class)
+                    .pop();
+        }
+        else {
+            ctx = ctx.pushMap(SD_NAMED_ENUMS)
                     .apply(CommonValidators::omitted)
                     .pop();
-
-            ctx = ctx.push(SD_NAMED_TYPES)
-                    .apply(CommonValidators::omitted)
-                    .pop();
-
-            ctx = ctx.push(SD_NAMED_ENUMS)
-                    .apply(CommonValidators::omitted)
-                    .pop();
-
-            return ctx;
         }
 
         if (schema.getSchemaType() == SchemaType.TABLE_SCHEMA) {
@@ -141,7 +168,13 @@ public class SchemaValidator {
                     .pop();
         }
 
-        // TODO: Validate other schema types
+        else {
+
+            ctx = ctx.pushRepeated(SD_FIELDS)
+                    .apply(CommonValidators::listNotEmpty)
+                    .applyRepeated(SchemaValidator::fieldSchema, FieldSchema.class, parentSchema)
+                    .pop();
+        }
 
         return ctx;
     }
@@ -222,10 +255,19 @@ public class SchemaValidator {
     @Validator
     public static ValidationContext fieldSchema(FieldSchema field, ValidationContext ctx) {
 
-        return fieldSchema(field, NO_NAMED_TYPES, ctx);
+        return fieldSchema(field, NO_NAMED_TYPES, NO_NAMED_ENUMS, ctx);
     }
 
-    public static ValidationContext fieldSchema(FieldSchema field, Map<String, SchemaDefinition> namedTypes, ValidationContext ctx) {
+    public static ValidationContext fieldSchema(FieldSchema field, SchemaDefinition root, ValidationContext ctx) {
+
+        return fieldSchema(field, root.getNamedTypesMap(), root.getNamedEnumsMap(), ctx);
+    }
+
+    public static ValidationContext fieldSchema(
+            FieldSchema field,
+            Map<String, SchemaDefinition> namedTypes,
+            Map<String, EnumValues> namedEnums,
+            ValidationContext ctx) {
 
         ctx = ctx.push(FS_FIELD_NAME)
                 .apply(CommonValidators::required)
@@ -277,6 +319,11 @@ public class SchemaValidator {
         }
 
         // No validation applied to label or format code
+
+        return ctx;
+    }
+
+    private static ValidationContext enumValues(EnumValues enumValues, ValidationContext ctx) {
 
         return ctx;
     }

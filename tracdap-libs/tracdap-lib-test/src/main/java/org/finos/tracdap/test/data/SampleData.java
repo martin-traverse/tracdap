@@ -512,11 +512,16 @@ public class SampleData {
             var values = data.get(field.getName());
             var consumer = consumers.get(col);
 
-            for (int i = 0; i < values.size(); i++) {
-                consumer.accept(i, values.get(i));
-            }
+            if (values != null) {
+                for (int i = 0; i < values.size(); i++) {
+                    consumer.accept(i, values.get(i));
+                }
 
-            vectors.get(col).setValueCount(values.size());
+                vectors.get(col).setValueCount(values.size());
+            }
+            else {
+                vectors.get(col).setValueCount(0);
+            }
         }
 
         for (var staged :  staging) {

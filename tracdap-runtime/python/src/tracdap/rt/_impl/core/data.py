@@ -226,7 +226,7 @@ class BaseLayout(StorageLayout, metaclass=abc.ABCMeta):
 
         # Take default location from the storage config
         storage_key = _util.read_property(sys_config.properties, _cfg_p.ConfigKeys.STORAGE_DEFAULT_LOCATION)
-        if trac_schema.schemaType == _meta.SchemaType.STRUCT:
+        if trac_schema.schemaType == _meta.SchemaType.STRUCT_SCHEMA:
             storage_format = "JSON"
         else:
             storage_format = _util.read_property(sys_config.properties, _cfg_p.ConfigKeys.STORAGE_DEFAULT_FORMAT, "CSV")
