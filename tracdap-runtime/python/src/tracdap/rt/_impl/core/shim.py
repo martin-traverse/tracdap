@@ -443,7 +443,7 @@ class ShimLoader:
                     # Set the root module for class loading
                     # Relative imports will be resolved relative to this root
                     cls.__active_shim.main_module = module_name
-                    module = cls.trac_model_code_import(module_name)
+                    module = cls.load_module(module_name)
                 finally:
                     cls.__active_shim.main_module = None
 
@@ -482,7 +482,7 @@ class ShimLoader:
             raise _ex.EModelLoad(err) from e
 
     @classmethod
-    def trac_model_code_import(cls, module_name):
+    def load_module(cls, module_name):
 
         # Guard rails can interfere with import
         # This method turns off some of the rails that interfere with importing

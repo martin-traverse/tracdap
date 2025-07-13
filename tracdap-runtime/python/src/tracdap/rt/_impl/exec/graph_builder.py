@@ -84,6 +84,9 @@ class GraphBuilder:
             if job_def.jobType == _meta.JobType.IMPORT_MODEL:
                 graph = self.build_standard_job(job_def, self.build_import_model_job)
 
+            elif job_def.jobType == _meta.JobType.IMPORT_SCHEMA:
+                graph = self.build_standard_job(job_def, self.build_import_schema_job)
+
             elif job_def.jobType == _meta.JobType.RUN_MODEL:
                 graph = self.build_standard_job(job_def, self.build_run_model_job)
 
@@ -171,6 +174,29 @@ class GraphBuilder:
 
         import_node = ImportModelNode(
             import_id, model_id,
+            import_details, import_scope,
+            explicit_deps=[job_push_id])
+
+        main_section = GraphSection(nodes={import_id: import_node})
+
+        # RESULT will have a single (unnamed) output
+        result_section = self.build_job_result([import_id], explicit_deps=[job_push_id, *main_section.must_run])
+
+        return self._join_sections(main_section, result_section)
+
+    def build_import_schema_job(self, job_def: _meta.JobDefinition, job_push_id: NodeId) -> GraphSection:
+
+        # TRAC object ID for the new schema
+        schema_id = self._allocate_id(_meta.ObjectType.SCHEMA)
+
+        import_details = job_def.importSchema
+        import_scope = self._job_key
+
+        # Graph node ID for the import operation
+        import_id = NodeId.of("trac_import_schema", self._job_namespace, GraphOutput)
+
+        import_node = ImportSchemaNode(
+            import_id, schema_id,
             import_details, import_scope,
             explicit_deps=[job_push_id])
 

@@ -28,6 +28,7 @@ import tracdap.rt._impl.exec.graph_builder as _graph
 import tracdap.rt._impl.core.type_system as _types
 import tracdap.rt._impl.core.data as _data
 import tracdap.rt._impl.core.logging as _logging
+import tracdap.rt._impl.core.schemas as _schemas
 import tracdap.rt._impl.core.storage as _storage
 import tracdap.rt._impl.core.struct as _struct
 import tracdap.rt._impl.core.models as _models
@@ -510,6 +511,52 @@ class SaveDataFunc(_LoadSaveDataFunc, NodeFunction[_data.DataSpec]):
 # MODEL EXECUTION
 # ---------------
 
+class ImportSchemaFunc(NodeFunction[GraphOutput]):
+
+    def __init__(self, node: ImportSchemaNode, models: _models.ModelLoader):
+        super().__init__()
+        self.node = node
+        self._models = models
+
+    def _execute(self, ctx: NodeContext) -> GraphOutput:
+
+        schema_id = self.node.schema_id
+
+        if self.node.import_details.schemaType == _meta.SchemaType.STRUCT_SCHEMA:
+
+            schema_class_model_def = _meta.ModelDefinition(
+                language="python",
+                repository=self.node.import_details.repository,
+                packageGroup=self.node.import_details.packageGroup,
+                package=self.node.import_details.package,
+                version=self.node.import_details.version,
+                path=self.node.import_details.path,
+                entryPoint=self.node.import_details.schemaClass)
+
+            schema_class = self._models.load_model_class(self.node.import_scope,schema_class_model_def, object)
+            schema_def = _struct.StructProcessor.define_struct(schema_class)
+
+        else:
+            raise _ex.ETracInternal(f"Schema import for schema type [{self.node.import_details.schemaType}] is not supported yet")
+
+        schema_obj = _meta.ObjectDefinition(_meta.ObjectType.SCHEMA, schema=schema_def)
+        schema_attrs = self.node.import_details.schemaAttrs
+
+        return GraphOutput(schema_id, schema_obj, schema_attrs)
+
+    @staticmethod
+    def _build_model_stub(import_details: _meta.ImportModelJob):
+
+        return _meta.ModelDefinition(
+            language=import_details.language,
+            repository=import_details.repository,
+            packageGroup=import_details.packageGroup,
+            package=import_details.package,
+            version=import_details.version,
+            entryPoint=import_details.entryPoint,
+            path=import_details.path)
+
+
 class ImportModelFunc(NodeFunction[GraphOutput]):
 
     def __init__(self, node: ImportModelNode, models: _models.ModelLoader):
@@ -839,6 +886,9 @@ class FunctionResolver:
     def resolve_import_model_node(self, node: ImportModelNode):
         return ImportModelFunc(node, self._models)
 
+    def resolve_import_schema_node(self, node: ImportSchemaNode):
+        return ImportSchemaFunc(node, self._models)
+
     def resolve_run_model_node(self, node: RunModelNode) -> NodeFunction:
 
         # TODO: Verify model_class against model_def
@@ -871,5 +921,6 @@ class FunctionResolver:
         LoadDataNode: resolve_load_data,
         SaveDataNode: resolve_save_data,
         RunModelNode: resolve_run_model_node,
-        ImportModelNode: resolve_import_model_node
+        ImportModelNode: resolve_import_model_node,
+        ImportSchemaNode: resolve_import_schema_node
     }

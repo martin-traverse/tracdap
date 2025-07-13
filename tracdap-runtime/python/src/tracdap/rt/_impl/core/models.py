@@ -35,6 +35,8 @@ import tracdap.rt._impl.core.validation as _val
 
 class ModelLoader:
 
+    __BASE_CLASS = tp.TypeVar("__BASE_CLASS")
+
     class _ScopeState:
         def __init__(self, scratch_dir: pathlib.Path):
             self.scratch_dir = scratch_dir
@@ -132,7 +134,9 @@ class ModelLoader:
 
         return repo.package_path(model_def, checkout_dir)
 
-    def load_model_class(self, scope: str, model_def: _meta.ModelDefinition) -> _api.TracModel.__class__:
+    def load_model_class(
+            self, scope: str, model_def: _meta.ModelDefinition,
+            base_class: tp.Type[__BASE_CLASS] = _api.TracModel) -> tp.Type[__BASE_CLASS]:
 
         checkout_dir = self._get_checkout_dir(scope, model_def)
         scope_state = self.__scopes[scope]
@@ -187,7 +191,7 @@ class ModelLoader:
             module_name = model_def.entryPoint.rsplit(".", maxsplit=1)[0]
             class_name = model_def.entryPoint.rsplit(".", maxsplit=1)[1]
 
-            model_class = _shim.ShimLoader.load_class(module_name, class_name, _api.TracModel)
+            model_class = _shim.ShimLoader.load_class(module_name, class_name, base_class)
 
             scope_state.model_cache[model_key] = model_class
             return model_class

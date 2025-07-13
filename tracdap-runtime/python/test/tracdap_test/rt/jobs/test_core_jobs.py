@@ -26,6 +26,7 @@ import tracdap.rt._impl.core.type_system as types  # noqa
 import tracdap.rt._impl.core.util as util  # noqa
 import tracdap.rt._impl.exec.dev_mode as dev_mode  # noqa
 import tracdap.rt.ext.plugins as plugins
+from tracdap.rt_gen.domain.tracdap.metadata import SchemaType
 
 
 class CoreJobsTest(unittest.TestCase):
@@ -73,6 +74,32 @@ class CoreJobsTest(unittest.TestCase):
                 version=self.commit_hash,
                 entryPoint="tutorial.using_data.UsingDataModel",
                 path="examples/models/python/src"))
+
+        job_config = cfg.JobConfig(job_id, job_def)
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            trac_runtime = runtime.TracRuntime(self.sys_config, scratch_dir=tmpdir)
+            trac_runtime.pre_start()
+
+            with trac_runtime as rt:
+                rt.submit_job(job_config)
+                rt.wait_for_job(job_id)
+
+    def test_import_struct_schema_job(self):
+
+        job_id = util.new_object_id(meta.ObjectType.JOB)
+
+        job_def = meta.JobDefinition(
+            jobType=meta.JobType.IMPORT_SCHEMA,
+            importSchema=meta.ImportSchemaJob(
+                repository="unit_test_repo",
+                package="trac-example-models",
+                version=self.commit_hash,
+                path="examples/models/python/src",
+                language="python",
+                schemaType=SchemaType.STRUCT_SCHEMA,
+                schemaClass="tutorial.structured_objects.RunConfig"))
 
         job_config = cfg.JobConfig(job_id, job_def)
 

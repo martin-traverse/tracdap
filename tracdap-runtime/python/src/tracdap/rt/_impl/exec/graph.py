@@ -366,6 +366,14 @@ class SaveDataNode(Node[_data.DataSpec]):
 # MODEL EXECUTION
 
 @_node_type
+class ImportSchemaNode(Node[GraphOutput]):
+
+    schema_id: _meta.TagHeader
+
+    import_details: _meta.ImportSchemaJob
+    import_scope: str
+
+@_node_type
 class ImportModelNode(Node[GraphOutput]):
 
     model_id: _meta.TagHeader
