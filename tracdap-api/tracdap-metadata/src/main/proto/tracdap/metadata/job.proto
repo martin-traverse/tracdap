@@ -24,6 +24,7 @@ option java_multiple_files = true;
 import "tracdap/metadata/type.proto";
 import "tracdap/metadata/object_id.proto";
 import "tracdap/metadata/tag_update.proto";
+import "tracdap/metadata/data.proto";
 
 
 /**
@@ -49,6 +50,9 @@ enum JobType {
 
   /// A job built from a collection of other jobs
   JOB_GROUP = 6;
+
+  /// Import a schema from a model repository
+  IMPORT_SCHEMA = 7;
 }
 
 /**
@@ -103,6 +107,7 @@ message JobDefinition {
     ImportDataJob importData = 5;
     ExportDataJob exportData = 6;
     JobGroup jobGroup = 7;
+    ImportSchemaJob importSchema = 9;
   }
 
   TagSelector resultId = 8;
@@ -171,6 +176,27 @@ message ImportModelJob {
   string path = 3;
 
   repeated TagUpdate modelAttrs = 6;
+}
+
+/**
+ * Specification for an IMPORT_MODEL job
+ */
+message ImportSchemaJob {
+
+  string repository = 1;
+  optional string packageGroup = 2;
+  string package = 3;
+  string version = 4;
+
+  optional string path = 5;
+  optional string language = 6;
+
+  SchemaType schemaType = 7;
+  string schemaFile = 8;
+  string schemaClass = 9;
+  string schemaPackage = 10;
+
+  repeated TagUpdate schemaAttrs = 11;
 }
 
 /**
