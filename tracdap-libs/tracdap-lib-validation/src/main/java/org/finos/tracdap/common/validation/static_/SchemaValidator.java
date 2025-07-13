@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.common.validation.static_;
 
+import org.finos.tracdap.common.metadata.TypeSystem;
 import org.finos.tracdap.common.validation.core.ValidationContext;
 import org.finos.tracdap.common.validation.core.ValidationType;
 import org.finos.tracdap.common.validation.core.Validator;
@@ -164,6 +165,7 @@ public class SchemaValidator {
             ctx = ctx.pushOneOf(SD_SCHEMA_DETAILS)
                     .apply(CommonValidators::required)
                     .apply(SchemaValidator::schemaMatchesType)
+                    .apply(SchemaValidator::tableSchema, TableSchema.class, parentSchema)
                     .applyRegistered()
                     .pop();
         }
@@ -204,6 +206,16 @@ public class SchemaValidator {
         ctx = ctx.pushRepeated(TS_FIELDS)
                 .apply(CommonValidators::listNotEmpty)
                 .applyRepeated(SchemaValidator::fieldSchema, FieldSchema.class)
+                .pop();
+
+        return fieldNamesAndOrdering(table.getFieldsList(), ctx);
+    }
+
+    public static ValidationContext tableSchema(TableSchema table, SchemaDefinition root, ValidationContext ctx) {
+
+        ctx = ctx.pushRepeated(TS_FIELDS)
+                .apply(CommonValidators::listNotEmpty)
+                .applyRepeated(SchemaValidator::fieldSchema, FieldSchema.class, root)
                 .pop();
 
         return fieldNamesAndOrdering(table.getFieldsList(), ctx);
@@ -260,7 +272,10 @@ public class SchemaValidator {
 
     public static ValidationContext fieldSchema(FieldSchema field, SchemaDefinition root, ValidationContext ctx) {
 
-        return fieldSchema(field, root.getNamedTypesMap(), root.getNamedEnumsMap(), ctx);
+        if (root != null)
+            return fieldSchema(field, root.getNamedTypesMap(), root.getNamedEnumsMap(), ctx);
+        else
+            return fieldSchema(field, NO_NAMED_TYPES, NO_NAMED_ENUMS, ctx);
     }
 
     public static ValidationContext fieldSchema(
@@ -316,6 +331,107 @@ public class SchemaValidator {
                     ctx.fieldName());
 
             ctx = ctx.error(err);
+        }
+
+        if (TypeSystem.isPrimitive(field.getFieldType())) {
+
+            if (field.getChildrenCount() > 0) {
+
+                var err = String.format(
+                        "Schema field [%s] cannot have children because it is primitive type [%s]",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+        }
+        else if (field.getFieldType() == BasicType.ARRAY) {
+
+            if (field.getChildrenCount() != 1) {
+
+                var err = String.format(
+                        "Schema field [%s] mast have exactly 1 child because it is type [%s]",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+        }
+        else if (field.getFieldType() == BasicType.MAP) {
+
+            if (field.getChildrenCount() != 2) {
+
+                var err = String.format(
+                        "Schema field [%s] mast have exactly 2 children because it is type [%s]",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+            else if (field.getChildren(0).getFieldType() != BasicType.STRING) {
+
+                var err = String.format(
+                        "Schema field [%s] is type [%s], it mast define a child of type STRING as the key",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+        }
+        else if (field.getFieldType() == BasicType.STRUCT) {
+
+            if (field.getChildrenCount() == 0 && ! field.hasNamedType()) {
+
+                var err = String.format(
+                        "Schema field [%s] mast define at least one child or have a named type because it is type [%s]",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+        }
+
+        if (field.hasNamedType()) {
+
+            if (field.getFieldType() != BasicType.STRUCT) {
+
+                var err = String.format(
+                        "Schema field [%s] cannot use named type [%s] because it is not a STRUCT field",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+            else if (field.getChildrenCount() > 1) {
+
+                var err = String.format(
+                        "Schema field [%s] cannot use named type [%s] because it defines its own children",
+                        ctx.fieldName(), field.getFieldType());
+
+                ctx = ctx.error(err);
+            }
+            else if (!namedTypes.containsKey(field.getNamedType())) {
+
+                var err = String.format(
+                        "Schema field [%s] refers to unknown type [%s]]",
+                        ctx.fieldName(), field.getNamedType());
+
+                ctx = ctx.error(err);
+            }
+        }
+
+        if (field.hasNamedEnum()) {
+
+            if (!field.getCategorical()) {
+
+                var err = String.format(
+                        "Schema field [%s] cannot use named enum [%s] because it is not a categorical field",
+                        ctx.fieldName(), field.getNamedEnum());
+
+                ctx = ctx.error(err);
+            }
+            else if (!namedEnums.containsKey(field.getNamedEnum())) {
+
+                var err = String.format(
+                        "Schema field [%s] refers to unknown enum [%s]]",
+                        ctx.fieldName(), field.getNamedEnum());
+
+                ctx = ctx.error(err);
+            }
         }
 
         // No validation applied to label or format code
