@@ -107,6 +107,7 @@ public class RunFlowTest {
 
     static TagHeader structFlowId;
     static TagHeader structModelId;
+    static TagHeader structModelId2;
     static SchemaDefinition structModelInputSchema;
     static TagHeader structInputDataId;
     static TagHeader structOutputDataId;
@@ -884,6 +885,42 @@ public class RunFlowTest {
         structModelInputSchema = modelDef.getInputsOrThrow("run_config").getSchema();
     }
 
+    @Test @Order(14)
+    void struct_importModel2() throws Exception {
+
+        log.info("Running IMPORT_MODEL job for struct...");
+
+        var modelVersion = GitHelpers.getCurrentCommit();
+        var modelStub = ModelDefinition.newBuilder()
+                .setLanguage("python")
+                .setRepository(useTracRepo())
+                .setPath("examples/models/python/src")
+                .setEntryPoint("tutorial.structured_objects_2.StructModel")
+                .setVersion(modelVersion)
+                .build();
+
+        var modelAttrs = List.of(TagUpdate.newBuilder()
+                .setAttrName("e2e_test_model")
+                .setValue(MetadataCodec.encodeValue("run_flow:struct"))
+                .build());
+
+        var jobAttrs = List.of(TagUpdate.newBuilder()
+                .setAttrName("e2e_test_job")
+                .setValue(MetadataCodec.encodeValue("run_flow:struct_import_model"))
+                .build());
+
+        var modelTag = ImportModelTest.doImportModel(platform, TEST_TENANT, modelStub, modelAttrs, jobAttrs);
+        var modelDef = modelTag.getDefinition().getModel();
+        var modelAttr = modelTag.getAttrsOrThrow("e2e_test_model");
+
+        Assertions.assertEquals("run_flow:struct", MetadataCodec.decodeStringValue(modelAttr));
+        Assertions.assertEquals("tutorial.structured_objects_2.StructModel", modelDef.getEntryPoint());
+        Assertions.assertTrue(modelDef.getInputsMap().containsKey("run_config"));
+        Assertions.assertTrue(modelDef.getOutputsMap().containsKey("modified_config"));
+
+        structModelId2 = modelTag.getHeader();
+    }
+
     @Test @Order(15)
     void struct_loadInputData() throws Exception {
 
@@ -937,7 +974,7 @@ public class RunFlowTest {
                 .putParameters("projection_period", MetadataCodec.encodeValue(365))
                 .putInputs("run_config", MetadataUtil.selectorFor(structInputDataId))
                 .putModels("model_1", MetadataUtil.selectorFor(structModelId))
-                .putModels("model_2", MetadataUtil.selectorFor(structModelId))
+                .putModels("model_2", MetadataUtil.selectorFor(structModelId2))
                 .addOutputAttrs(TagUpdate.newBuilder()
                         .setAttrName("e2e_test_data")
                         .setValue(MetadataCodec.encodeValue("run_flow:struct_data_output")))

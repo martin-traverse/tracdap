@@ -384,7 +384,6 @@ public class SampleData {
 
         if (field.getFieldType() == BasicType.MAP) {
 
-            var keyField =  field.getChildren(0);
             var valuesField = field.getChildren(1);
 
             var map = new HashMap<String, Object>();
@@ -535,19 +534,17 @@ public class SampleData {
 
             if (dictionary != null) {
 
-                var staging = new ArrowVsrStaging(stagingVector, (BaseIntVector) vector, dictionary);
+                var staging = new ArrowVsrStaging<>(stagingVector, (BaseIntVector) vector, dictionary);
                 stagedFields.add(staging);
             }
             else {
 
-                var staging = new ArrowVsrStaging(stagingVector, (BaseIntVector) vector);
+                var staging = new ArrowVsrStaging<>(stagingVector, (BaseIntVector) vector);
                 stagedFields.add(staging);
                 dictionaries.put(staging.getDictionary());
             }
 
-            var stagingConsumer = buildConsumer((FieldVector) stagingVector, null, null, null, allocator);
-
-            return stagingConsumer;
+            return  buildConsumer((FieldVector) stagingVector, null, null, null, allocator);
         }
 
         switch (field.getType().getTypeID()) {
