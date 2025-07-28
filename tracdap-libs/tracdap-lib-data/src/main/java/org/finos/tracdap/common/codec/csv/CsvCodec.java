@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.dataformat.csv.CsvFactory;
 import com.fasterxml.jackson.dataformat.csv.CsvGenerator;
 import com.fasterxml.jackson.dataformat.csv.CsvParser;
+import com.fasterxml.jackson.dataformat.csv.CsvSchema;
 import org.finos.tracdap.common.codec.ICodec;
 import org.finos.tracdap.common.codec.text.BaseTextEncoder;
 import org.finos.tracdap.common.codec.text.BufferedTextDecoder;
@@ -33,6 +34,7 @@ import org.finos.tracdap.common.data.DataPipeline;
 import org.apache.arrow.memory.BufferAllocator;
 import org.finos.tracdap.common.data.SchemaMapping;
 import org.finos.tracdap.common.exception.EDataConstraint;
+import org.finos.tracdap.common.exception.EDataCorruption;
 import org.finos.tracdap.metadata.SchemaDefinition;
 import org.finos.tracdap.metadata.SchemaType;
 
@@ -113,13 +115,43 @@ public class CsvCodec implements ICodec {
 
     protected void parserSetup(JsonParser parser, ArrowVsrContext context) {
 
-        var csvSchema = CsvSchemaMapping
-                .arrowToCsv(context.getSchema().logical())
+        var receivedSchema = (CsvSchema) parser.getSchema();
+
+        if (receivedSchema.size() == 0) {
+            parser.setSchema(CsvSchema.emptySchema().withHeader());
+            return;
+        }
+
+        var logicalSchema = context.getSchema().logical();
+        var suppliedSchema = CsvSchemaMapping
+                .arrowToCsv(logicalSchema)
                 .build();
 
-        csvSchema = DEFAULT_HEADER_FLAG
-                ? csvSchema.withHeader()
-                : csvSchema.withoutHeader();
+        var schemaMarks = new boolean[suppliedSchema.size()];
+        var schemaBuilder = CsvSchema.builder();
+
+        for (int i = 0; i < receivedSchema.size(); i++) {
+
+            var receivedName = receivedSchema.columnName(i);
+            var suppliedIndex = suppliedSchema.columnIndex(receivedName);
+
+            if (suppliedIndex < 0)
+                throw new EDataCorruption("Field name [" + receivedName + "] is not defined in the schema");
+
+            var suppliedColumn = suppliedSchema.column(suppliedIndex);
+            schemaBuilder.addColumn(suppliedColumn);
+            schemaMarks[suppliedIndex] = true;
+        }
+
+        for (int i = 0; i < schemaMarks.length; i++) {
+            var field =logicalSchema.getFields().get(i);
+            if (!schemaMarks[i] && !field.isNullable())
+                throw new EDataCorruption("Field [" + field.getName() + "] is missing in the data");
+        }
+
+        var csvSchema = DEFAULT_HEADER_FLAG
+                ? schemaBuilder.build().withHeader()
+                : schemaBuilder.build().withoutHeader();
 
         parser.setSchema(csvSchema);
     }

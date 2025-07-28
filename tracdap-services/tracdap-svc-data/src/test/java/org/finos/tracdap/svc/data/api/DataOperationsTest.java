@@ -631,7 +631,8 @@ abstract class DataOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                 .setFieldName("an_extra_field")
                 .setFieldOrder(BASIC_SCHEMA.getTable().getFieldsCount())
-                .setFieldType(BasicType.STRING)))
+                .setFieldType(BasicType.STRING)
+                .setNotNull(true)))
                 .build();
 
         var request = BASIC_CREATE_DATASET_REQUEST.toBuilder()
@@ -1640,7 +1641,8 @@ abstract class DataOperationsTest {
                 .addFields(FieldSchema.newBuilder()
                         .setFieldName("an_extra_field")
                         .setFieldOrder(BASIC_SCHEMA_V2.getTable().getFieldsCount())
-                        .setFieldType(BasicType.STRING)))
+                        .setFieldType(BasicType.STRING)
+                        .setNotNull(true)))
                 .build();
 
         var v2Request = BASIC_UPDATE_DATASET_REQUEST.toBuilder()
