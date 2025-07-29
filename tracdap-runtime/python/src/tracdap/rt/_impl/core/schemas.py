@@ -131,6 +131,7 @@ class SchemaLoader:
 
         return _meta.SchemaDefinition(
             schemaType=_meta.SchemaType.TABLE,
+            fields=field_list,
             table=_meta.TableSchema(field_list))
 
     @classmethod

@@ -189,12 +189,12 @@ class TutorialModelsTest(unittest.TestCase):
 
     def test_structured_objects(self):
 
-        from tutorial.structured_objects import StructModel  # noqa
+        from tutorial.structured_objects import RunSimulation  # noqa
 
         job_config = self.examples_root.joinpath("config/structured_objects.yaml")
         sys_config = self.examples_root.joinpath("config/sys_config.yaml")
 
-        launch.launch_model(StructModel, job_config, sys_config, dev_mode=True)
+        launch.launch_model(RunSimulation, job_config, sys_config, dev_mode=True)
 
     def test_chaining_struct(self):
 

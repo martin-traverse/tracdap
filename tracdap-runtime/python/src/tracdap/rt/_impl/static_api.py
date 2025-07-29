@@ -164,14 +164,21 @@ class StaticApiImpl(_StaticApiHook):
 
         _val.validate_signature(self.define_schema, *fields, schema_type=schema_type, dynamic=dynamic)
 
+        def set_order(field, order):
+            field.fieldOrder = order
+            return field
+
         if schema_type == _meta.SchemaType.TABLE_SCHEMA:
 
             if dynamic and not fields:
+                fields = None
                 table_schema = None
             else:
+                field_list = fields[0] if len(fields) == 1 and isinstance(fields[0], list) else fields
+                fields = [set_order(f, o) for (o, f) in enumerate(field_list)]
                 table_schema = self._build_table_schema(*fields)
 
-            return _meta.SchemaDefinition(_meta.SchemaType.TABLE_SCHEMA, table=table_schema)
+            return _meta.SchemaDefinition(_meta.SchemaType.TABLE_SCHEMA, fields=fields, table=table_schema)
 
         raise _ex.ERuntimeValidation(f"Invalid schema type [{schema_type.name}]")
 
