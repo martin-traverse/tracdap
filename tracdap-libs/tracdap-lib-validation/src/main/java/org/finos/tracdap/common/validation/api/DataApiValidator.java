@@ -70,6 +70,7 @@ public class DataApiValidator {
     private static final Descriptors.FieldDescriptor DR_OBJECT_TYPE;
     private static final Descriptors.FieldDescriptor DR_OBJECT_ID;
     private static final Descriptors.FieldDescriptor DR_OBJECT_VERSION;
+    private static final Descriptors.FieldDescriptor DR_FORMAT;
 
     static {
 
@@ -106,6 +107,7 @@ public class DataApiValidator {
         DR_OBJECT_TYPE = ValidatorUtils.field(DOWNLOAD_REQUEST, DownloadRequest.OBJECTTYPE_FIELD_NUMBER);
         DR_OBJECT_ID = ValidatorUtils.field(DOWNLOAD_REQUEST, DownloadRequest.OBJECTID_FIELD_NUMBER);
         DR_OBJECT_VERSION = ValidatorUtils.field(DOWNLOAD_REQUEST, DownloadRequest.OBJECTVERSION_FIELD_NUMBER);
+        DR_FORMAT = ValidatorUtils.field(DOWNLOAD_REQUEST, DownloadRequest.FORMAT_FIELD_NUMBER);
     }
 
     @Validator(method = "createDataset")
@@ -340,6 +342,11 @@ public class DataApiValidator {
                 .apply(CommonValidators::identifier)
                 .pop();
 
+        ctx = ctx.push(DR_OBJECT_TYPE)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators.equalTo(ObjectType.FILE, "Object type must be FILE"), ObjectType.class)
+                .pop();
+
         ctx = ctx.push(DR_OBJECT_ID)
                 .apply(CommonValidators::required)
                 .apply(CommonValidators::uuid)
@@ -361,6 +368,11 @@ public class DataApiValidator {
                 .apply(CommonValidators::identifier)
                 .pop();
 
+        ctx = ctx.push(DR_OBJECT_TYPE)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators.equalTo(ObjectType.FILE, "Object type must be FILE"), ObjectType.class)
+                .pop();
+
         ctx = ctx.push(DR_OBJECT_ID)
                 .apply(CommonValidators::required)
                 .apply(CommonValidators::uuid)
@@ -369,6 +381,72 @@ public class DataApiValidator {
         ctx = ctx.push(DR_OBJECT_VERSION)
                 .apply(CommonValidators::omitted)
                 .pop();
+
+        return ctx;
+    }
+
+    @Validator(method = "downloadData")
+    public static ValidationContext downloadData(DownloadRequest msg, ValidationContext ctx) {
+
+        ctx = ctx.push(DR_TENANT)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::identifier)
+                .pop();
+
+        ctx = ctx.push(DR_OBJECT_TYPE)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators.equalTo(ObjectType.DATA, "Object type must be FILE"), ObjectType.class)
+                .pop();
+
+        ctx = ctx.push(DR_OBJECT_ID)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::uuid)
+                .pop();
+
+        ctx = ctx.push(DR_OBJECT_VERSION)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::positive, Integer.class)
+                .pop();
+
+        ctx = ctx.push(DR_OBJECT_VERSION)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::positive, Integer.class)
+                .pop();
+
+        ctx = ctx.push(DR_FORMAT)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::dataFormat)
+                .pop();
+
+        return ctx;
+    }
+
+    @Validator(method = "downloadLatestData")
+    public static ValidationContext downloadLatestData(DownloadRequest msg, ValidationContext ctx) {
+
+        ctx = ctx.push(DR_TENANT)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::identifier)
+                .pop();
+
+//        ctx = ctx.push(DR_OBJECT_TYPE)
+//                .apply(CommonValidators::required)
+//                .apply(CommonValidators.equalTo(ObjectType.DATA, "Object type must be FILE"), ObjectType.class)
+//                .pop();
+
+        ctx = ctx.push(DR_OBJECT_ID)
+                .apply(CommonValidators::required)
+                .apply(CommonValidators::uuid)
+                .pop();
+
+        ctx = ctx.push(DR_OBJECT_VERSION)
+                .apply(CommonValidators::omitted)
+                .pop();
+
+//        ctx = ctx.push(DR_FORMAT)
+//                .apply(CommonValidators::required)
+//                .apply(CommonValidators::dataFormat)
+//                .pop();
 
         return ctx;
     }

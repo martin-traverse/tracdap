@@ -527,11 +527,11 @@ public class RestApiProxy extends Http2ChannelDuplexHandler {
             if (!acceptHeader.equals("application/json"))
                 throw new EInputValidation("Invalid [accept] header (expected application/json for REST calls)");
         }
-        else {
-
-            if (restHeaders.contains(HttpHeaderNames.ACCEPT))
-                throw new EInputValidation("Unexpected HTTP header [" + HttpHeaderNames.ACCEPT + "]");
-        }
+//        else {
+//
+//            if (restHeaders.contains(HttpHeaderNames.ACCEPT))
+//                throw new EInputValidation("Unexpected HTTP header [" + HttpHeaderNames.ACCEPT + "]");
+//        }
     }
 
     private void sendErrorResponse(
