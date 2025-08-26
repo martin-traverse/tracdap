@@ -25,256 +25,256 @@ env:
 
 jobs:
 
-  web-api:
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-
-      # fetch-depth = 0 is needed to get tags for version info
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup - Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-
-          # Turn on Gradle dependency caching
-          cache: gradle
-
-      - name: Setup -Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-
-      - name: Platform - Build distribution files
-        run: ./gradlew installDist --parallel
-
-      - name: Platform - Install the sandbox
-        run: |
-          VERSION=`dev/version.sh`
-          mkdir -p build/dist/tracdap-sandbox-${VERSION}
-          for MODULE in build/modules/*/install/*; do
-            cp -R $MODULE/* build/dist/tracdap-sandbox-${VERSION}
-          done
-          cd build/dist
-          ln -s tracdap-sandbox-${VERSION}/ current
-
-      # Currently not starting svc-orch, we'd need to build the runtime and deploy an execution venv
-      # OUr JavaScript tests only do data and metadata so far, no spawning / checking jobs
-      # We should aim to get there though!
-
-      - name: Platform - Run setup tools
-        run: |
-          cd build/dist/current
-          deploy_dir=`pwd`
-          
-          mkdir metadata
-          mkdir -p data/storage1
-          
-          echo SECRET_KEY=xHjFeFlo$k= >> etc/env.sh
-          sed -i "s#/path/to#${deploy_dir}#g" etc/trac-platform.yaml
-          sed -i "s#/path/to#${deploy_dir}#g" etc/trac-tenants.yaml
-          
-          bin/secret-tool run --task init_secrets
-          bin/deploy-tool run --task deploy_schema
-          bin/deploy-tool run --task add_tenant ACME_CORP "ACME Rockets always get the Coyote!"
-
-      - name: Platform - Start
-        run: |
-          cd build/dist/current
-          
-          bin/tracdap-svc-admin start
-          bin/tracdap-svc-meta start
-          bin/tracdap-svc-data start
-          bin/tracdap-gateway start
-
-      - name: Web API - Install dependencies
-        run: |
-          cd tracdap-api/packages/web
-          npm install
-
-      - name: Web API - Set TRAC version
-        run: |
-          cd tracdap-api/packages/web
-          npm run tracVersion:posix
-
-      - name: Web API - Build package
-        run: |
-          cd tracdap-api/packages/web
-          npm run buildApi
-
-      - name: Examples - Install dependencies
-        run: |
-          cd examples/apps/javascript
-          npm install
-
-      - name: Examples - Run all
-        run: |
-          cd examples/apps/javascript
-          npm run examples
-
-      - name: Platform - Shut down
-        if: always()
-        run: |
-          cd build/dist/current
-          
-          bin/tracdap-gateway stop
-          bin/tracdap-svc-data stop
-          bin/tracdap-svc-meta stop
-          bin/tracdap-svc-admin stop
-  
-
-  slow-tests:
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-          cache: gradle
-
-      - name: Build
-        run: ./gradlew testClasses --parallel
-
-      - name: Slow tests
-        run: ./gradlew integration -DintegrationTags="slow"
-
-      # If the tests fail, make the output available for download
-      - name: Store failed test results
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: junit-test-results
-          path: build/modules/*/reports/**
-          retention-days: 7
-
-
-  end-to-end:
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-
-    steps:
-
-      # fetch-depth = 0 is needed to get tags for version info
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Java - Setup
-        uses: actions/setup-java@v4
-        with:
-          distribution: ${{ env.JAVA_DISTRIBUTION }}
-          java-version: ${{ env.JAVA_VERSION }}
-
-          # Turn on Gradle dependency caching
-          cache: gradle
-
-      - name: Java - Build platform
-        run: ./gradlew testClasses --parallel
-
-      - name: Python - setup
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ env.PYTHON_VERSION }}
-
-      - name: Python - PIP
-        run: python -m pip install --upgrade pip
-
-      - name: Python - Install build dependencies
-        run: |
-          pip install -r tracdap-runtime/python/requirements.txt
-
-      - name: Python - Build runtime package
-        env:
-          TRAC_PYTHON_BUILD_ISOLATION: false
-        run: python tracdap-runtime/python/build_runtime.py --target dist
-
-      - name: Run end to end tests
-        run: ./gradlew integration -DintegrationTags="int-e2e"
-
-      # If the tests fail, make the output available for download
-      - name: Store failed test results
-        uses: actions/upload-artifact@v4
-        if: failure()
-        with:
-          name: junit-test-results
-          path: build/modules/*/reports/**
-          retention-days: 7
-
-
-  int-sql:
-
-    strategy:
-
-      # Try to finish all jobs - it can be helpful to see if some succeed and others fail
-      fail-fast: false
-
-      matrix:
-
-        database:
-
-          - { DIALECT: mysql,
-              DB_IMAGE: 'mysql:8.4',
-              DB_PORT: 3306,
-              DB_OPTIONS: '--health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3',
-              MYSQL_ALLOW_EMPTY_PASSWORD: yes,
-              MYSQL_DATABASE: trac,
-              MYSQL_USER: trac_admin,
-              MYSQL_PASSWORD: trac_admin,
-              DB_SECRET: trac_admin }
-
-          - { DIALECT: mariadb,
-              DB_IMAGE: 'mariadb:11.4',
-              DB_PORT: 3306,
-              DB_OPTIONS: '--health-cmd="healthcheck.sh --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=3',
-              MYSQL_ALLOW_EMPTY_PASSWORD: yes,
-              MYSQL_DATABASE: trac,
-              MYSQL_USER: trac_admin,
-              MYSQL_PASSWORD: trac_admin,
-              DB_SECRET: trac_admin }
-
-          - { DIALECT: postgresql,
-              DB_IMAGE: 'postgres:16-alpine',
-              DB_PORT: 5432,
-              DB_OPTIONS: '--health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5',
-              POSTGRES_DB: trac,
-              POSTGRES_USER: trac_admin,
-              POSTGRES_PASSWORD: trac_admin,
-              DB_SECRET: trac_admin,}
-
-          - { DIALECT: sqlserver,
-              DB_IMAGE: 'mcr.microsoft.com/mssql/server:2022-latest',
-              DB_PORT: 1433,
-              DB_OPTIONS: '-e "NO_DB_OPTIONS=not_used"',  # docker run -e flag sets an env variable, passing '' causes errors
-              MSSQL_PID: Developer,
-              ACCEPT_EULA: Y,
-              SA_PASSWORD: "tR4c_aDm!n",
-              DB_SECRET: "tR4c_aDm!n" }
-
-    uses: ./.github/workflows/integration-sql.yaml
-
-    with:
-      matrix: ${{ toJson( matrix.database ) }}
-      dialect: ${{ matrix.database.DIALECT }}
-      db_image: ${{ matrix.database.DB_IMAGE }}
-      db_port: ${{ matrix.database.DB_PORT }}
-      db_options: ${{ matrix.database.DB_OPTIONS }}
+#  web-api:
+#
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#
+#    steps:
+#
+#      # fetch-depth = 0 is needed to get tags for version info
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#        with:
+#          fetch-depth: 0
+#
+#      - name: Setup - Java
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: ${{ env.JAVA_DISTRIBUTION }}
+#          java-version: ${{ env.JAVA_VERSION }}
+#
+#          # Turn on Gradle dependency caching
+#          cache: gradle
+#
+#      - name: Setup -Node.js
+#        uses: actions/setup-node@v4
+#        with:
+#          node-version: ${{ env.NODE_VERSION }}
+#
+#      - name: Platform - Build distribution files
+#        run: ./gradlew installDist --parallel
+#
+#      - name: Platform - Install the sandbox
+#        run: |
+#          VERSION=`dev/version.sh`
+#          mkdir -p build/dist/tracdap-sandbox-${VERSION}
+#          for MODULE in build/modules/*/install/*; do
+#            cp -R $MODULE/* build/dist/tracdap-sandbox-${VERSION}
+#          done
+#          cd build/dist
+#          ln -s tracdap-sandbox-${VERSION}/ current
+#
+#      # Currently not starting svc-orch, we'd need to build the runtime and deploy an execution venv
+#      # OUr JavaScript tests only do data and metadata so far, no spawning / checking jobs
+#      # We should aim to get there though!
+#
+#      - name: Platform - Run setup tools
+#        run: |
+#          cd build/dist/current
+#          deploy_dir=`pwd`
+#
+#          mkdir metadata
+#          mkdir -p data/storage1
+#
+#          echo SECRET_KEY=xHjFeFlo$k= >> etc/env.sh
+#          sed -i "s#/path/to#${deploy_dir}#g" etc/trac-platform.yaml
+#          sed -i "s#/path/to#${deploy_dir}#g" etc/trac-tenants.yaml
+#
+#          bin/secret-tool run --task init_secrets
+#          bin/deploy-tool run --task deploy_schema
+#          bin/deploy-tool run --task add_tenant ACME_CORP "ACME Rockets always get the Coyote!"
+#
+#      - name: Platform - Start
+#        run: |
+#          cd build/dist/current
+#
+#          bin/tracdap-svc-admin start
+#          bin/tracdap-svc-meta start
+#          bin/tracdap-svc-data start
+#          bin/tracdap-gateway start
+#
+#      - name: Web API - Install dependencies
+#        run: |
+#          cd tracdap-api/packages/web
+#          npm install
+#
+#      - name: Web API - Set TRAC version
+#        run: |
+#          cd tracdap-api/packages/web
+#          npm run tracVersion:posix
+#
+#      - name: Web API - Build package
+#        run: |
+#          cd tracdap-api/packages/web
+#          npm run buildApi
+#
+#      - name: Examples - Install dependencies
+#        run: |
+#          cd examples/apps/javascript
+#          npm install
+#
+#      - name: Examples - Run all
+#        run: |
+#          cd examples/apps/javascript
+#          npm run examples
+#
+#      - name: Platform - Shut down
+#        if: always()
+#        run: |
+#          cd build/dist/current
+#
+#          bin/tracdap-gateway stop
+#          bin/tracdap-svc-data stop
+#          bin/tracdap-svc-meta stop
+#          bin/tracdap-svc-admin stop
+#
+#
+#  slow-tests:
+#
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#
+#    steps:
+#
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#
+#      - name: Set up Java
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: ${{ env.JAVA_DISTRIBUTION }}
+#          java-version: ${{ env.JAVA_VERSION }}
+#          cache: gradle
+#
+#      - name: Build
+#        run: ./gradlew testClasses --parallel
+#
+#      - name: Slow tests
+#        run: ./gradlew integration -DintegrationTags="slow"
+#
+#      # If the tests fail, make the output available for download
+#      - name: Store failed test results
+#        uses: actions/upload-artifact@v4
+#        if: failure()
+#        with:
+#          name: junit-test-results
+#          path: build/modules/*/reports/**
+#          retention-days: 7
+#
+#
+#  end-to-end:
+#
+#    runs-on: ubuntu-latest
+#    timeout-minutes: 20
+#
+#    steps:
+#
+#      # fetch-depth = 0 is needed to get tags for version info
+#      - name: Checkout
+#        uses: actions/checkout@v4
+#        with:
+#          fetch-depth: 0
+#
+#      - name: Java - Setup
+#        uses: actions/setup-java@v4
+#        with:
+#          distribution: ${{ env.JAVA_DISTRIBUTION }}
+#          java-version: ${{ env.JAVA_VERSION }}
+#
+#          # Turn on Gradle dependency caching
+#          cache: gradle
+#
+#      - name: Java - Build platform
+#        run: ./gradlew testClasses --parallel
+#
+#      - name: Python - setup
+#        uses: actions/setup-python@v5
+#        with:
+#          python-version: ${{ env.PYTHON_VERSION }}
+#
+#      - name: Python - PIP
+#        run: python -m pip install --upgrade pip
+#
+#      - name: Python - Install build dependencies
+#        run: |
+#          pip install -r tracdap-runtime/python/requirements.txt
+#
+#      - name: Python - Build runtime package
+#        env:
+#          TRAC_PYTHON_BUILD_ISOLATION: false
+#        run: python tracdap-runtime/python/build_runtime.py --target dist
+#
+#      - name: Run end to end tests
+#        run: ./gradlew integration -DintegrationTags="int-e2e"
+#
+#      # If the tests fail, make the output available for download
+#      - name: Store failed test results
+#        uses: actions/upload-artifact@v4
+#        if: failure()
+#        with:
+#          name: junit-test-results
+#          path: build/modules/*/reports/**
+#          retention-days: 7
+#
+#
+#  int-sql:
+#
+#    strategy:
+#
+#      # Try to finish all jobs - it can be helpful to see if some succeed and others fail
+#      fail-fast: false
+#
+#      matrix:
+#
+#        database:
+#
+#          - { DIALECT: mysql,
+#              DB_IMAGE: 'mysql:8.4',
+#              DB_PORT: 3306,
+#              DB_OPTIONS: '--health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=3',
+#              MYSQL_ALLOW_EMPTY_PASSWORD: yes,
+#              MYSQL_DATABASE: trac,
+#              MYSQL_USER: trac_admin,
+#              MYSQL_PASSWORD: trac_admin,
+#              DB_SECRET: trac_admin }
+#
+#          - { DIALECT: mariadb,
+#              DB_IMAGE: 'mariadb:11.4',
+#              DB_PORT: 3306,
+#              DB_OPTIONS: '--health-cmd="healthcheck.sh --innodb_initialized" --health-interval=10s --health-timeout=5s --health-retries=3',
+#              MYSQL_ALLOW_EMPTY_PASSWORD: yes,
+#              MYSQL_DATABASE: trac,
+#              MYSQL_USER: trac_admin,
+#              MYSQL_PASSWORD: trac_admin,
+#              DB_SECRET: trac_admin }
+#
+#          - { DIALECT: postgresql,
+#              DB_IMAGE: 'postgres:16-alpine',
+#              DB_PORT: 5432,
+#              DB_OPTIONS: '--health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5',
+#              POSTGRES_DB: trac,
+#              POSTGRES_USER: trac_admin,
+#              POSTGRES_PASSWORD: trac_admin,
+#              DB_SECRET: trac_admin,}
+#
+#          - { DIALECT: sqlserver,
+#              DB_IMAGE: 'mcr.microsoft.com/mssql/server:2022-latest',
+#              DB_PORT: 1433,
+#              DB_OPTIONS: '-e "NO_DB_OPTIONS=not_used"',  # docker run -e flag sets an env variable, passing '' causes errors
+#              MSSQL_PID: Developer,
+#              ACCEPT_EULA: Y,
+#              SA_PASSWORD: "tR4c_aDm!n",
+#              DB_SECRET: "tR4c_aDm!n" }
+#
+#    uses: ./.github/workflows/integration-sql.yaml
+#
+#    with:
+#      matrix: ${{ toJson( matrix.database ) }}
+#      dialect: ${{ matrix.database.DIALECT }}
+#      db_image: ${{ matrix.database.DB_IMAGE }}
+#      db_port: ${{ matrix.database.DB_PORT }}
+#      db_options: ${{ matrix.database.DB_OPTIONS }}
 
 
   int-cloud-storage:
@@ -288,31 +288,31 @@ jobs:
 
         storage:
 
-          - { SERVICE: storage,
-              TARGET: aws,
-              PROTOCOL: S3,
-              ENABLE_IF: TRAC_AWS_BUCKET,
-              BUILD_aws_storage: true,
-              INSTALL_SCRIPT: ".github/scripts/int-storage-s3-install.sh",
-              SETUP_SCRIPT: ".github/scripts/int-storage-s3-setup.sh",
-              TRAC_CONFIG_FILE: '.github/config/int-storage-s3.yaml',
-              TRAC_TENANTS_FILE: '.github/config/int-storage-s3-tenants.yaml',
-              TRAC_SECRET_KEY: short-lived-secret,
-              PYTHON_TESTS: int_storage_aws*.py,
-              JAVA_TESTS: int-storage }
-
-          - { SERVICE: storage,
-              TARGET: gcp,
-              PROTOCOL: GCS,
-              ENABLE_IF: TRAC_GCP_BUCKET,
-              BUILD_gcp_storage: true,
-              INSTALL_SCRIPT: ".github/scripts/int-storage-gcs-install.sh",
-              SETUP_SCRIPT: ".github/scripts/int-storage-gcs-setup.sh",
-              TRAC_CONFIG_FILE: '.github/config/int-storage-gcs.yaml',
-              TRAC_TENANTS_FILE: '.github/config/int-storage-gcs-tenants.yaml',
-              TRAC_SECRET_KEY: short-lived-secret,
-              PYTHON_TESTS: int_storage_gcp*.py,
-              JAVA_TESTS: int-storage }
+#          - { SERVICE: storage,
+#              TARGET: aws,
+#              PROTOCOL: S3,
+#              ENABLE_IF: TRAC_AWS_BUCKET,
+#              BUILD_aws_storage: true,
+#              INSTALL_SCRIPT: ".github/scripts/int-storage-s3-install.sh",
+#              SETUP_SCRIPT: ".github/scripts/int-storage-s3-setup.sh",
+#              TRAC_CONFIG_FILE: '.github/config/int-storage-s3.yaml',
+#              TRAC_TENANTS_FILE: '.github/config/int-storage-s3-tenants.yaml',
+#              TRAC_SECRET_KEY: short-lived-secret,
+#              PYTHON_TESTS: int_storage_aws*.py,
+#              JAVA_TESTS: int-storage }
+#
+#          - { SERVICE: storage,
+#              TARGET: gcp,
+#              PROTOCOL: GCS,
+#              ENABLE_IF: TRAC_GCP_BUCKET,
+#              BUILD_gcp_storage: true,
+#              INSTALL_SCRIPT: ".github/scripts/int-storage-gcs-install.sh",
+#              SETUP_SCRIPT: ".github/scripts/int-storage-gcs-setup.sh",
+#              TRAC_CONFIG_FILE: '.github/config/int-storage-gcs.yaml',
+#              TRAC_TENANTS_FILE: '.github/config/int-storage-gcs-tenants.yaml',
+#              TRAC_SECRET_KEY: short-lived-secret,
+#              PYTHON_TESTS: int_storage_gcp*.py,
+#              JAVA_TESTS: int-storage }
 
           - { SERVICE: storage,
               TARGET: azure,

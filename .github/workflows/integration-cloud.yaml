@@ -239,6 +239,7 @@ jobs:
       - name: Integration tests
         env: ${{ vars }}
         run: | 
+          export AZURE_LOG_LEVEL=verbose
           . ./venv/bin/activate
           python tracdap-runtime/python/build_runtime.py --target integration --pattern ${{ env.PYTHON_TESTS }}
 
