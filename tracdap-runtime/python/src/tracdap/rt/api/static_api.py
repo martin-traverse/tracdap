@@ -20,6 +20,7 @@ import typing as _tp
 import types as _ts
 
 from .constants import STRUCT_TYPE  # DOCGEN_REMOVE
+from .constants import PROTOCOL, _Protocol  # DOCGEN_REMOVE
 from .hook import _StaticApiHook
 from .hook import _Named
 
@@ -639,6 +640,22 @@ def define_output_file(
 
     file_type = define_file_type(extension, mime_type)
     return define_output(file_type, label=label, optional=optional, output_props=output_props)
+
+
+def define_protocol(
+        protocol_name: str,
+        api_type: _tp.Type[PROTOCOL]) \
+        -> _Protocol[PROTOCOL]:
+
+    pass
+
+
+def define_resource(
+        resource_type: ResourceType, *,
+        protocol: str | _Protocol | None = None,
+        api_type: _tp.Type | None):
+
+    pass
 
 
 def load_schema(

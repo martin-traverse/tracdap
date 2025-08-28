@@ -19,6 +19,7 @@ import typing as _tp
 import logging as _logging
 
 from .constants import STRUCT_TYPE  # DOCGEN_REMOVE
+from .constants import PROTOCOL, _Protocol  # DOCGEN_REMOVE
 
 # Import metadata domain objects into the API namespace
 # This significantly improves type hinting, inline documentation and auto-complete in JetBrains IDEs
@@ -55,6 +56,8 @@ class RuntimeMetadata:
 
     attributes: _tp.Dict[str, _tp.Any] = _dc.field(default_factory=dict)
     """TRAC metadata attributes of the current object (if available)"""
+
+
 
 
 class TracContext(metaclass=_abc.ABCMeta):
@@ -308,6 +311,8 @@ class TracContext(metaclass=_abc.ABCMeta):
         """
 
         pass
+
+    def get_external_system(self, system_name: str, client_class: _tp.Type[PROTOCOL] | _Protocol[PROTOCOL]) -> PROTOCOL:
 
     def put_schema(self, dataset_name: str, schema: SchemaDefinition):
 
@@ -599,6 +604,11 @@ class TracModel(metaclass=_abc.ABCMeta):
         :return: The full set of outputs that will be produced by the model at runtime
         :rtype: Dict[str, :py:class:`ModelOutputSchema <tracdap.rt.metadata.ModelOutputSchema>`]
         """
+
+        pass
+
+    @_abc.abstractmethod
+    def define_resources(self) -> _tp.Dict[str, ResourceDefinition]:
 
         pass
 

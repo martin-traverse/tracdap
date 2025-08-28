@@ -14,6 +14,7 @@
 #  limitations under the License.
 
 import tracdap.rt.metadata
+import dataclasses as _dc
 import typing as _tp
 
 
@@ -63,3 +64,16 @@ DATETIME = tracdap.rt.metadata.BasicType.DATETIME
 
 STRUCT_TYPE = _tp.TypeVar('STRUCT_TYPE')
 """Template type for use with STRUCT data objects, which can be either Python dataclasses or Pydantic models"""
+
+
+
+PROTOCOL = _tp.TypeVar('PROTOCOL')
+
+@_dc.dataclass(frozen=True)
+class _Protocol(_tp.Generic[PROTOCOL]):
+
+    protocol_name: str
+    api_type: _tp.Type[PROTOCOL]
+
+    def __str__(self):
+        return self.protocol_name
