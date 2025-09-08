@@ -109,7 +109,7 @@ codegen = [ "protoc-wheel-0", "grpcio-tools", "googleapis-common-protos" ]
 # Users / distributors are free to use other drivers, according to their own license terms
 integration = [ "pymysql", "pg8000", "pyodbc" ]
 
-packaging = [ "build" ]
+packaging = [ "build", "packaging" ]
 
 compliance = [ "safety", "pip-licenses-cli" ]
 

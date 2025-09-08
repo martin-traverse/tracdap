@@ -48,6 +48,7 @@ pyodbc >= 5.0, < 6.0
 
 # Dist
 build >= 0.10.0
+packaging >= 23.0
 
 # Compliance
 safety >= 3.6.0
