@@ -113,17 +113,17 @@ jobs:
       - name: PIP Upgrade
         run: python -m pip install --upgrade pip
 
-      # Make sure to check compliance on both core and plugin dependencies
+      # Install all runtime dependencies (core + all plugins) and the compliance tools
       - name: Install dependencies
         run: |
           cd tracdap-runtime/python
-          pip install -r requirements.txt
-          pip install -r requirements_plugins.txt
+          pip install --group runtime --constraint=constraints.txt
+          pip install --group compliance --constraint=constraints.txt
 
       - name: License check
         run: |
 
-          # Source license excpetions
+          # Source license exceptions
           . dev/compliance/license-config-python.sh
 
           mkdir -p build/compliance/python-runtime-licenses
