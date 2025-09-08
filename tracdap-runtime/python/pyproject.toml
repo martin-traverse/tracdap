@@ -1,8 +1,134 @@
+#  Licensed to the Fintech Open Source Foundation (FINOS) under one or
+#  more contributor license agreements. See the NOTICE file distributed
+#  with this work for additional information regarding copyright ownership.
+#  FINOS licenses this file to you under the Apache License, Version 2.0
+#  (the "License"); you may not use this file except in compliance with the
+#  License. You may obtain a copy of the License at
+#
+#      http://www.apache.org/licenses/LICENSE-2.0
+#
+#  Unless required by applicable law or agreed to in writing, software
+#  distributed under the License is distributed on an "AS IS" BASIS,
+#  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#  See the License for the specific language governing permissions and
+#  limitations under the License.
+
 [build-system]
 
+build-backend = "setuptools.build_meta"
+
 requires = [
-    "setuptools>=42",
-    "wheel"
+    "setuptools >= 77.0.3"
 ]
 
-build-backend = "setuptools.build_meta"
+
+[project]
+
+dynamic = ["version"]
+
+name = "tracdap-runtime"
+description = "Runtime package for building models on the TRAC Data & Analytics Platform"
+readme = "README.md"
+
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+
+authors = [
+    {name = "Martin Traverse", email = "martin@fintrac.co.uk"}
+]
+
+classifiers = [
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Intended Audience :: Developers",
+    "Intended Audience :: End Users/Desktop",
+    "Intended Audience :: Financial and Insurance Industry",
+    "Topic :: Office/Business",
+    "Topic :: Office/Business :: Financial",
+    "Topic :: Software Development",
+    "Topic :: Software Development :: Libraries :: Application Frameworks",
+    "Topic :: Software Development :: Libraries :: Python Modules"
+]
+
+requires-python = ">= 3.10"
+
+dependencies = [ "protobuf", "pyarrow", "pyyaml", "dulwich", "requests" ]
+
+
+[project.optional-dependencies]
+
+pandas = [ "pandas", "numpy" ]
+polars = [ "polars" ]
+sql = [ "sqlalchemy" ]
+grpc = [ "grpcio", "grpcio-status" ]
+aws = [ "botocore", "boto3" ]
+gcp = [ "google-auth", "google-api-core", "google-cloud-storage", "gcsfs" ]
+azure = [ "azure-core", "azure-identity", "azure-storage-blob", "adlfs" ]
+
+
+[project.urls]
+
+Homepage = "https://tracdap.finos.org/"
+Documentation = "https://tracdap.readthedocs.io/"
+"Source Code" = "https://github.com/finos/tracdap"
+"Issue Tracker" = "https://github.com/finos/tracdap/issues"
+
+
+[tool.setuptools.packages.find]
+
+where = ["src"]
+namespaces = true
+
+
+[tool.setuptools.dynamic]
+
+version = { attr = "tracdap.rt.__version__" }
+
+
+[dependency-groups]
+
+core = [ "protobuf", "pyarrow", "pyyaml", "dulwich", "requests" ]
+
+plugins = [
+    "pandas", "numpy",
+    "polars",
+    "sqlalchemy",
+    "grpcio", "grpcio-status",
+    "botocore", "boto3",
+    "google-auth", "google-api-core", "google-cloud-storage", "gcsfs",
+    "azure-core", "azure-identity", "azure-storage-blob", "adlfs"
+]
+
+codegen = [ "protoc-wheel-0", "grpcio-tools", "googleapis-common-protos" ]
+
+# These drivers are used for CI, they are not shipped, nor are they dependencies even for tracdap-runtime[sql]
+# Users / distributors are free to use other drivers, according to their own license terms
+integration = [ "pymysql", "pg8000", "pyodbc" ]
+
+packaging = [ "build" ]
+
+compliance = [ "safety", "pip-licenses-cli" ]
+
+runtime = [
+    { include-group = "core" },
+    { include-group = "plugins" }
+]
+
+tools = [
+    { include-group = "codegen" },
+    { include-group = "integration" },
+    { include-group = "packaging" },
+    { include-group = "compliance" }
+]
+
+all = [
+    { include-group = "core" },
+    { include-group = "plugins" },
+    { include-group = "codegen" },
+    { include-group = "dist" },
+    { include-group = "compliance" }
+]
