@@ -202,7 +202,7 @@ def move_generated_package_into_src(work_dir, src_relative_path, generate_rel_pa
     shutil.copytree(generated_metadata_path, src_metadata_path)
 
 
-def set_trac_version(project_path="runtime", project_packages=None):
+def set_trac_version(project_path="runtime", project_package="tracdap.rt"):
 
     work_dir = WORK_PATH.joinpath(project_path)
 
@@ -227,20 +227,18 @@ def set_trac_version(project_path="runtime", project_packages=None):
     # Using Python's Version class normalises the version according to PEP440
     trac_version = packaging.version.Version(raw_version)
 
-    # Set the version number embedded into the package
-    # This can be done for multiple packages - e.g. tracdap.rt and tracdap.rt.api
-    for project_package in project_packages or []:
+    # Version file is always _version.py the project's root package
+    version_file = work_dir \
+        .joinpath("src") \
+        .joinpath(project_package.replace('.', '/')) \
+        .joinpath("_version.py")
 
-        root_package_path = f"src/{project_package.replace('.', '/')}"
-        version_file_path = work_dir.joinpath(root_package_path).joinpath("__init__.py")
-
-        for line in fileinput.input(version_file_path, inplace=True):
-
-            if "AUTOVERSION_INSERT" in line:
-                print(f'__version__ = "{str(trac_version)}"')
-
-            elif "AUTOVERSION_REMOVE" not in line and "__version__" not in line:
-                print(line, end="")
+    # Update version file with the detected version
+    for line in fileinput.input(version_file, inplace=True):
+        if line.startswith("__version__"):
+            print(f'__version__ = "{str(trac_version)}"')
+        else:
+            print(line, end="")
 
 def update_toml_file(project_path="runtime", project_root=RUNTIME_DIR):
 
@@ -373,7 +371,6 @@ def build_runtime():
 
     runtime_path = "runtime"
     runtime_package = "tracdap.rt"
-    api_package = "tracdap.rt.api"
 
     copy_project_files(runtime_path, runtime_package)
     copy_license(runtime_path)
@@ -381,7 +378,7 @@ def build_runtime():
     generate_from_proto(runtime_path)
     move_generated_into_src(runtime_path)
 
-    set_trac_version(runtime_path, [runtime_package, api_package])
+    set_trac_version(runtime_path, runtime_package)
 
     run_pypa_build(runtime_path)
 
@@ -394,7 +391,7 @@ def build_plugin(plugin_name):
     copy_project_files(plugin_path, plugin_package, RUNTIME_EXT_DIR)
     copy_license(plugin_path)
 
-    set_trac_version(plugin_path, [plugin_package])
+    set_trac_version(plugin_path, plugin_package)
     update_toml_file(plugin_path, RUNTIME_EXT_DIR)
 
     run_pypa_build(plugin_path)

@@ -13,5 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-# AUTOVERSION_INSERT
-__version__ = "DEVELOPMENT"
+from ._version import __version__

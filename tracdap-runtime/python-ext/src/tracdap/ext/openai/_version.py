@@ -13,4 +13,4 @@
 #  See the License for the specific language governing permissions and
 #  limitations under the License.
 
-from ._version import __version__
+__version__ = "0.0.0-dev.0"  # Version will be set by build_runtime.py, do not edit
