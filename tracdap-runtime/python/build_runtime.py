@@ -21,10 +21,14 @@ import subprocess
 import fileinput
 import platform
 import sys
-import packaging.version
 import argparse
 import unittest
 import importlib.util
+
+try:
+    import packaging.version
+except ModuleNotFoundError:
+    pass
 
 
 RUNTIME_DIR = pathlib.Path(__file__).parent.resolve()
