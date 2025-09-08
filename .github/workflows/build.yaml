@@ -142,7 +142,8 @@ jobs:
           cd tracdap-runtime/python
           pip install ${{ matrix.environment.PANDAS_DEPENDENCY }}
           pip install ${{ matrix.environment.PYSPARK_DEPENDENCY }}
-          pip install -r requirements.txt
+          pip install --group core --constraint=constraints.txt
+          pip install --group codegen --constraint=constraints.txt
 
       - name: Protoc code generation
         run: python tracdap-runtime/python/build_runtime.py --target codegen
