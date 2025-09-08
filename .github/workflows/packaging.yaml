@@ -191,7 +191,8 @@ jobs:
 
       - name: Install build environment dependencies
         run: |
-          pip install -r tracdap-runtime/python/requirements.txt
+          cd tracdap-runtime/python
+          pip install --group codegen packaging --constraint=constraints.txt
 
       - name: Build runtime package
         env:
