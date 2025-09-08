@@ -1,0 +1,54 @@
+
+
+# Core dependencies
+protobuf == 6.31.1
+pyarrow == 21.0.0
+pyyaml == 6.0.2
+dulwich == 0.23.2
+requests == 2.32.4
+
+
+# Support a range of Pandas / NumPy versions (These versions are tested in CI)
+pandas >= 1.2.0, < 2.3.0
+numpy >= 1.20, < 2.3.0
+
+# Support all 1.x releases of Polars
+polars >= 1.0.0, < 2.0.0
+
+# Support import / export from SQL storage
+sqlalchemy >= 2.0.0, < 2.1.0
+
+# Enable the gRPC runtime API server
+grpcio == 1.74.0
+grpcio-status == 1.74.0
+
+botocore == 1.39.15
+boto3 == 1.39.15
+
+google-auth == 2.40.3
+google-api-core == 2.25.1
+google-cloud-storage == 3.2.0
+gcsfs == 2024.3.1
+
+azure-core == 1.35.0
+azure-identity == 1.23.1
+azure-storage-blob == 12.26.0
+adlfs == 2024.12.0
+
+
+# Code Gen
+protoc-wheel-0 >= 30.2
+grpcio-tools == 1.74.0
+googleapis-common-protos >= 1.70.0
+
+# Integration
+pymysql >= 1.0, < 2.0
+pg8000 >= 1.0, < 2.0
+pyodbc >= 5.0, < 6.0
+
+# Dist
+build >= 0.10.0
+
+# Compliance
+safety >= 3.6.0
+pip-licenses-cli >= 1.4, < 2.0
