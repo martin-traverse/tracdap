@@ -186,12 +186,6 @@ def move_generated_into_src(runtime_path):
             else:
                 print(line, end='')
 
-    # Remove references to rt_gen package in setup.cfg, since everything is now in place under src/
-
-    for line in fileinput.input(work_dir.joinpath("setup.cfg"), inplace=True):
-        if "rt_gen" not in line:
-            print(line, end='')
-
 
 def move_generated_package_into_src(work_dir, src_relative_path, generate_rel_path):
 
@@ -246,20 +240,6 @@ def set_trac_version(project_path="runtime", project_packages=None):
                 print(f'__version__ = "{str(trac_version)}"')
 
             elif "AUTOVERSION_REMOVE" not in line and "__version__" not in line:
-                print(line, end="")
-
-    # Set the version number used in the package metadata
-
-    # setup.cfg uses file: and attr: for reading the version in from external sources
-    # attr: doesn't work with namespace packages, __version__ has to be in the root package
-    # file: works for the sdist build but is throwing an error for bdist_wheel, this could be a bug
-    # Writing the version directly into setup.cfg avoids both of these issues
-
-    if work_dir.joinpath("setup.cfg").exists():
-        for line in fileinput.input(work_dir.joinpath("setup.cfg"), inplace=True):
-            if line.startswith("version ="):
-                print(f"version = {str(trac_version)}")
-            else:
                 print(line, end="")
 
 def update_toml_file(project_path="runtime", project_root=RUNTIME_DIR):
