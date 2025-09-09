@@ -73,7 +73,7 @@ azure = [ "azure-core", "azure-identity", "azure-storage-blob", "adlfs" ]
 [project.urls]
 
 Homepage = "https://www.fintrac.co.uk/"
-Documentation = "https://docs.fintrac.co.uk/"
+Documentation = "https://docs.fintrac.co.uk/versions/latest/modelling"
 "Source Code" = "https://github.com/martin-traverse/tracdap"
 "Issue Tracker" = "https://github.com/martin-traverse/tracdap/issues"
 

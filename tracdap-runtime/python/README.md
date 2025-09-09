@@ -2,6 +2,8 @@
 
   ![TRAC the modern model platform](https://github.com/finos/tracdap/raw/main/doc/_images/tracmmp_horizontal_400.png)
 
+  <br />
+
   <div>
     <a href="https://pypi.org/project/tracdap-runtime"><img alt="PyPI Version" src="https://img.shields.io/pypi/v/tracdap-runtime.svg?maxAge=3600" /></a>
     <a href="https://pypi.org/project/tracdap-runtime"><img alt="Python Versions" src="https://img.shields.io/pypi/pyversions/tracdap-runtime.svg?maxAge=3600" /></a>
@@ -61,32 +63,7 @@ $ pip install tracdap-runtime
 
 You will also need to install a data framework (Pandas or Polars) and any other libraries that the model uses.
 
-If you are starting a new project, here is a skeleton project structure that you can follow
-(Replace ``quick_start`` with a package name relevant to your project or organization).
-
-```
-📁 quick-start-project
-├── 📁 config
-│   ├── quick_start.yaml
-│   └── sys_config.yaml
-├── 📁 src
-│   └── 📁 quick_start
-│       ├── __init__.py
-│       └── quick_start.py
-├── 📁 test
-│   └── 📁 quick_start_tests
-│       ├── __init__.py
-│       └── test_quick_start.py
-├── 📁 venv
-│   └── ...
-├── .gitignore
-├── requirements.txt
-└── ...
-```
-
 Here is a minimum working example of a TRAC model that performs aggregation on a dataset:
-
-*quick_start.py*
 
 ```python
 import tracdap.rt.api as trac
@@ -147,12 +124,12 @@ if __name__ == "__main__":
 ```
 
 The model needs two config files in order to run: A job config file and a system config file.
+By convention, for local development these are kept in a ``config`` folder.
 
 The system config file defines the resources that are available for models to use.
 As a minimum the default storage location must be specified.
 
 *sys_config.yaml*
-
 ```yaml
 properties:
 
@@ -174,7 +151,6 @@ TRAC checks the types and schemas of every parameter and input dataset, types ar
 where it is safe to do so, otherwise TRAC will raise an error if the inputs are not valid.
 
 *quick_start.yaml*
-
 ```yaml
 job:
   runModel:
