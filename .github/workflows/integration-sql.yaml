@@ -233,19 +233,13 @@ jobs:
           . ./venv/bin/activate
           python -m pip install --upgrade pip
 
-      # Filter plugin dependencies, only install for the plugin being tested
-      # This prevents dependency issues in one plugin affecting all the others
-      - name: Select plugin dependencies
-        run: |
-          cd tracdap-runtime/python
-          sed -n '/BEGIN_PLUGIN sql/, /END_PLUGIN sql/p' requirements_plugins.txt > requirements_selected.txt
-
       - name: Install dependencies
         run: |
           . ./venv/bin/activate
           cd tracdap-runtime/python
-          pip install -r requirements.txt
-          pip install -r requirements_selected.txt
+          pip install --group common --constraint=constraints.txt
+          pip install --group sql--constraint=constraints.txt
+          pip install --group codegen --constraint=constraints.txt
 
       - name: Protoc code generation
         run: |
