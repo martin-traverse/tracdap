@@ -124,7 +124,7 @@ codegen = [ "protoc-wheel-0", "grpcio-tools", "googleapis-common-protos" ]
 
 # These drivers are used for CI, they are not shipped, nor are they dependencies even for tracdap-runtime[sql]
 # Users / distributors are free to use other drivers, according to their own license terms
-integration = [ "pymysql", "pg8000", "pyodbc" ]
+integration = [ "pymysql", "pg8000", "pyodbc", "cryptography" ]
 
 packaging = [ "build", "packaging" ]
 
