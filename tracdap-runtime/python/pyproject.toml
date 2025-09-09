@@ -93,14 +93,31 @@ version = { attr = "tracdap.rt.__version__" }
 
 core = [ "protobuf", "pyarrow", "pyyaml", "dulwich", "requests" ]
 
+pandas = [ "pandas", "numpy" ]
+polars = [ "polars" ]
+sql = [ "sqlalchemy" ]
+grpc = [ "grpcio", "grpcio-status" ]
+aws = [ "botocore", "boto3" ]
+gcp = [ "google-auth", "google-api-core", "google-cloud-storage", "gcsfs" ]
+azure = [ "azure-core", "azure-identity", "azure-storage-blob", "adlfs" ]
+
+common = [
+    { include-group = "core" },
+    { include-group = "pandas" },
+    { include-group = "polars" }
+]
+
 plugins = [
-    "pandas", "numpy",
-    "polars",
-    "sqlalchemy",
-    "grpcio", "grpcio-status",
-    "botocore", "boto3",
-    "google-auth", "google-api-core", "google-cloud-storage", "gcsfs",
-    "azure-core", "azure-identity", "azure-storage-blob", "adlfs"
+    { include-group = "sql" },
+    { include-group = "aws" },
+    { include-group = "gcp" },
+    { include-group = "azure" }
+]
+
+runtime = [
+    { include-group = "common" },
+    { include-group = "plugins" },
+    { include-group = "grpc" }
 ]
 
 codegen = [ "protoc-wheel-0", "grpcio-tools", "googleapis-common-protos" ]
@@ -113,11 +130,6 @@ packaging = [ "build", "packaging" ]
 
 compliance = [ "safety", "pip-licenses-cli" ]
 
-runtime = [
-    { include-group = "core" },
-    { include-group = "plugins" }
-]
-
 tools = [
     { include-group = "codegen" },
     { include-group = "integration" },
@@ -126,9 +138,6 @@ tools = [
 ]
 
 all = [
-    { include-group = "core" },
-    { include-group = "plugins" },
-    { include-group = "codegen" },
-    { include-group = "dist" },
-    { include-group = "compliance" }
+    { include-group = "runtime" },
+    { include-group = "tools" },
 ]

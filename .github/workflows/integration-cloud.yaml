@@ -222,7 +222,9 @@ jobs:
       - name: Select plugin dependencies
         run: |
           cd tracdap-runtime/python
-          sed -n '/BEGIN_PLUGIN ${{ inputs.target }}/, /END_PLUGIN ${{ inputs.target }}/p' requirements_plugins.txt > requirements_selected.txt
+          pip install --group common --constraint=constraints.txt
+          pip install --group ${{ inputs.target }} --constraint=constraints.txt
+          pip install --group codegen --constraint=constraints.txt
 
       - name: Install dependencies
         run: |
