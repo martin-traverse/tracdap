@@ -42,8 +42,8 @@ requires-python = ">= 3.10"
 
 [project.urls]
 
-Homepage = "https://tracdap.finos.org/"
-Documentation = "https://tracdap.readthedocs.io/"
+Homepage = "https://www.fintrac.co.uk/"
+Documentation = "https://docs.fintrac.co.uk/"
 "Source Code" = "https://github.com/finos/tracdap"
 "Issue Tracker" = "https://github.com/finos/tracdap/issues"
 
