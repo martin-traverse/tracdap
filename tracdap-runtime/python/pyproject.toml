@@ -27,7 +27,7 @@ requires = [
 dynamic = ["version"]
 
 name = "tracdap-runtime"
-description = "Runtime package for building models on the TRAC Data & Analytics Platform"
+description = "Portable, production-grade models in Python"
 readme = "README.md"
 
 license = "Apache-2.0"
