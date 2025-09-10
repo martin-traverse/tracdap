@@ -335,6 +335,9 @@ jobs:
     needs:
       - python_runtime_package
 
+    permissions:
+      id-token: write
+
     steps:
 
       - name: Set up Python
