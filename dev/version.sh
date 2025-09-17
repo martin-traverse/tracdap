@@ -43,12 +43,16 @@ elif [ ${prior_version_found} = 0 ]; then
   prior_version=`echo ${prior_version_tag} | sed s/^v//`
 
   if [ `echo "${prior_version}" | grep -E "^\d+\.\d+\.\d+$"` ]; then
+      echo doing 1
       # Whole version number, bump patch for next patch version
       next_patch_version=`echo "${prior_version}" | awk -F. '{$NF=$NF+1; print}' OFS=.`
   else
+      echo doing 2
       # Pre-release, e.g. -rc.1, remove suffix for next patch version
       next_patch_version=`echo "${prior_version}" | sed "s/-.*$//"`
   fi
+
+  echo $next_patch_version
 
   # Next patch version exists but is not in the revision history -> release branch exists
   if [ `git tag | grep "^v${next_patch_version}$"` ]; then
