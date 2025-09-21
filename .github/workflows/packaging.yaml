@@ -259,7 +259,8 @@ jobs:
 
   publish_to_github:
 
-    if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+    # if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+    if: ${{ false }}
 
     runs-on: ubuntu-latest
 
@@ -334,7 +335,8 @@ jobs:
 
   publish_to_pypi:
 
-    if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+    # if: ${{ github.event_name == 'release' && github.event.action == 'published' }}
+    if: ${{ false }}
 
     runs-on: ubuntu-latest
 
