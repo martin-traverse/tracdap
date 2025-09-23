@@ -16,7 +16,6 @@
 import pathlib
 import re
 import subprocess as sp
-import typing as tp
 import urllib.parse
 import time
 
@@ -25,15 +24,15 @@ import dulwich.client as git_client
 import dulwich.index as git_index
 import urllib3.exceptions  # noqa
 
-import tracdap.rt.metadata as meta
-import tracdap.rt.exceptions as ex
+# TRAC extension API
+import tracdap.rt.ext.plugins as _plugins
+import tracdap.rt.ext.util as _util
+import tracdap.rt.metadata as _meta
+import tracdap.rt.config as _cfg
+import tracdap.rt.exceptions as _ex
 
 # Import repo interfaces
-import tracdap.rt.ext.plugins as plugins
 from tracdap.rt.ext.repos import *
-
-# Set of common helpers across the core plugins (do not reference rt._impl)
-from . import _helpers
 
 
 class GitRepository(IModelRepository):
@@ -47,34 +46,30 @@ class GitRepository(IModelRepository):
     GIT_CONFIG_PATTERN = re.compile("^git\\.([^.]+)\\.(.+)")
     SHA1_PATTERN = re.compile("^[0-9a-f]{40}$")
 
-    def __init__(self, properties: tp.Dict[str, str]):
+    def __init__(self, resource_name: str, config: _cfg.PluginConfig):
 
         self._properties = properties
         self._log = _helpers.logger_for_object(self)
 
-        repo_url_prop = _helpers.get_plugin_property(self._properties, self.REPO_URL_KEY)
-        native_git_prop = _helpers.get_plugin_property(self._properties, self.NATIVE_GIT_KEY)
+        repo_url_prop = _util.read_plugin_config(config, self.REPO_URL_KEY)
+        native_git_prop = _util.read_plugin_config(config, self.NATIVE_GIT_KEY, convert=bool, default=self.NATIVE_GIT_DEFAULT)
 
         if not repo_url_prop:
-            raise ex.EConfigParse(f"Missing required property [{self.REPO_URL_KEY}] in Git repository config")
+            raise _ex.EConfigParse(f"Missing required property [{self.REPO_URL_KEY}] in Git repository config")
 
         repo_url = urllib.parse.urlparse(repo_url_prop)
-        credentials = _helpers.get_http_credentials(repo_url, self._properties)
+        credentials = _util.get_http_credentials(config, url=repo_url)
 
-        self._repo_url = _helpers.apply_http_credentials(repo_url, credentials)
-
-        if native_git_prop is not None:
-            self._native_git = native_git_prop.strip().lower() == "true"
-        else:
-            self._native_git = self.NATIVE_GIT_DEFAULT
+        self._repo_url = _util.apply_http_credentials(repo_url, credentials)
+        self._native_git = native_git_prop
 
     def package_path(
-            self, model_def: meta.ModelDefinition,
+            self, model_def: _meta.ModelDefinition,
             checkout_dir: pathlib.Path) -> pathlib.Path:
 
         return checkout_dir.joinpath(model_def.path)
 
-    def do_checkout(self, model_def: meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
+    def do_checkout(self, model_def: _meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
 
         try:
 
@@ -114,9 +109,9 @@ class GitRepository(IModelRepository):
             message = f"Failed to check out [{model_def.repository}]: {detail}"
 
             self._log.error(message)
-            raise ex.EModelRepo(message) from error
+            raise _ex.EModelRepo(message) from error
 
-    def _do_native_checkout(self, model_def: meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
+    def _do_native_checkout(self, model_def: _meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
 
         self._log.info(f"Checkout mechanism: [native]")
 
@@ -189,17 +184,17 @@ class GitRepository(IModelRepository):
                 for line in cmd_err:
                     self._log.error(line)
 
-                raise ex.EModelRepo(cmd_err[-1])
+                raise _ex.EModelRepo(cmd_err[-1])
 
             else:
 
                 error_msg = f"Git checkout failed for {model_def.package} {model_def.version}"
                 self._log.error(error_msg)
-                raise ex.EModelRepo(error_msg)
+                raise _ex.EModelRepo(error_msg)
 
         return self.package_path(model_def, checkout_dir)
 
-    def _do_python_checkout(self, model_def: meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
+    def _do_python_checkout(self, model_def: _meta.ModelDefinition, checkout_dir: pathlib.Path) -> pathlib.Path:
 
         self._log.info(f"Checkout mechanism: [python]")
 
@@ -207,8 +202,7 @@ class GitRepository(IModelRepository):
 
         self._log.info("=> git init")
 
-        safe_checkout_dir = _helpers.windows_unc_path(checkout_dir)
-        repo = git_repo.Repo.init(str(safe_checkout_dir))
+        repo = git_repo.Repo.init(str(checkout_dir))
         self._apply_config_from_properties(repo)
 
         # Set up origin
@@ -232,14 +226,14 @@ class GitRepository(IModelRepository):
                 return [refs[tag_key]]
             if branch_key in refs:
                 return [refs[branch_key]]
-            raise ex.EModelRepo(f"Model version not found: [{model_def.version}]")
+            raise _ex.EModelRepo(f"Model version not found: [{model_def.version}]")
 
         # Run the Git fetch command
 
         self._log.info(f"=> git fetch --depth=1 origin {model_def.version}")
 
-        credentials = _helpers.get_http_credentials(self._repo_url, self._properties)
-        username, password = _helpers.split_http_credentials(credentials)
+        credentials = _util.get_http_credentials(self._properties, url=self._repo_url)
+        username, password = _util.split_http_credentials(credentials)
 
         client = git_client.HttpGitClient(
             self._repo_url.geturl(),
@@ -260,7 +254,7 @@ class GitRepository(IModelRepository):
         elif branch_key in fetch.refs:
             repo[b"HEAD"] = fetch.refs[branch_key]
         else:
-            raise ex.EModelRepo(f"Model version not found: [{model_def.version}]")
+            raise _ex.EModelRepo(f"Model version not found: [{model_def.version}]")
 
         # This checks out HEAD into the repo folder
         index_file = repo.index_path()
@@ -313,4 +307,4 @@ class GitRepository(IModelRepository):
     _URLLIB3_ERROR_PATTERN = re.compile(r"<[^>]*>: (.*)")
 
 # Register plugin
-plugins.PluginManager.register_plugin(IModelRepository, GitRepository, ["git"])
+_plugins.PluginManager.register_plugin(IModelRepository, GitRepository, ["git"])

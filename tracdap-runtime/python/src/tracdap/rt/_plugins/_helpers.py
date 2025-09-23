@@ -68,61 +68,6 @@ def get_plugin_property_boolean(properties: tp.Dict[str, str], property_name: st
     raise _ex.EConfigParse(f"Invalid value for [{property_name}]: Expected a boolean value, got [{property_value}]")
 
 
-# Handling for credentials supplied via HTTP(S) URLs
-
-__HTTP_TOKEN_KEY = "token"
-__HTTP_USER_KEY = "username"
-__HTTP_PASS_KEY = "password"
-
-
-def get_http_credentials(url: urllib.parse.ParseResult, properties: tp.Dict[str, str]) -> tp.Optional[str]:
-
-    token = get_plugin_property(properties, __HTTP_TOKEN_KEY)
-    username = get_plugin_property(properties, __HTTP_USER_KEY)
-    password = get_plugin_property(properties, __HTTP_PASS_KEY)
-
-    if token is not None:
-        return token
-
-    if username is not None and password is not None:
-        return f"{username}:{password}"
-
-    if url.username:
-        credentials_sep = url.netloc.index("@")
-        return url.netloc[:credentials_sep]
-
-    return None
-
-
-def split_http_credentials(credentials: str) -> tp.Tuple[tp.Optional[str], tp.Optional[str]]:
-
-    if credentials is None:
-        return None, None
-
-    elif ":" in credentials:
-        sep = credentials.index(":")
-        username = credentials[:sep]
-        password = credentials[sep + 1:]
-        return username, password
-
-    else:
-        return credentials, None
-
-
-def apply_http_credentials(url: urllib.parse.ParseResult, credentials: str) -> urllib.parse.ParseResult:
-
-    if credentials is None:
-        return url
-
-    if url.username is None:
-        location = f"{credentials}@{url.netloc}"
-
-    else:
-        location_sep = url.netloc.index("@")
-        location = f"{credentials}@{url.netloc[location_sep + 1:]}"
-
-    return url._replace(netloc=location)
-
 
 # Logging helpers
 
