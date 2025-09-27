@@ -213,4 +213,6 @@ message DataDefinition {
     TagSelector storageId = 4;
 
     uint64 rowCount = 5;
+
+    bool recreatable = 6;
 }

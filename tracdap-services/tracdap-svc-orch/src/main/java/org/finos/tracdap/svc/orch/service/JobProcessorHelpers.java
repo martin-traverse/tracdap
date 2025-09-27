@@ -323,7 +323,7 @@ public class JobProcessorHelpers {
             }
             else {
                 // This condition should already be picked up during job consistency validation
-                var message = String.format("Required resource [%s] not found", resourceKey);
+                var message = String.format("Required resource [%s] not available in TRAC", resourceKey);
                 log.error(message);
                 throw new EConsistencyValidation(message);
             }

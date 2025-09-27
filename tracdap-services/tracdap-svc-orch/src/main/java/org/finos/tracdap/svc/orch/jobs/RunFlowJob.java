@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.svc.orch.jobs;
 
+import org.finos.tracdap.common.exception.EConsistencyValidation;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.graph.GraphBuilder;
 import org.finos.tracdap.common.graph.NodeNamespace;
@@ -32,6 +33,8 @@ import java.util.stream.Collectors;
 
 
 public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
+
+    private static final String UNMAPPED_RESOURCE = "";
 
     @Override
     public List<TagSelector> requiredMetadata(JobDefinition job) {
@@ -58,12 +61,26 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
         // Storage requirements are the same for model / flow jobs
         addRequiredStorage(metadata, tenantConfig, resources);
 
-        // Add repos for all referenced models
-        metadata.getObjects().values().stream()
-                .filter(obj -> obj.getObjectType() == ObjectType.MODEL)
-                .map(ObjectDefinition::getModel)
-                .map(ModelDefinition::getRepository)
-                .forEach(resources::add);
+        // Add resource requirements for all referenced models
+        for (var obj : metadata.getObjects().values()) {
+            if (obj.getObjectType() == ObjectType.MODEL) {
+
+                var model = obj.getModel();
+
+                // Model repo resource is always required
+                resources.add(model.getRepository());
+
+                // Add job resources explicitly defined by models
+                for (var modelResource : model.getResourcesMap().keySet()) {
+                    var mappedResource = job.getRunFlow().getResourcesOrDefault(modelResource, UNMAPPED_RESOURCE);
+                    if (UNMAPPED_RESOURCE.equals(mappedResource)) {
+                        // This should already be flagged in job consistency validation
+                        throw new EConsistencyValidation(String.format("Resource [%s] not supplied in the job", mappedResource));
+                    }
+                    resources.add(mappedResource);
+                }
+            }
+        }
 
         return new ArrayList<>(resources);
     }
@@ -71,8 +88,52 @@ public class RunFlowJob extends RunModelOrFlow implements IJobLogic {
     @Override
     public JobDefinition applyJobTransform(JobDefinition job, MetadataBundle metadata, TenantConfig tenantConfig) {
 
-        // No transformations currently required
-        return job;
+        var repeatability = determineRepeatability(job, metadata);
+
+        return job.toBuilder()
+                .setRepeatability(repeatability)
+                .build();
+    }
+
+    private JobRepeatability determineRepeatability(JobDefinition job, MetadataBundle metadata) {
+
+        var flowJob =  job.getRunFlow();
+
+        var repeatableModels = new ArrayList<String>(flowJob.getModelsCount());
+
+        for (var modelEntry : flowJob.getModelsMap().entrySet()) {
+
+            var modelKey = modelEntry.getKey();
+            var modelObj = metadata.getObjects().get(modelKey);
+            var model = modelObj.getModel();
+
+            if (model.getResourcesCount() == 0)
+                repeatableModels.add(modelKey);
+        }
+
+        if (repeatableModels.size() == flowJob.getModelsCount())
+            return JobRepeatability.FULLY_REPEATABLE;
+
+        if (repeatableModels.isEmpty())
+            return JobRepeatability.NOT_REPEATABLE;
+
+        var flow = metadata.getObject(flowJob.getFlow()).getFlow();
+
+        // Look for repeatable models where all the inputs come from job inputs
+        // If all the repeatable models have a non-repeatable parent, the job is not repeatable
+        for (var edge : flow.getEdgesList()) {
+
+            if (!repeatableModels.contains(edge.getTarget().getNode()))
+                continue;
+
+            if (!flowJob.containsInputs(edge.getSource().getNode()))
+                repeatableModels.remove(edge.getTarget().getNode());
+        }
+
+        if (repeatableModels.isEmpty())
+            return JobRepeatability.NOT_REPEATABLE;
+        else
+            return JobRepeatability.PARTIALLY_REPEATABLE;
     }
 
     @Override

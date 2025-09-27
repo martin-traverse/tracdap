@@ -45,6 +45,7 @@ public class GraphBuilder {
 
     private static final String MODEL_NODE_NAME = "trac_model";
     private static final Map<String, SocketId> NO_DEPENDENCIES = Map.of();
+    private static final Map<String, String> NO_RESOURCES = Map.of();
     private static final List<String> NO_OUTPUTS = List.of();
     private static final List<String> SINGLE_OUTPUT = List.of(SocketId.SINGLE_OUTPUT);
     private static final String SINGLE_INPUT = SocketId.SINGLE_INPUT;
@@ -206,9 +207,10 @@ public class GraphBuilder {
         var modelParam = flowNode.getNodeType() == FlowNodeType.PARAMETER_NODE ? flow.getParametersOrDefault(nodeId.name(), null) : null;
         var modelInput = flowNode.getNodeType() == FlowNodeType.INPUT_NODE ? flow.getInputsOrDefault(nodeId.name(), null) : null;
         var modelOutput = flowNode.getNodeType() == FlowNodeType.OUTPUT_NODE ? flow.getOutputsOrDefault(nodeId.name(), null) : null;
+        var modelResource = flowNode.getNodeType() == FlowNodeType.RESOURCE_NODE ? flow.getResourcesOrDefault(nodeId.name(), null) : null;
 
         // Runtime object / value is not part of the flow, these will always be null
-        var nodeMetadata = new NodeMetadata(flowNode, modelParam, modelInput, modelOutput, null, null);
+        var nodeMetadata = new NodeMetadata(flowNode, modelParam, modelInput, modelOutput, modelResource, null, null);
 
         // Check and report any unsatisfied dependencies
         // The dependencies that are present are already validated
@@ -222,17 +224,17 @@ public class GraphBuilder {
 
             case PARAMETER_NODE:
             case INPUT_NODE:
-                return new Node<>(nodeId, dependencies, SINGLE_OUTPUT, nodeMetadata);
+                return new Node<>(nodeId, dependencies, NO_RESOURCES, SINGLE_OUTPUT, nodeMetadata);
 
             case OUTPUT_NODE:
-                return new Node<>(nodeId, dependencies, NO_OUTPUTS, nodeMetadata);
+                return new Node<>(nodeId, dependencies, NO_RESOURCES, NO_OUTPUTS, nodeMetadata);
 
             case MODEL_NODE:
-                return new Node<>(nodeId, dependencies, flowNode.getOutputsList(), nodeMetadata);
+                return new Node<>(nodeId, dependencies, NO_RESOURCES, flowNode.getOutputsList(), nodeMetadata);
 
             default:
                 errorHandler.error(nodeId, String.format("Missing or invalid node type [%s]", flowNode.getNodeType()));
-                return new Node<>(nodeId, NO_DEPENDENCIES, NO_OUTPUTS, nodeMetadata);
+                return new Node<>(nodeId, NO_DEPENDENCIES, NO_RESOURCES, NO_OUTPUTS, nodeMetadata);
         }
     }
 
@@ -288,8 +290,9 @@ public class GraphBuilder {
         var inputs = job.getInputsMap();
         var outputs = job.getPriorOutputsMap();
         var models = Map.of(MODEL_NODE_NAME, job.getModel());
+        var resources = job.getResourcesMap();
 
-        return addJobMetadata(graph, params, inputs, outputs, models);
+        return addJobMetadata(graph, params, inputs, outputs, models, resources);
     }
 
     public GraphSection<NodeMetadata> addJobMetadata(GraphSection<NodeMetadata> graph, RunFlowJob job) {
@@ -298,8 +301,9 @@ public class GraphBuilder {
         var inputs = job.getInputsMap();
         var outputs = job.getPriorOutputsMap();
         var models = job.getModelsMap();
+        var resources = job.getResourcesMap();
 
-        return addJobMetadata(graph, params, inputs, outputs, models);
+        return addJobMetadata(graph, params, inputs, outputs, models, resources);
     }
 
     public GraphSection<NodeMetadata> addJobMetadata(
@@ -307,7 +311,8 @@ public class GraphBuilder {
             Map<String, Value> params,
             Map<String, TagSelector> inputs,
             Map<String, TagSelector> outputs,
-            Map<String, TagSelector> models) {
+            Map<String, TagSelector> models,
+            Map<String, String> resources) {
 
         if (metadataBundle == null)
             throw new ETracInternal("No metadata bundle supplied, job metadata cannot be added to the graph");
@@ -337,7 +342,7 @@ public class GraphBuilder {
                     break;
 
                 case MODEL_NODE:
-                    var modelNode = addRuntimeObject(node, models);
+                    var modelNode = addRuntimeObject(addRuntimeResources(node, resources), models);
                     updatedNodes.put(node.nodeId(), modelNode);
                     break;
 
@@ -357,7 +362,7 @@ public class GraphBuilder {
             return node;
 
         var metadata = node.payload().withRuntimeValue(runtimeValue);
-        return new Node<>(node.nodeId(), node.dependencies(), node.outputs(), metadata);
+        return node.withPayload(metadata);
     }
 
     private Node<NodeMetadata> addRuntimeObject(Node<NodeMetadata> node, Map<String, TagSelector> runtimeObjects) {
@@ -373,13 +378,32 @@ public class GraphBuilder {
             return node;
 
         var metadata = node.payload().withRuntimeObject(runtimeObject);
-        return new Node<>(node.nodeId(), node.dependencies(), node.outputs(), metadata);
+        return node.withPayload(metadata);
+    }
+
+    private Node<NodeMetadata> addRuntimeResources(Node<NodeMetadata> node, Map<String, String> runtimeResources) {
+
+        var flowNode = node.payload().flowNode();
+
+        if (flowNode.getResourcesCount() == 0)
+            return node;
+
+        var resources = new HashMap<String, String>();
+
+        for (var resourceName : flowNode.getResourcesList()) {
+            var mappedResource = runtimeResources.get(resourceName);
+            if (mappedResource != null)
+                resources.put(resourceName, mappedResource);
+        }
+
+        return node.withResources(resources);
     }
 
     public GraphSection<NodeMetadata> autowireFlowParameters(GraphSection<NodeMetadata> graph, FlowDefinition flow, RunFlowJob job) {
 
-        // Check whether this flow is using explicit parameters
-        var flowIsExplicit = flow.getParametersCount() > 0;
+        // Check whether this flow is using explicit parameters or resources
+        var explicitParameters = flow.getParametersCount() > 0;
+        var explicitResources = flow.getResourcesCount() > 0;
 
         var nodes = new HashMap<>(graph.nodes());
         var paramIds = new HashMap<String, NodeId>();
@@ -408,7 +432,7 @@ public class GraphBuilder {
                 flowNode.addParameters(paramName);
 
                 // For explicit flows, do not try to auto-wire parameters that are not declared
-                if (flowIsExplicit && ! flow.containsParameters(paramName)) {
+                if (explicitParameters && ! flow.containsParameters(paramName)) {
                     errorHandler.error(node.nodeId(), String.format("Parameter [%s] is not declared in the flow", paramName));
                     continue;
                 }
@@ -428,12 +452,78 @@ public class GraphBuilder {
             }
 
             var updatedMetadata = nodeMetadata.withFlowNode(flowNode.build());
-            var updatedNode = new Node<>(node.nodeId(), dependencies, node.outputs(), updatedMetadata);
+            var updatedNode = node.withPayload(updatedMetadata);
             nodes.put(node.nodeId(), updatedNode);
         }
 
         return new GraphSection<>(nodes, graph.inputs(), graph.outputs());
     }
+
+    private void autowireModeParameters(
+            FlowDefinition flow, RunFlowJob job,
+            Map<NodeId, Node<NodeMetadata>> nodes, Node<NodeMetadata> node) {
+
+        // Check whether this flow is using explicit parameters or resources
+        var explicitParameters = flow.getParametersCount() > 0;
+
+        var nodeMetadata = node.payload();
+
+        var flowNode = nodeMetadata.flowNode().toBuilder();
+        var dependencies = new HashMap<>(node.dependencies());
+        var modelDef = nodeMetadata.runtimeObject().getModel();
+
+        // Look at parameters in the model def
+        // If they are missing, add them to the flow node with dependencies
+        // Also add the flow-level parameter node if that is missing
+
+        for (var paramName : modelDef.getParametersMap().keySet()) {
+
+            // Do not auto-wire parameters that are declared explicitly in the node
+            if (flowNode.getParametersList().contains(paramName))
+                continue;
+
+            flowNode.addParameters(paramName);
+
+            // For explicit flows, do not try to auto-wire parameters that are not declared
+            if (explicitParameters && ! flow.containsParameters(paramName)) {
+                errorHandler.error(node.nodeId(), String.format("Parameter [%s] is not declared in the flow", paramName));
+                continue;
+            }
+
+            var paramId = paramIds.computeIfAbsent(paramName, pn -> new NodeId(pn, namespace));
+
+            if (!nodes.containsKey(paramId)) {
+                var paramNode = buildParameterNode(paramId, flow, job);
+                nodes.put(paramId, paramNode);
+            }
+
+            if (!dependencies.containsKey(paramName)) {
+
+                var socketId = new SocketId(paramId, SINGLE_INPUT);
+                dependencies.put(paramName, socketId);
+            }
+        }
+
+    }
+
+    private void autowireNodeResources(Node<NodeMetadata> node) {
+
+        var flowNode = node.payload().flowNode();
+        var model = node.payload().runtimeObject().getModel();
+
+        for (var resourceName: model.getResourcesMap().keySet()) {
+
+            if (!flowNode.getResourcesList().contains(resourceName))
+                ;  // tODO error
+
+
+
+
+        }
+
+
+    }
+
 
     private Node<NodeMetadata> buildParameterNode(NodeId paramId, FlowDefinition flow, RunFlowJob job) {
 
@@ -444,9 +534,9 @@ public class GraphBuilder {
         var paramName = paramId.name();
         var modelParameter = flow.getParametersOrDefault(paramName, null);
         var runtimeValue = job.getParametersOrDefault(paramName, null);
-        var nodeMetadata = new NodeMetadata(flowNode, modelParameter, null, null, null, runtimeValue);
+        var nodeMetadata = new NodeMetadata(flowNode, modelParameter, null, null, null, null, runtimeValue);
 
-        return new Node<>(paramId, NO_DEPENDENCIES, SINGLE_OUTPUT, nodeMetadata);
+        return new Node<>(paramId, NO_DEPENDENCIES, NO_RESOURCES, SINGLE_OUTPUT, nodeMetadata);
     }
 
     public GraphSection<NodeMetadata> applyTypeInference(GraphSection<NodeMetadata> graph) {
@@ -477,7 +567,7 @@ public class GraphBuilder {
                 var targets = dependents.getOrDefault(node.nodeId(), List.of());
                 var parameter = inferParameter(node.nodeId(), targets, graph);
                 var inferredMetadata = nodeMetadata.withModelParameter(parameter);
-                var inferredNode = new Node<>(node.nodeId(), node.dependencies(), node.outputs(), inferredMetadata);
+                var inferredNode = node.withPayload(inferredMetadata);
 
                 nodes.put(node.nodeId(), inferredNode);
             }
@@ -487,7 +577,7 @@ public class GraphBuilder {
                 var targets = dependents.getOrDefault(node.nodeId(), List.of());
                 var inputSchema = inferInputSchema(node.nodeId(), targets, graph);
                 var inferredMetadata = nodeMetadata.withModelInputSchema(inputSchema);
-                var inferredNode = new Node<>(node.nodeId(), node.dependencies(), node.outputs(), inferredMetadata);
+                var inferredNode = node.withPayload(inferredMetadata);
 
                 nodes.put(node.nodeId(), inferredNode);
             }
@@ -500,7 +590,7 @@ public class GraphBuilder {
                 var source = node.dependencies().values().iterator().next();
                 var outputSchema = inferOutputSchema(source, graph);
                 var inferredMetadata = nodeMetadata.withModelOutputSchema(outputSchema);
-                var inferredNode = new Node<>(node.nodeId(), node.dependencies(), node.outputs(), inferredMetadata);
+                var inferredNode = node.withPayload(inferredMetadata);
 
                 nodes.put(node.nodeId(), inferredNode);
             }

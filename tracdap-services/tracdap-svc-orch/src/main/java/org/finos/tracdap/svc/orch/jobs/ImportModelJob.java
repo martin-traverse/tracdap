@@ -35,6 +35,8 @@ import java.util.stream.Collectors;
 
 public class ImportModelJob implements IJobLogic {
 
+    private static final JobRepeatability REPEATABILITY = JobRepeatability.NOT_REPEATABLE;
+
     @Override
     public List<TagSelector> requiredMetadata(JobDefinition job) {
 
@@ -96,6 +98,7 @@ public class ImportModelJob implements IJobLogic {
 
         return job.toBuilder()
                 .setImportModel(importDef)
+                .setRepeatability(REPEATABILITY)
                 .build();
     }
 

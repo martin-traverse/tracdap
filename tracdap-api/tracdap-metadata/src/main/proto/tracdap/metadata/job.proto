@@ -89,6 +89,17 @@ enum JobStatusCode {
   CANCELLED = 10;
 }
 
+enum JobRepeatability {
+
+  JOB_REPEATABILITY_NOT_SET = 0;
+
+  FULLY_REPEATABLE = 1;
+
+  PARTIALLY_REPEATABLE = 2;
+
+  NOT_REPEATABLE = 3;
+}
+
 /**
  * Define a job to run on the TRAC platform
  */
@@ -106,6 +117,8 @@ message JobDefinition {
   }
 
   TagSelector resultId = 8;
+
+  JobRepeatability repeatability = 9;
 }
 
 /**

@@ -17,6 +17,7 @@
 
 package org.finos.tracdap.svc.orch.jobs;
 
+import org.finos.tracdap.common.exception.EConsistencyValidation;
 import org.finos.tracdap.common.exception.EUnexpected;
 import org.finos.tracdap.common.metadata.MetadataBundle;
 import org.finos.tracdap.common.metadata.MetadataUtil;
@@ -29,6 +30,8 @@ import java.util.*;
 
 
 public class RunModelJob extends RunModelOrFlow implements IJobLogic {
+
+    private static final String UNMAPPED_RESOURCE = "";
 
     @Override
     public List<TagSelector> requiredMetadata(JobDefinition job) {
@@ -59,14 +62,33 @@ public class RunModelJob extends RunModelOrFlow implements IJobLogic {
         var modelRepo = modelObj.getModel().getRepository();
         resources.add(modelRepo);
 
+        // Add job resources explicitly defined in the model
+        for (var modelResource : modelObj.getModel().getResourcesMap().keySet()) {
+            var mappedResource = job.getRunModel().getResourcesOrDefault(modelResource, UNMAPPED_RESOURCE);
+            if (UNMAPPED_RESOURCE.equals(mappedResource)) {
+                // This should already be flagged in job consistency validation
+                throw new EConsistencyValidation(String.format("Resource [%s] not supplied in the job", mappedResource));
+            }
+            resources.add(mappedResource);
+        }
+
         return new ArrayList<>(resources);
     }
 
     @Override
     public JobDefinition applyJobTransform(JobDefinition job, MetadataBundle metadata, TenantConfig tenantConfig) {
 
+        var modelObj = metadata.getObject(job.getRunModel().getModel());
+        var model = modelObj.getModel();
+
+        var repeatability = model.getResourcesCount() == 0
+                ? JobRepeatability.FULLY_REPEATABLE
+                : JobRepeatability.NOT_REPEATABLE;
+
         // No transformations currently required
-        return job;
+        return job.toBuilder()
+                .setRepeatability(repeatability)
+                .build();
     }
 
     @Override

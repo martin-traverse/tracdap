@@ -44,6 +44,7 @@ public class JobValidator {
     private static final Descriptors.FieldDescriptor JD_JOB_TYPE;
     private static final Descriptors.OneofDescriptor JD_JOB_DETAILS;
     private static final Descriptors.FieldDescriptor JD_RESULT_ID;
+    private static final Descriptors.FieldDescriptor JD_REPEATABILITY;
 
     private static final Descriptors.Descriptor IMPORT_MODEL_JOB;
     private static final Descriptors.FieldDescriptor IMJ_LANGUAGE;
@@ -73,6 +74,7 @@ public class JobValidator {
         JD_JOB_TYPE = field(JOB_DEFINITION, JobDefinition.JOBTYPE_FIELD_NUMBER);
         JD_JOB_DETAILS = field(JOB_DEFINITION, JobDefinition.RUNMODEL_FIELD_NUMBER).getContainingOneof();
         JD_RESULT_ID = field(JOB_DEFINITION, JobDefinition.RESULTID_FIELD_NUMBER);
+        JD_REPEATABILITY = field(JOB_DEFINITION, JobDefinition.REPEATABILITY_FIELD_NUMBER);
 
         IMPORT_MODEL_JOB = ImportModelJob.getDescriptor();
         IMJ_LANGUAGE = field(IMPORT_MODEL_JOB, ImportModelJob.LANGUAGE_FIELD_NUMBER);
@@ -134,6 +136,11 @@ public class JobValidator {
                 .apply(ObjectIdValidator::tagSelector, TagSelector.class)
                 .apply(ObjectIdValidator::selectorType, TagSelector.class, ObjectType.RESULT)
                 .apply(ObjectIdValidator::fixedObjectVersion, TagSelector.class)
+                .pop();
+
+        ctx = ctx.push(JD_REPEATABILITY)
+                .applyIf(isClientRequest, CommonValidators::omitted)
+                .applyIf(!isClientRequest, CommonValidators::nonZeroEnum, JobRepeatability.class)
                 .pop();
 
         return ctx;

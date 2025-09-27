@@ -36,6 +36,8 @@ message FileDefinition {
 
   TagSelector storageId = 5;
   string dataItem = 6;
+
+  bool recreatable = 7;
 }
 
 /**

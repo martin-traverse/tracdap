@@ -24,14 +24,28 @@ public class Node<TPayload> {
 
     private final NodeId nodeId;
     private final Map<String, SocketId> dependencies;
+    private final Map<String, String> resources;
     private final List<String> outputs;
     private final TPayload payload;
 
-    public Node(NodeId nodeId, Map<String, SocketId> dependencies, List<String> outputs, TPayload payload) {
+    public Node(
+            NodeId nodeId, Map<String, SocketId> dependencies,
+            Map<String, String> resources, List<String> outputs,
+            TPayload payload) {
+
         this.nodeId = nodeId;
         this.dependencies = dependencies;
+        this.resources = resources;
         this.outputs = outputs;
         this.payload = payload;
+    }
+
+    public Node<TPayload> withPayload(TPayload payload) {
+        return new Node<>(nodeId, dependencies, resources, outputs, payload);
+    }
+
+    public Node<TPayload> withResources(Map<String, String> resources) {
+        return new Node<>(nodeId, dependencies, resources, outputs, payload);
     }
 
     public NodeId nodeId() {
@@ -40,6 +54,10 @@ public class Node<TPayload> {
 
     public Map<String, SocketId> dependencies() {
         return dependencies;
+    }
+
+    public Map<String, String> resources() {
+        return resources;
     }
 
     public List<String> outputs() {

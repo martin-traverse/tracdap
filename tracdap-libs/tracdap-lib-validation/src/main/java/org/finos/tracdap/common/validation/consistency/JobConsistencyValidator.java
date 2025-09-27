@@ -730,14 +730,14 @@ public class JobConsistencyValidator {
         throw new EUnexpected();
     }
 
-    private static SchemaDefinition findSchema(DataDefinition dataset, MetadataBundle resources) {
+    private static SchemaDefinition findSchema(DataDefinition dataset, MetadataBundle metadata) {
 
         if (dataset.hasSchema())
             return dataset.getSchema();
 
         if (dataset.hasSchemaId()) {
 
-            var schema = resources.getObject(dataset.getSchemaId());
+            var schema = metadata.getObject(dataset.getSchemaId());
 
             // Metadata should be loaded before the validator runs (partial validation not available at present)
             if (schema == null)
@@ -815,8 +815,9 @@ public class JobConsistencyValidator {
         var paramsCheck = compareKeys(nodeMetadata.flowNode().getParametersList(), modelDef.getParametersMap().keySet());
         var inputsCheck = compareKeys(nodeMetadata.flowNode().getInputsList(), modelDef.getInputsMap().keySet());
         var outputsCheck = compareKeys(nodeMetadata.flowNode().getOutputsList(), modelDef.getOutputsMap().keySet());
+        var resourcesCheck = compareKeys(nodeMetadata.flowNode().getResourcesList(), modelDef.getResourcesMap().keySet());
 
-        if (paramsCheck.anyErrors() || inputsCheck.anyErrors() || outputsCheck.anyErrors()) {
+        if (paramsCheck.anyErrors() || inputsCheck.anyErrors() || outputsCheck.anyErrors() ||  resourcesCheck.anyErrors()) {
 
             // TODO: Allow details to be recorded separately for more readable error messages
 
@@ -827,6 +828,8 @@ public class JobConsistencyValidator {
             modelNodeKeyErrors("extra inputs: ", inputsCheck.extraKeys, details);
             modelNodeKeyErrors("missing outputs: ", outputsCheck.missingKeys, details);
             modelNodeKeyErrors("extra outputs: ", outputsCheck.extraKeys, details);
+            modelNodeKeyErrors("missing resources: ", resourcesCheck.missingKeys, details);
+            modelNodeKeyErrors("extra resources: ", resourcesCheck.extraKeys, details);
 
             var message = "Model is not compatible with the flow (" + String.join(", ", details) + ")";
             return ctx.error(message);
@@ -840,6 +843,9 @@ public class JobConsistencyValidator {
 
         for (var input : modelDef.getInputsMap().entrySet())
             ctx = JobConsistencyValidator.modelInput(node, graph, input.getKey(), input.getValue(), ctx);
+
+        for (var resource : modelDef.getResourcesMap().entrySet())
+            ctx = JobConsistencyValidator.modelResource(node, graph, resource.getKey(), resource.getValue(), ctx);
 
         return ctx;
     }
@@ -926,6 +932,49 @@ public class JobConsistencyValidator {
                     "Input [%s] cannot be supplied from [%s] (%s)",
                     inputName, sourceNodeName, sourceNodeType));
         }
+    }
+
+    private static ValidationContext modelResource(
+            Node<NodeMetadata> node, GraphSection<NodeMetadata> graph,
+            String resourceName, ModelResource modelResource,
+            ValidationContext ctx) {
+
+        if (!node.resources().containsKey(resourceName)) {
+            return ctx.error(String.format("Resource [%s] is not defined in the job", resourceName));
+        }
+
+        var mappedResource = node.resources().get(resourceName);
+
+        if (!ctx.getTenantConfig().containsResources(mappedResource)) {
+            return ctx.error(String.format(
+                    "Resource [%s] is not available in the current tenant (expected tenant resource %s)",
+                    resourceName, mappedResource));
+        }
+
+        var tenantResource = ctx.getTenantConfig().getResourcesOrThrow(mappedResource);
+
+        if (tenantResource.getResourceType() != modelResource.getResourceType()) {
+            return ctx.error(String.format(
+                    "Resource [%s] is the wrong type (expected %s, got %s)",
+                    resourceName, modelResource.getResourceType().name(), tenantResource.getResourceType().name()
+            ));
+        }
+
+        if (modelResource.hasProtocol() && ! modelResource.getProtocol().equals(tenantResource.getProtocol())) {
+            return ctx.error(String.format(
+                    "Resource [%s] has the wrong protocol (expected %s, got %s)",
+                    resourceName, modelResource.getProtocol(), tenantResource.getProtocol()
+            ));
+        }
+
+        if (modelResource.hasSubProtocol() && ! modelResource.getSubProtocol().equals(tenantResource.getSubProtocol())) {
+            return ctx.error(String.format(
+                    "Resource [%s] has the wrong sub-protocol (expected %s, got %s)",
+                    resourceName, modelResource.getSubProtocol(), tenantResource.getSubProtocol()
+            ));
+        }
+
+        return ctx;
     }
 
     private static ValidationContext outputNode(String outputName, Node<NodeMetadata> node, GraphSection<NodeMetadata> graph, ValidationContext ctx) {
