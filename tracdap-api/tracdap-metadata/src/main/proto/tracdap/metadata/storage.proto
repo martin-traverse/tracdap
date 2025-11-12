@@ -63,6 +63,8 @@ enum StorageLayout {
   OBJECT_ID_LAYOUT = 0;
 
   DEVELOPER_LAYOUT = 1;
+
+  DATE_SNAP_LAYOUT = 2;
 }
 
 /**
