@@ -20,7 +20,11 @@ package org.finos.tracdap.common.storage;
 
 public interface IStorageLayout {
 
-    String newObjectStoragePath(StorageLayoutItem layoutItem);
+    String newFilePath(LayoutItem layoutItem);
 
-    String updateObjectStoragePath(StorageLayoutItem layoutItem, StorageLayoutItem priorLayoutItem);
+    String updateFilePath(LayoutItem layoutItem, LayoutItem priorLayoutItem);
+
+    String newDataPath(LayoutItem layoutItem);
+
+    String updateDataPath(LayoutItem layoutItem, LayoutItem priorLayoutItem);
 }

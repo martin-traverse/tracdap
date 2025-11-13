@@ -19,9 +19,10 @@ package org.finos.tracdap.common.storage;
 
 import org.finos.tracdap.metadata.*;
 
-public class StorageLayoutItem {
+public class LayoutItem {
 
-    private final TagHeader dataId;
+    private final TagHeader header;
+    private final FileDefinition file;
     private final DataDefinition data;
     private final SchemaDefinition schema;
     private final StorageDefinition storage;
@@ -30,12 +31,56 @@ public class StorageLayoutItem {
     private final int snap;
     private final int delta;
 
-    public StorageLayoutItem(
-            TagHeader dataId, DataDefinition data, SchemaDefinition schema,
+    public static LayoutItem forFile(TagHeader header, FileDefinition file) {
+        return new LayoutItem(header, file);
+    }
+
+    private LayoutItem(TagHeader header, FileDefinition file) {
+
+        this.header = header;
+
+        this.file = file;
+        this.data = null;
+        this.schema = null;
+        this.storage = null;
+
+        this.part = null;
+        this.snap = 0;
+        this.delta = 0;
+    }
+
+    public static LayoutItem forPriorFile(FileDefinition file, StorageDefinition storage) {
+        return new LayoutItem(file, storage);
+    }
+
+    private LayoutItem(FileDefinition file, StorageDefinition storage) {
+
+        this.header = null;
+
+        this.file = file;
+        this.data = null;
+        this.schema = null;
+        this.storage = storage;
+
+        this.part = null;
+        this.snap = 0;
+        this.delta = 0;
+    }
+
+    public static LayoutItem forData(
+            TagHeader header, DataDefinition data, SchemaDefinition schema,
             PartKey part, int snap, int delta) {
 
-        this.dataId = dataId;
+        return new LayoutItem(header, data, schema, part, snap, delta);
+    }
 
+    private LayoutItem(
+            TagHeader header, DataDefinition data, SchemaDefinition schema,
+            PartKey part, int snap, int delta) {
+
+        this.header = header;
+
+        this.file = null;
         this.data = data;
         this.schema = schema;
         this.storage = null;
@@ -45,10 +90,15 @@ public class StorageLayoutItem {
         this.delta = delta;
     }
 
-    public StorageLayoutItem(DataDefinition data, SchemaDefinition schema, StorageDefinition storage) {
+    public static LayoutItem forPriorData(DataDefinition data, SchemaDefinition schema, StorageDefinition storage) {
+        return new LayoutItem(data, schema, storage);
+    }
 
-        this.dataId = null;
+    private LayoutItem(DataDefinition data, SchemaDefinition schema, StorageDefinition storage) {
 
+        this.header = null;
+
+        this.file = null;
         this.data = data;
         this.schema = schema;
         this.storage = storage;
@@ -58,8 +108,12 @@ public class StorageLayoutItem {
         this.delta = 0;
     }
 
-    public TagHeader dataId() {
-        return dataId;
+    public TagHeader header() {
+        return header;
+    }
+
+    public FileDefinition file() {
+        return file;
     }
 
     public DataDefinition data() {
