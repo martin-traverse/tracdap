@@ -30,6 +30,8 @@ import org.apache.logging.log4j.core.impl.Log4jContextFactory;
 import org.apache.logging.log4j.core.util.DefaultShutdownCallbackRegistry;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import jnr.constants.platform.Signal;
+import jnr.posix.POSIXFactory;
 
 import java.time.Duration;
 import java.time.Instant;
@@ -256,9 +258,9 @@ public abstract class TracServiceBase {
      * <P>Note: Services started using svcMain() have their lifecycle managed automatically,
      * there is no need to call start() or stop().</P>
      *
-     * @param registerShutdownHook Flag indicating a JVM shutdown hook should be registered to manage clean shutdowns
+     * @param installSignalHandlers Install JVM signal handlers for shutdown (universally supported) and HUP (platform-specific)
      */
-    public void start(boolean registerShutdownHook) {
+    public void start(boolean installSignalHandlers) {
 
         try {
 
@@ -268,9 +270,14 @@ public abstract class TracServiceBase {
 
             // If requested, install a shutdown handler for a graceful exit
             // This is needed when running a real server instance, but not when running embedded tests
-            if (registerShutdownHook) {
+            if (installSignalHandlers) {
+
+                // Use JVM built-in shutdown hook to handle SIGTERM - this is the most portable way
                 var shutdownThread = new Thread(this::jvmShutdownHook, "shutdown");
                 Runtime.getRuntime().addShutdownHook(shutdownThread);
+
+                // SIGHUP has to be installed as a dedicated handler - may not be available everywhere
+                POSIXFactory.getJavaPOSIX().signal(Signal.SIGHUP, signal -> jvmSIGHUP());
             }
 
             // Keep the logging system active while shutdown hooks are running
@@ -451,5 +458,12 @@ public abstract class TracServiceBase {
         // So, it should be ok to use Runtime.halt and report the exit code
 
         Runtime.getRuntime().halt(exitCode);
+    }
+
+    private void jvmSIGHUP() {
+
+        log.info("Signal received: SIGHUP");
+
+        // SIGHUP is a no-op at present
     }
 }
