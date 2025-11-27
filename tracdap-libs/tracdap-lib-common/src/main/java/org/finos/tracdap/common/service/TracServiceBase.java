@@ -464,6 +464,14 @@ public abstract class TracServiceBase {
 
         log.info("Signal received: SIGHUP");
 
-        // SIGHUP is a no-op at present
+        var hupThread = new Thread(() -> {
+
+            stop();
+            start(false);  // Signal handlers are already installed
+
+        }, "restart");
+
+        hupThread.setDaemon(false);
+        hupThread.start();
     }
 }
